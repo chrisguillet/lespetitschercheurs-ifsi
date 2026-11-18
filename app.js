@@ -231,6 +231,14 @@ function renderForm() {
     ${field("f_nation", "Nationalité", d.nation, { req: 1 })}
     ${field("f_type", "Type d’article", d.type, { req: 1, sel: TYPES })}
    </div></fieldset>
+  <fieldset><legend>Compléments pour la référence APA (facultatifs, mais recommandés pour les articles)</legend>
+   <div class="grid">
+    ${field("f_source", "Revue / éditeur / établissement", d.source, { ph: "revue de l’article, éditeur du rapport, université de la thèse" })}
+    ${field("f_volume", "Volume", d.volume)}
+    ${field("f_numero", "Numéro", d.numero)}
+    ${field("f_pages", "Pages", d.pages, { ph: "ex. 12-25" })}
+    ${field("f_doi", "DOI ou URL", d.doi, { ph: "10.xxxx/xxxxx ou https://…" })}
+   </div></fieldset>
   <fieldset><legend>Colonnes 2 à 8 · Libres (à remplir comme vous voulez, modifiable à tout moment)</legend>
    <div class="grid">
     ${field("f_mots", "Mots-clés", d.mots, { area: 1 })}
@@ -254,7 +262,8 @@ async function save() {
     statut: g("f_statut"), titre: g("f_titre"), parution: g("f_parution"), auteur: g("f_auteur"),
     qualite: g("f_qualite"), nation: g("f_nation"), type: g("f_type"), mots: g("f_mots"), kw: g("f_kw"),
     concepts: g("f_concepts"), objet: g("f_objet"), opinion: g("f_opinion"), controverse: g("f_controverse"),
-    libre: g("f_libre")
+    libre: g("f_libre"), source: g("f_source"), volume: g("f_volume"), numero: g("f_numero"),
+    pages: g("f_pages"), doi: g("f_doi")
   };
   const need = data.statut === "En cours" ? ["titre"] : FIN;
   const miss = need.filter(k => !data[k]);
@@ -312,8 +321,31 @@ function cells(i) {
   const main = `<tr class="${prog ? "prog" : ""}" style="--c:${c}"><td class="first"><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>
    <b style="margin-top:6px">${esc(i.titre)}</b>
    <div class="meta">Parution : ${esc(fmtD(i.parution)) || "—"}<br>Auteur : ${esc(i.auteur) || "—"} (${esc(i.qualite) || "—"})<br>Nationalité : ${esc(i.nation) || "—"}<br>Type : ${esc(i.type) || "—"}<br><i>Saisi le ${esc(fmtD(i.ajoute))}</i>${i.modifie_par ? `<br><i>Modifié par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}</i>` : ""}</div></td>
-   <td>${esc(i.mots)}</td><td>${esc(i.kw)}</td><td>${esc(i.concepts)}</td><td>${esc(i.objet)}</td><td>${esc(i.opinion)}</td><td>${esc(i.controverse)}</td><td>${esc(i.libre)}</td><td>${edit}${cm}</td></tr>`;
+   <td>${esc(i.mots)}</td><td>${esc(i.kw)}</td><td>${esc(i.concepts)}</td><td>${esc(i.objet)}</td><td>${esc(i.opinion)}</td><td>${esc(i.controverse)}</td><td>${esc(i.libre)}</td><td class="apa">${apaCell(i)}</td><td>${edit}${cm}</td></tr>`;
   return main + (openCm.has(i.id) ? commentsRow(i) : "");
+}
+
+function apaCell(i) {
+  const r = LydiaApa.apa(i);
+  const note = r.incomplet ? '<div class="meta" style="margin-top:4px">⚠ À compléter : revue et pages (formulaire, section APA)</div>' : "";
+  return `<div class="apatxt">${r.html}</div>${note}<button class="btn sm sec" style="margin-top:6px" data-apa="${esc(i.id)}">📋 Copier</button>`;
+}
+
+async function copierApa(id) {
+  const it = items.find(x => x.id === id);
+  if (!it) return;
+  const r = LydiaApa.apa(it);
+  try {
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      // HTML pour conserver l'italique dans Word ; texte brut en secours.
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html": new Blob([r.html], { type: "text/html" }),
+        "text/plain": new Blob([r.text], { type: "text/plain" })
+      })]);
+    } else await navigator.clipboard.writeText(r.text);
+    showStatus("📋 Référence copiée");
+    setTimeout(clearStatus, 1500);
+  } catch (e) { alert("Copie impossible : sélectionnez le texte à la main.\n\n" + r.text); }
 }
 
 function commentsRow(i) {
@@ -329,7 +361,7 @@ function commentsRow(i) {
   const form = canComment()
     ? `<div><textarea data-cm="${esc(i.id)}" maxlength="2000" placeholder="Ajouter un commentaire…">${esc(drafts[i.id] || "")}</textarea>
        <button class="btn sm" data-ca="${esc(i.id)}" style="margin-top:6px">Publier</button></div>` : "";
-  return `<tr class="cmrow"><td colspan="9"><div class="cmbox">${list}${form}</div></td></tr>`;
+  return `<tr class="cmrow"><td colspan="10"><div class="cmbox">${list}${form}</div></td></tr>`;
 }
 
 async function commentAction(fn, errLabel) {
@@ -360,7 +392,7 @@ function filtered() {
 
 function renderTable() {
   const l = filtered();
-  $("rows").innerHTML = l.length ? l.map(cells).join("") : '<tr><td colspan="9" class="empty">Aucune lecture à afficher.</td></tr>';
+  $("rows").innerHTML = l.length ? l.map(cells).join("") : '<tr><td colspan="10" class="empty">Aucune lecture à afficher.</td></tr>';
   $("stats").innerHTML = students().map(s => {
     const n = items.filter(i => i.etudiant === s.prenom);
     return `<span class="badge" style="--c:${esc(s.couleur)}">${esc(s.prenom)} : ${n.length} lecture${n.length > 1 ? "s" : ""} (${n.filter(i => i.statut === "En cours").length} en cours)</span>`;
@@ -373,6 +405,7 @@ $("rows").onclick = e => {
   const d = b.dataset;
   if (d.e) startEdit(d.e, false);
   else if (d.o) startEdit(d.o, true);
+  else if (d.apa) copierApa(d.apa);
   else if (d.c) { if (openCm.has(d.c)) openCm.delete(d.c); else openCm.add(d.c); renderTable(); }
   else if (d.ca) {
     const t = (drafts[d.ca] || "").trim();
@@ -458,10 +491,10 @@ $("adminbox").onclick = async e => {
 
 function exportXlsx() {
   if (typeof XLSX === "undefined") { alert("Module Excel non chargé."); return; }
-  const head = ["Étudiant", "Statut", "Titre", "Date de parution", "Auteur", "Qualité de l’auteur", "Nationalité", "Type d’article", "Mots-clés", "Keywords (EN)", "Concepts en sciences infirmières", "Objet / sujet principal", "Opinion de l’auteur", "Controverse", "Libre", "Date de saisie"];
-  const rows = filtered().map(i => [i.etudiant, i.statut === "En cours" ? "En cours de lecture" : "Terminée", i.titre, fmtD(i.parution), i.auteur, i.qualite, i.nation, i.type, i.mots, i.kw, i.concepts, i.objet, i.opinion, i.controverse, i.libre, fmtD(i.ajoute)].map(v => v || ""));
+  const head = ["Étudiant", "Statut", "Titre", "Date de parution", "Auteur", "Qualité de l’auteur", "Nationalité", "Type d’article", "Mots-clés", "Keywords (EN)", "Concepts en sciences infirmières", "Objet / sujet principal", "Opinion de l’auteur", "Controverse", "Libre", "Référence APA", "Date de saisie"];
+  const rows = filtered().map(i => [i.etudiant, i.statut === "En cours" ? "En cours de lecture" : "Terminée", i.titre, fmtD(i.parution), i.auteur, i.qualite, i.nation, i.type, i.mots, i.kw, i.concepts, i.objet, i.opinion, i.controverse, i.libre, LydiaApa.apa(i).text, fmtD(i.ajoute)].map(v => v || ""));
   const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
-  ws["!cols"] = [12, 16, 40, 14, 24, 20, 14, 22, 28, 28, 36, 36, 36, 30, 24, 14].map(w => ({ wch: w }));
+  ws["!cols"] = [12, 16, 40, 14, 24, 20, 14, 22, 28, 28, 36, 36, 36, 30, 24, 50, 14].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Lectures");
   XLSX.writeFile(wb, "lectures-memoire-" + stamp() + ".xlsx");
@@ -475,10 +508,10 @@ function exportPdf() {
   const l = filtered();
   const body = l.map(i => [i.etudiant + "\n" + (i.statut === "En cours" ? "(en cours)" : "(terminée)"),
     (i.titre || "") + "\nParution : " + (fmtD(i.parution) || "-") + "\nAuteur : " + (i.auteur || "-") + " (" + (i.qualite || "-") + ")\nNationalité : " + (i.nation || "-") + "\nType : " + (i.type || "-") + "\nSaisi le " + fmtD(i.ajoute),
-    i.mots || "", i.kw || "", i.concepts || "", i.objet || "", i.opinion || "", i.controverse || "", i.libre || ""]);
+    i.mots || "", i.kw || "", i.concepts || "", i.objet || "", i.opinion || "", i.controverse || "", i.libre || "", LydiaApa.apa(i).text]);
   doc.autoTable({
     startY: 18,
-    head: [["Étudiant", "1 - Article", "2 - Mots-clés", "3 - Keywords", "4 - Concepts", "5 - Objet / sujet", "6 - Opinion", "7 - Controverse", "8 - Libre"]],
+    head: [["Étudiant", "1 - Article", "2 - Mots-clés", "3 - Keywords", "4 - Concepts", "5 - Objet / sujet", "6 - Opinion", "7 - Controverse", "8 - Libre", "9 - Référence APA"]],
     body,
     styles: { fontSize: 6.5, cellPadding: 1.5, overflow: "linebreak", valign: "top" },
     headStyles: { fillColor: [47, 95, 208] },

@@ -23,12 +23,14 @@ const FEUILLE_HISTORIQUE = 'Historique';
 const FEUILLE_COMMENTAIRES = 'Commentaires';
 
 const COLONNES = ['id', 'owner', 'statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
-  'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'ajoute', 'modifie_le', 'modifie_par'];
+  'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'ajoute', 'modifie_le', 'modifie_par',
+  'source', 'volume', 'numero', 'pages', 'doi'];
 const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion'];
 const COL_COMMENTAIRES = ['id', 'lecture_id', 'auteur_email', 'auteur', 'date', 'texte', 'modifie_le'];
 const COL_HISTORIQUE = ['date', 'id', 'modifie_par', 'proprietaire', 'avant'];
 const CHAMPS = ['statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
-  'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre'];
+  'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre',
+  'source', 'volume', 'numero', 'pages', 'doi'];
 const OBLIGATOIRES_TERMINEE = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type'];
 const LIBELLES = { titre: 'titre', parution: 'date de parution', auteur: 'auteur', qualite: 'qualité',
   nation: 'nationalité', type: 'type d’article' };

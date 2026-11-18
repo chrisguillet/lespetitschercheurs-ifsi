@@ -2,6 +2,7 @@
 
 Outil partagé de suivi des lectures pour le mémoire : chaque étudiant saisit ses lectures,
 le tableau commun les rassemble (filtres, recherche, export Excel/PDF), les formateurs commentent.
+Une dernière colonne génère une référence APA 7 à partir des champs saisis (bouton « Copier », italique conservé dans Word) ; pour les articles, revue/volume/pages/DOI restent à compléter à la main.
 
 ## Architecture
 
