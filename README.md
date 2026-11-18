@@ -1,4 +1,4 @@
-# Lydia – Lectures du mémoire (IFSI)
+# Les petits chercheurs – Lectures du mémoire (IFSI)
 
 Outil partagé de suivi des lectures pour le mémoire : chaque étudiant saisit ses lectures,
 le tableau commun les rassemble (filtres, recherche, export Excel/PDF), les formateurs commentent.
@@ -78,7 +78,7 @@ On peut ensuite changer le rôle, ou retirer l'accès. Seul l'administrateur peu
 
 1. Renseigner `config.js` : `GOOGLE_CLIENT_ID` et `API_URL`, puis commiter et pousser.
 2. GitHub : **Settings → Pages → Deploy from a branch → `main` / racine**.
-3. L'application est sur `https://chrisguillet.github.io/lydia/`.
+3. L'application est sur `https://chrisguillet.github.io/lespetitschercheurs-ifsi/`.
 
 Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 
