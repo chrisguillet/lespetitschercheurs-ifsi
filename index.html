@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lectures du mémoire – IFSI</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>📚 Lectures du mémoire – IFSI</h1>
+  <div class="sub">Outil partagé du groupe : Wacim, Ange-Marie, Hélène et Lydia</div>
+  <div class="me" id="me"></div>
+  <div class="tabs hidden" id="tabs">
+    <button class="tab on" data-t="mine">✍️ Mes lectures</button>
+    <button class="tab" data-t="all">📊 Tableau commun</button>
+  </div>
+</header>
+<main>
+  <div id="status" class="note hidden"></div>
+
+  <section id="gate" class="card">
+    <p id="gatemsg">Connectez-vous avec votre compte Google pour accéder aux lectures.</p>
+    <div id="login"></div>
+  </section>
+
+  <div id="app" class="hidden">
+    <section id="mine">
+      <div class="card">
+        <h2 id="ftitle" style="margin-top:0;font-size:16px">Ajouter une lecture</h2>
+        <div class="note" id="fnote">Choisissez « 📖 En cours de lecture » si vous n’avez pas fini : seul le titre est alors obligatoire. Pour une lecture « ✅ Terminée », toute la première partie est obligatoire.</div>
+        <div id="form"></div>
+      </div>
+      <h2 style="font-size:16px">Mes lectures enregistrées</h2>
+      <div id="mylist"></div>
+    </section>
+
+    <section id="all" class="hidden">
+      <div class="card tools" id="filters"></div>
+      <div class="stats" id="stats"></div>
+      <div class="wrap"><table><thead><tr>
+        <th>1 · Article (titre, parution, auteur, qualité, nationalité, type)</th>
+        <th>2 · Mots-clés</th><th>3 · Keywords (EN)</th>
+        <th>4 · Concepts en sciences infirmières</th>
+        <th>5 · Objet / sujet principal</th>
+        <th>6 · Opinion de l’auteur</th>
+        <th>7 · Controverse</th><th>8 · Libre</th><th>Actions</th>
+      </tr></thead><tbody id="rows"></tbody></table></div>
+    </section>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
