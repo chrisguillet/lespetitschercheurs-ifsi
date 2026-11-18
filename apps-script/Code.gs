@@ -91,6 +91,50 @@ function preparer_(ss, nom, entetes) {
   return sh;
 }
 
+/* ---------- Sauvegarde automatique (copie du Sheet dans Drive) ---------- */
+
+const DOSSIER_SAUVEGARDES = 'Sauvegardes – lectures IFSI';
+const NB_QUOTIDIENNES = 7;      // une copie par jour, gardées 7 jours
+const NB_HEBDOMADAIRES = 8;     // et celles du lundi, gardées 8 semaines
+
+// Copie le Sheet dans un dossier dédié de votre Drive, puis supprime les copies devenues inutiles :
+// on garde les 7 plus récentes (une par jour) et les 8 plus récentes faites un lundi (une par semaine).
+// Les copies retirées vont à la corbeille Drive (récupérables 30 jours).
+function sauvegarder() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const dossiers = DriveApp.getFoldersByName(DOSSIER_SAUVEGARDES);
+  const dossier = dossiers.hasNext() ? dossiers.next() : DriveApp.createFolder(DOSSIER_SAUVEGARDES);
+  const tz = Session.getScriptTimeZone();
+  DriveApp.getFileById(ss.getId()).makeCopy(
+    ss.getName() + ' – sauvegarde ' + Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH-mm'), dossier);
+  const copies = [];
+  const it = dossier.getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    if (f.getName().indexOf('sauvegarde') >= 0) copies.push({ f: f, t: f.getDateCreated().getTime() });
+  }
+  copiesASupprimer_(copies, tz).forEach(function (c) { c.f.setTrashed(true); });
+}
+
+// Pur (testable) : parmi des copies { t: date en ms }, celles qui ne sont plus à conserver.
+function copiesASupprimer_(copies, tz) {
+  const tri = copies.slice().sort(function (a, b) { return b.t - a.t; });
+  const gardees = {};
+  tri.slice(0, NB_QUOTIDIENNES).forEach(function (c) { gardees[c.t] = true; });
+  tri.filter(function (c) { return Utilities.formatDate(new Date(c.t), tz, 'u') === '1'; })
+    .slice(0, NB_HEBDOMADAIRES).forEach(function (c) { gardees[c.t] = true; });
+  return tri.filter(function (c) { return !gardees[c.t]; });
+}
+
+// À lancer une seule fois depuis l'éditeur : sauvegarde chaque jour vers 3 h. Sans risque de le relancer.
+function activerSauvegardes() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'sauvegarder') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('sauvegarder').timeBased().everyDays(1).atHour(3).create();
+  sauvegarder();
+}
+
 /* ---------- Points d'entrée web ---------- */
 
 function doGet() {

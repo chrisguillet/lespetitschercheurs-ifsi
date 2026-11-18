@@ -49,8 +49,13 @@ table.adm{min-width:900px}
 table.adm input,table.adm select{min-width:130px}
 table.adm td{white-space:normal;vertical-align:middle}
 .adm h3{font-size:14px;margin:18px 0 8px}
-tr.cmrow td{background:var(--bg);white-space:normal}
-.cmbox{display:flex;flex-direction:column;gap:8px;max-width:900px}
+.cmbox{display:flex;flex-direction:column;gap:8px}
+.modal{position:fixed;inset:0;z-index:100;background:rgba(15,20,30,.5);display:flex;align-items:center;justify-content:center;padding:16px}
+.modalbox{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.35);width:100%;max-width:640px;max-height:min(85vh,720px);display:flex;flex-direction:column;overflow:hidden}
+.modalhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--bd)}
+.modalhead h2{margin:0;font-size:16px;line-height:1.3}
+#cmbody{padding:14px 16px;overflow-y:auto;flex:1}
+body.modalopen{overflow:hidden}
 .cm{border-left:3px solid var(--bd);padding:2px 10px}
 .cmtxt{white-space:pre-wrap}
 .cm.fresh,.cmcard.fresh{border-left-color:#d33;background:color-mix(in srgb,#d33 7%,transparent)}
@@ -116,7 +121,6 @@ td.nowrapc{white-space:normal}
 .cardc .sect{border-top:1px solid var(--bd);padding-top:6px}
 .cardc .sect b{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em;display:block}
 .cardc .acts{display:flex;gap:6px;flex-wrap:wrap}
-.cardc .cmbox{max-width:none}
 
 /* ---------- Panneau latéral du formulaire ---------- */
 body.formmode #app,body.formmode #tabs,body.formmode .me{display:none}
@@ -157,7 +161,7 @@ details.sec:not([open])>summary::before{content:"▸ "}
 @media (max-width:700px){main{padding:8px 10px 40px}.tools input,.tools select{min-width:0;flex:1 1 140px}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 @media print{
-  header .tabs,header .me,.noprint,.tools,#status,.drawer,footer,.btn{display:none!important}
+  header .tabs,header .me,.noprint,.tools,#status,.drawer,.modal,footer,.btn{display:none!important}
   body{background:#fff;color:#000}
   .card{border:0;padding:0}
   section.hidden{display:none!important}

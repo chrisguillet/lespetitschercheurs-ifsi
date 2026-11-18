@@ -83,6 +83,15 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
       </div>
     </section>
   </div>
+  <div id="cmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cmtitle">
+    <div class="modalbox">
+      <div class="modalhead">
+        <div><h2 id="cmtitle"></h2><div class="meta" id="cmsub"></div></div>
+        <button class="btn sm sec" id="cmclose" type="button" aria-label="Fermer la discussion">✕ Fermer</button>
+      </div>
+      <div id="cmbody" class="cmbox"></div>
+    </div>
+  </div>
   <aside id="drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="ftitle">
     <div class="drawerhead"><button class="btn sm sec" id="drawerclose" type="button">← Retour à la liste</button><h2 id="ftitle">Ajouter une lecture</h2></div>
     <div class="note" id="fnote"></div>

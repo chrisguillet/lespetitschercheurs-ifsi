@@ -95,6 +95,13 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
   et la recopier dans la lecture concernée.
 - **Ne pas modifier** les colonnes `id` et `owner` de `Lectures`, ni les ids de `Commentaires`.
 - **Rôle inconnu ou mal orthographié** dans `Utilisateurs` : traité comme `lecteur` (le moins privilégié).
+- **Sauvegarde automatique** : dans l'éditeur Apps Script, lancer **une fois** `activerSauvegardes` (accepter les nouvelles
+  autorisations Drive). Une copie du Sheet est alors faite chaque jour vers 3 h dans le dossier Drive
+  « Sauvegardes – lectures IFSI ». On garde les **7 plus récentes** (une par jour) et les **8 dernières faites un lundi**
+  (une par semaine), soit au plus 15 copies ; les autres vont à la corbeille Drive.
+  `sauvegarder` peut aussi se lancer à la main avant une opération risquée. Pour restaurer : ouvrir la copie voulue,
+  ou recopier l'onglet concerné dans le Sheet de production.
+- **Renommer le Sheet** : sans effet sur l'application (le script lui est rattaché par son identifiant).
 - Le tableau se rafraîchit toutes les 45 secondes (et au retour sur l’onglet) (réglable dans `config.js`).
 
 ## Notes de sécurité

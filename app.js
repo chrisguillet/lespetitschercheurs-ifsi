@@ -31,7 +31,7 @@ try { token = sessionStorage.getItem("lydia_token"); } catch (e) { /* stockage i
 let me = null, users = [], items = [], comments = [], acces = [], pendingCount = 0;
 let editing = null, override = false, tab = "all", timer = null;
 const drafts = {};          // brouillons de commentaires, par lecture
-const openCm = new Set();   // lectures dont les commentaires sont dépliés
+let cmId = null, cmFocus = null;   // lecture dont la discussion est ouverte dans la fenêtre « Commentaires »
 let lusSet = new Set();     // commentaires déjà lus par la personne connectée (suivi côté serveur)
 const lusEnvoi = new Set(); // lus marqués ici mais pas encore confirmés par le serveur
 const frais = new Set();    // commentaires qui étaient non lus à l'ouverture : surlignés tant que la discussion reste ouverte
@@ -122,12 +122,12 @@ function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
   editing = null; override = false; forceStatut = "";
-  openRows.clear(); openCm.clear(); lusSet = new Set(); lusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
+  openRows.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
   Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute" });
   B.who = ""; B.enCours = false;
   tab = "all"; vuDepuis = null; renderedAcces = ""; derniereSync = null; usersChanged = false;
-  ["rows", "cards", "mylist", "mysum", "adminbox", "bibtools", "biblist", "synthbox", "cmtsbox", "filters", "stats", "form"].forEach(id => { $(id).innerHTML = ""; });
+  ["rows", "cards", "mylist", "mysum", "adminbox", "bibtools", "biblist", "synthbox", "cmtsbox", "cmbody", "filters", "stats", "form"].forEach(id => { $(id).innerHTML = ""; });
   $("pending").textContent = ""; $("cmtcount").textContent = "";
 }
 
@@ -190,6 +190,7 @@ function renderData() {
   renderTable();
   renderPending();
   renderComments();
+  majModal();
   if (tab === "biblio") renderBiblio();
   if (tab === "synth") renderSynth();
 }
@@ -237,6 +238,7 @@ async function refresh(manuel) {
     if (!typing) renderTable();
     renderPending();
     renderComments();
+    majModal();
     if (tab === "biblio") renderBiblio();
     if (tab === "synth") renderSynth();
     if (tab === "admin" && canAdmin()) await loadAdmin();
@@ -319,6 +321,16 @@ document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.datase
 /* ---------- Mes lectures ---------- */
 
 const cleTitre = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+// Plusieurs métiers possibles dans « Qualité de l’auteur » : virgule, point-virgule, « / », « & », « + », « et » ou retour à la ligne.
+// Un même métier écrit deux fois pour une lecture (casse, accents) n'est compté qu'une fois.
+const metiersListe = txt => {
+  const vus = new Set();
+  return String(txt || "").split(/\s*(?:[,;\n/&+]|\s+et\s+)\s*/i).map(x => x.trim()).filter(x => {
+    const k = cleTitre(x);
+    if (!k || vus.has(k)) return false;
+    vus.add(k); return true;
+  });
+};
 const motsListe = txt => String(txt || "").split(/[,;\n]+/).map(x => x.trim()).filter(Boolean);
 let forceStatut = "", focusAvant = null, scrollAvant = 0;
 
@@ -349,7 +361,7 @@ function renderForm() {
     ${field("f_titre", "Titre de l’article", d.titre, { req: 1 })}
     ${field("f_parution", "Date de parution", fmtD(d.parution), { req: 1, ph: "2021, mars 2021 ou 04/03/2021" })}
     ${field("f_auteur", "Auteur(s)", d.auteur, { req: 1, ph: "Nom, Prénom ; Nom, Prénom" })}
-    ${field("f_qualite", "Qualité de l’auteur", d.qualite, { req: 1, ph: "chercheur, IDE, cadre de santé…" })}
+    ${field("f_qualite", "Qualité de l’auteur", d.qualite, { req: 1, ph: "chercheur, IDE, cadre de santé… (séparer par une virgule s’il y en a plusieurs)" })}
     ${field("f_nation", "Nationalité", d.nation, { req: 1 })}
     ${field("f_type", "Type d’article", d.type, { req: 1, sel: TYPES })}
    </div>
@@ -412,7 +424,7 @@ $("drawerclose").onclick = () => closeDrawer();
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const ouvert = document.querySelector("details.colmenu[open]");
-  if (ouvert) ouvert.removeAttribute("open"); else closeDrawer();
+  if (ouvert) ouvert.removeAttribute("open"); else if (cmId) fermerDiscussion(); else closeDrawer();
 });
 $("addbtn").onclick = () => { editing = null; override = false; forceStatut = ""; openForm(); };
 
@@ -615,18 +627,53 @@ async function marquerLus(ids, tous) {
   }
 }
 
-function basculerDiscussion(id) {
-  if (openCm.has(id)) {
-    openCm.delete(id);
-    comments.filter(c => c.lecture_id === id).forEach(c => frais.delete(c.id));
-  } else {
-    openCm.add(id);
-    const nv = comments.filter(c => c.lecture_id === id && nonLu(c)).map(c => c.id);
-    nv.forEach(x => frais.add(x));
-    marquerLus(nv);
-  }
-  renderTable();
+// Discussion d'une lecture : fenêtre au-dessus de la page (tableau, cartes ou onglet Commentaires).
+function ouvrirDiscussion(id) {
+  if (!items.some(i => i.id === id)) return;
+  cmFocus = document.activeElement;
+  cmId = id;
+  const nv = comments.filter(c => c.lecture_id === id && nonLu(c)).map(c => c.id);
+  nv.forEach(x => frais.add(x));      // surlignés tant que la fenêtre reste ouverte
+  marquerLus(nv);
+  renderModal();
+  const t = $("cmbody").querySelector("textarea");
+  if (t) t.focus(); else $("cmclose").focus();
 }
+
+function fermerDiscussion(silencieux) {
+  if (cmId) comments.filter(c => c.lecture_id === cmId).forEach(c => frais.delete(c.id));
+  cmId = null;
+  $("cmodal").classList.add("hidden");
+  document.body.classList.remove("modalopen");
+  $("cmbody").innerHTML = "";          // vidée, pas seulement masquée
+  if (silencieux) return;
+  renderTable(); renderComments();
+  if (cmFocus && cmFocus.isConnected && cmFocus.focus) { try { cmFocus.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
+  cmFocus = null;
+}
+
+function renderModal() {
+  const it = cmId && items.find(i => i.id === cmId);
+  if (!it) { if (cmId) fermerDiscussion(); return; }   // lecture supprimée entre-temps
+  $("cmtitle").textContent = it.titre;
+  $("cmsub").textContent = [it.etudiant, it.auteur, anneeDe(it)].filter(Boolean).join(" · ");
+  $("cmbody").innerHTML = commentsBox(it);
+  $("cmodal").classList.remove("hidden");
+  document.body.classList.add("modalopen");
+}
+
+// Pas de reconstruction pendant la saisie d'un commentaire (actualisation automatique).
+function majModal() {
+  if (!cmId) return;
+  const a = document.activeElement;
+  if (a && a.tagName === "TEXTAREA" && $("cmbody").contains(a)) return;
+  const haut = $("cmbody").scrollTop;
+  renderModal();
+  $("cmbody").scrollTop = haut;
+}
+
+$("cmclose").onclick = () => fermerDiscussion();
+$("cmodal").addEventListener("mousedown", e => { if (e.target === $("cmodal")) fermerDiscussion(); });
 
 const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).length; const u = nbNonLus(i.id); return n ? `<span class="cn" title="${n} commentaire${n > 1 ? "s" : ""}${u ? ", " + u + " non lu" + (u > 1 ? "s" : "") : ""}">💬 ${n}</span>${u ? `<span class="new">${u} non lu${u > 1 ? "s" : ""}</span>` : ""}` : ""; };
 
@@ -653,7 +700,7 @@ function cells(i) {
    <td class="c2 nowrapc"><div class="chipsc">${chips(i.mots)}</div></td><td class="c3 nowrapc"><div class="chipsc">${chips(i.kw)}</div></td>
    <td class="c4">${clampTxt(i.id, i.concepts)}</td><td class="c5">${clampTxt(i.id, i.objet)}</td><td class="c6">${clampTxt(i.id, i.opinion)}</td>
    <td class="c7">${clampTxt(i.id, i.controverse)}</td><td class="c8">${clampTxt(i.id, i.libre)}</td><td class="apa c9">${apaCell(i)}</td></tr>`;
-  return main + (openCm.has(i.id) ? commentsRow(i) : "");
+  return main;
 }
 
 function cardHtml(i) {
@@ -669,7 +716,6 @@ function cardHtml(i) {
    ${sect("Concepts en sciences infirmières", i.concepts)}${sect("Objet / sujet principal", i.objet)}${sect("Opinion de l’auteur", i.opinion)}${sect("Controverse", i.controverse)}${sect("Libre", i.libre)}
    <div class="sect"><b>Référence APA</b>${apaCell(i)}</div>
    <div class="acts">${actionsHtml(i)}</div>
-   ${openCm.has(i.id) ? `<div class="cmbox">${commentsBox(i)}</div>` : ""}
   </article>`;
 }
 
@@ -716,10 +762,6 @@ function commentsBox(i) {
   return list + form;
 }
 
-function commentsRow(i) {
-  return `<tr class="cmrow"><td colspan="9"><div class="cmbox">${commentsBox(i)}</div></td></tr>`;
-}
-
 /* ---------- Onglet « Commentaires » : tous les commentaires, non lus en tête ---------- */
 
 function renderComments() {
@@ -739,7 +781,7 @@ function renderComments() {
       <div class="cmhead"><b>${esc(c.auteur)}</b> <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>${nvC ? ' <span class="new">Nouveau</span>' : ""}</div>
       <div class="meta">sur <b>${esc(it.titre)}</b> · lecture de ${esc(it.etudiant)}</div>
       <div class="cmtxt">${esc(c.texte)}</div>
-      <div class="cmacts"><button class="btn sm" data-cgo="${esc(it.id)}">Ouvrir la lecture${canComment() ? " et répondre" : ""}</button>${nvC ? ` <button class="btn sm sec" data-cr="${esc(c.id)}">Marquer comme lu</button>` : ""}</div>
+      <div class="cmacts"><button class="btn sm" data-cgo="${esc(it.id)}">${canComment() ? "Voir et répondre" : "Voir la discussion"}</button>${nvC ? ` <button class="btn sm sec" data-cr="${esc(c.id)}">Marquer comme lu</button>` : ""}</div>
     </article>`;
   }).join("");
   const vide = CM.nonLus ? "Aucun commentaire non lu. 🎉" : CM.miennes ? "Aucun commentaire sur vos lectures." : "Aucun commentaire pour le moment.";
@@ -753,22 +795,10 @@ function renderComments() {
     <div class="cmlist">${cartes || `<div class="note">${vide}</div>`}</div>`;
 }
 
-function ouvrirLecture(id) {
-  if (!filtered().some(i => i.id === id)) {
-    Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "" });
-    renderFilters();
-  }
-  setTab("all");
-  openRows.add(id);
-  if (!openCm.has(id)) basculerDiscussion(id); else renderTable();
-  const el = document.querySelector(`#rows tr[data-id="${CSS.escape(id)}"], #cards .cardc[data-id="${CSS.escape(id)}"]`);
-  if (el && el.scrollIntoView) el.scrollIntoView({ block: "center" });
-}
-
 $("cmtsbox").onclick = e => {
   const b = e.target.closest("button");
   if (!b) return;
-  if (b.dataset.cgo) ouvrirLecture(b.dataset.cgo);
+  if (b.dataset.cgo) ouvrirDiscussion(b.dataset.cgo);
   else if (b.dataset.cr) marquerLus([b.dataset.cr]);
   else if (b.id === "cmtall") marquerLus([], true);
 };
@@ -915,7 +945,7 @@ const onAction = e => {
   const b = e.target.closest("button");
   if (!b) {
     // Clic ailleurs que sur un bouton, un lien ou un commentaire : on déplie / replie la ligne (sauf sélection de texte en cours).
-    if (e.target.closest("a, input, select, textarea, label, .cmbox") || (window.getSelection && String(window.getSelection()).length)) return;
+    if (e.target.closest("a, input, select, textarea, label") || (window.getSelection && String(window.getSelection()).length)) return;
     const h = e.target.closest("tr[data-id], .cardc[data-id]");
     if (h) toggleOpen(h.dataset.id, h);
     return;
@@ -925,12 +955,17 @@ const onAction = e => {
   else if (d.o) startEdit(d.o, true);
   else if (d.apa) copierApa(d.apa);
   else if (d.kw !== undefined) filtrerMotCle(d.kw);
-  else if (d.c) basculerDiscussion(d.c);
+  else if (d.c) ouvrirDiscussion(d.c);
   else if (d.ca) {
     const t = (drafts[d.ca] || "").trim();
     if (!t) return;
     b.disabled = true;
-    commentAction(async () => { const j = await api("comment_add", { lecture_id: d.ca, texte: t }); drafts[d.ca] = ""; return j; }, "Commentaire impossible");
+    commentAction(async () => { const j = await api("comment_add", { lecture_id: d.ca, texte: t }); drafts[d.ca] = ""; return j; }, "Commentaire impossible")
+      .then(() => {
+        renderModal();                    // la saisie est terminée : on affiche le nouveau commentaire même si la zone avait le focus
+        $("cmbody").scrollTop = $("cmbody").scrollHeight;
+        const z = $("cmbody").querySelector("textarea"); if (z) z.focus();
+      });
   } else if (d.ce) {
     const c = comments.find(x => x.id === d.ce);
     const t = c && prompt("Modifier le commentaire :", c.texte);
@@ -940,8 +975,8 @@ const onAction = e => {
   }
 };
 const onDraft = e => { if (e.target.dataset.cm) drafts[e.target.dataset.cm] = e.target.value; };
-$("rows").onclick = $("cards").onclick = onAction;
-$("rows").oninput = $("cards").oninput = onDraft;
+$("rows").onclick = $("cards").onclick = $("cmbody").onclick = onAction;
+$("rows").oninput = $("cards").oninput = $("cmbody").oninput = onDraft;
 $("rows").onkeydown = $("cards").onkeydown = e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("tr[data-id], .cardc[data-id]")) {
     e.preventDefault();
@@ -1029,7 +1064,7 @@ function renderSynth() {
    ${barres("Lectures par étudiant", students().map(s => [s.prenom, items.filter(i => i.etudiant === s.prenom).length, s.couleur]), "var(--pri)")}
    ${barres("Types d’articles", compter(items.map(i => i.type), 8), "var(--pri)")}
    ${barres("Nationalité des auteurs", compter(items.map(i => i.nation), 10), "var(--pri)")}
-   ${barres("Qualité des auteurs", compter(items.map(i => i.qualite), 8), "var(--pri)")}
+   ${barres("Qualité des auteurs (plusieurs possibles par lecture)", compter(items.flatMap(i => metiersListe(i.qualite)), 8), "var(--pri)")}
    ${barres("Années de parution", parAnnee, "var(--pri)")}
    ${barres("Mots-clés les plus fréquents", compter(items.flatMap(i => motsListe(i.mots)), 12), "var(--pri)")}
    </div>`;
