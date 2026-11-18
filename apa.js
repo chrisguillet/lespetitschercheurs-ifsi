@@ -131,6 +131,7 @@
       res = { text: titreT + tete + suiteT, html: titreH + esc(tete) + suiteH };
     }
     res.incomplet = article && (!source || !pages);
+    res.auteurs = auteurs; res.annee = annee;
     return res;
   }
 
@@ -158,6 +159,30 @@
     return null;
   }
 
-  const api = { apa, normaliserDate, parseAuteur, listeAuteurs, formaterAuteurs };
+  // Clé de tri alphabétique d'une bibliographie APA : auteurs (ou titre sans auteur), année, titre.
+  const sansAccent = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  function cleTri(f) {
+    const r = apa(f);
+    return sansAccent(r.auteurs || f.titre) + "|" + r.annee + "|" + sansAccent(f.titre);
+  }
+
+  // Trie des fiches et ajoute a, b, c… à l'année quand auteurs et année sont identiques (règle APA).
+  function bibliographie(fiches) {
+    const l = fiches.map(f => ({ f, r: apa(f), cle: cleTri(f) })).sort((a, b) => a.cle.localeCompare(b.cle));
+    const groupes = {};
+    l.forEach(x => { if (x.r.auteurs) (groupes[x.r.auteurs + "|" + x.r.annee] = groupes[x.r.auteurs + "|" + x.r.annee] || []).push(x); });
+    Object.keys(groupes).forEach(k => {
+      const g = groupes[k];
+      if (g.length < 2) return;
+      g.forEach((x, i) => {
+        const lettre = String.fromCharCode(97 + (i % 26));
+        const an = "(" + x.r.annee + ")";
+        x.r = { ...x.r, text: x.r.text.replace(an, "(" + x.r.annee + lettre + ")"), html: x.r.html.replace(an, "(" + x.r.annee + lettre + ")") };
+      });
+    });
+    return l.map(x => ({ id: x.f.id, ...x.r }));
+  }
+
+  const api = { apa, normaliserDate, cleTri, bibliographie, parseAuteur, listeAuteurs, formaterAuteurs };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.LydiaApa = api;
 })(typeof window !== "undefined" ? window : globalThis);

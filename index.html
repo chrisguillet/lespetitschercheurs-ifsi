@@ -4,21 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Lectures du mémoire – IFSI</title>
+<script>try{var t=localStorage.getItem("lydia_theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header>
-  <h1>📚 Lectures du mémoire – IFSI</h1>
+  <div class="toprow"><h1>📚 Lectures du mémoire – IFSI</h1><button class="btn sm sec" id="theme" type="button" aria-label="Changer de thème clair/sombre" title="Thème clair / sombre">🌓</button></div>
   <div class="sub">Outil partagé du groupe : Wacim, Ange-Marie, Hélène et Lydia</div>
   <div class="me" id="me"></div>
-  <div class="tabs hidden" id="tabs">
-    <button class="tab on" data-t="mine">✍️ Mes lectures</button>
-    <button class="tab" data-t="all">📊 Tableau commun</button>
-    <button class="tab hidden" data-t="admin">👥 Administration <span id="pending" class="count hidden"></span></button>
+  <div class="tabs hidden" id="tabs" role="tablist">
+    <button class="tab on" data-t="all" role="tab" aria-selected="true">📊 Tableau commun</button>
+    <button class="tab" data-t="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
+    <button class="tab" data-t="biblio" role="tab" aria-selected="false">📖 Bibliographie</button>
+    <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
+    <button class="tab hidden" data-t="admin" role="tab" aria-selected="false">👥 Administration <span id="pending" class="count hidden"></span></button>
   </div>
 </header>
 <main>
-  <div id="status" class="note hidden"></div>
+  <div id="status" class="note hidden" role="status" aria-live="polite"></div>
 
   <section id="gate" class="card">
     <p id="gatemsg">Connectez-vous avec votre compte Google pour accéder aux lectures.</p>
@@ -27,27 +30,36 @@
   </section>
 
   <div id="app" class="hidden">
-    <section id="mine">
-      <div class="card">
-        <h2 id="ftitle" style="margin-top:0;font-size:16px">Ajouter une lecture</h2>
-        <div class="note" id="fnote">Choisissez « 📖 En cours de lecture » si vous n’avez pas fini : seul le titre est alors obligatoire. Pour une lecture « ✅ Terminée », toute la première partie est obligatoire.</div>
-        <div id="form"></div>
+    <section id="mine" class="hidden">
+      <div class="tools" style="justify-content:space-between;margin:14px 0 4px">
+        <h2 style="font-size:16px;margin:0">Mes lectures</h2>
+        <button class="btn" id="addbtn" type="button">＋ Ajouter une lecture</button>
       </div>
-      <h2 style="font-size:16px">Mes lectures enregistrées</h2>
+      <div id="mysum" class="meta" style="margin-bottom:8px"></div>
       <div id="mylist"></div>
     </section>
 
-    <section id="all" class="hidden">
+    <section id="all">
       <div class="card tools" id="filters"></div>
       <div class="stats" id="stats"></div>
-      <div class="wrap"><table><thead><tr>
-        <th>1 · Article (titre, parution, auteur, qualité, nationalité, type)</th>
-        <th>2 · Mots-clés</th><th>3 · Keywords (EN)</th>
-        <th>4 · Concepts en sciences infirmières</th>
-        <th>5 · Objet / sujet principal</th>
-        <th>6 · Opinion de l’auteur</th>
-        <th>7 · Controverse</th><th>8 · Libre</th><th>9 · Référence APA</th><th>Actions</th>
+      <div class="wrap tall" id="tablewrap"><table id="tbl"><thead><tr>
+        <th class="c1">1 · Article</th>
+        <th class="c2">2 · Mots-clés</th><th class="c3">3 · Keywords (EN)</th>
+        <th class="c4">4 · Concepts en sciences infirmières</th>
+        <th class="c5">5 · Objet / sujet principal</th>
+        <th class="c6">6 · Opinion de l’auteur</th>
+        <th class="c7">7 · Controverse</th><th class="c8">8 · Libre</th><th class="c9">9 · Référence APA</th><th class="c10">Actions</th>
       </tr></thead><tbody id="rows"></tbody></table></div>
+      <div id="cards" class="cards hidden"></div>
+    </section>
+
+    <section id="biblio" class="hidden">
+      <div class="card tools noprint" id="bibtools"></div>
+      <div class="card" id="biblist"></div>
+    </section>
+
+    <section id="synth" class="hidden">
+      <div id="synthbox"></div>
     </section>
 
     <section id="admin" class="hidden">
@@ -59,7 +71,13 @@
       </div>
     </section>
   </div>
-  <p class="sub" style="text-align:center;margin-top:24px"><a href="privacy.html">Confidentialité</a></p>
+  <div id="overlay" class="overlay hidden"></div>
+  <aside id="drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="ftitle">
+    <div class="drawerhead"><h2 id="ftitle">Ajouter une lecture</h2><button class="btn sm sec" id="drawerclose" type="button" aria-label="Fermer le formulaire">✕</button></div>
+    <div class="note" id="fnote"></div>
+    <div id="form"></div>
+  </aside>
+  <p class="sub noprint" style="text-align:center;margin-top:24px"><a href="privacy.html">Confidentialité</a></p>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>

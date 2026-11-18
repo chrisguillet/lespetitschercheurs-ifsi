@@ -5,6 +5,8 @@ le tableau commun les rassemble (filtres, recherche, export Excel/PDF), les form
 Une dernière colonne génère une référence APA 7 à partir des champs saisis (bouton « Copier », italique conservé dans Word) ; le formulaire propose revue/éditeur, volume, numéro, pages et DOI/URL (facultatifs).
 Le formulaire accepte une date partielle (2021, mars 2021…), affiche la référence APA en direct, signale les doublons (même titre ou DOI) et garde un brouillon local si la page est fermée avant l’enregistrement.
 
+Interface : l’accueil est le tableau commun (vue tableau ou cartes, colonnes masquables, mots-clés cliquables, badge « Nouveau »). Le formulaire s’ouvre dans un panneau latéral. Les onglets **Bibliographie** (références APA triées, copie, export Word/texte) et **Synthèse** (graphiques) complètent « Mes lectures ». Un bouton traduit les mots-clés en anglais (service de traduction d’Apps Script) avec un indice de fiabilité : glossaire de sciences infirmières, ou retraduction en français. Thème clair/sombre manuel.
+
 ## Architecture
 
 ```

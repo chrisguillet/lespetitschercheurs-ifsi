@@ -29,10 +29,13 @@ const stamp = () => new Date().toISOString().slice(0, 10);
 let token = null;
 try { token = sessionStorage.getItem("lydia_token"); } catch (e) { /* stockage indisponible */ }
 let me = null, users = [], items = [], comments = [], acces = [], pendingCount = 0;
-let editing = null, override = false, tab = "mine", timer = null;
+let editing = null, override = false, tab = "all", timer = null;
 const drafts = {};          // brouillons de commentaires, par lecture
 const openCm = new Set();   // lectures dont les commentaires sont dépliés
-const F = { q: "", who: "", st: "", sort: "ajoute" };
+const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
+const F = { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute",
+  view: lsGet("lydia_vue", matchMedia("(max-width:700px)").matches ? "cartes" : "tableau") };
+const masquees = new Set((() => { try { return JSON.parse(lsGet("lydia_cols", "[]")); } catch (e) { return []; } })());
 
 // etudiant : écrit et administre ; formateur : lit et commente ; lecteur : lit.
 const canWrite = () => !!me && me.role === "etudiant";
@@ -93,6 +96,8 @@ function showGate(msg, retry) {
 }
 
 function logout() {
+  marquerVu();
+  closeDrawer(true);
   token = null; me = null; items = []; comments = []; acces = []; editing = null; override = false;
   try { sessionStorage.removeItem("lydia_token"); } catch (e) { /* ignoré */ }
   if (timer) clearInterval(timer);
@@ -115,7 +120,15 @@ function sessionError(e) {
 function showStatus(msg) { $("status").textContent = msg; $("status").classList.remove("hidden"); }
 function clearStatus() { $("status").classList.add("hidden"); }
 
+let derniereSync = null;
+function majSync() {
+  const el = $("sync");
+  if (el && derniereSync) el.textContent = "mis à jour à " + derniereSync.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
 function applyData(j) {
+  derniereSync = new Date();
+  majSync();
   items = j.lectures;
   comments = j.commentaires || [];
   pendingCount = j.enAttente || 0;
@@ -125,9 +138,15 @@ function applyData(j) {
 function applyResult(j) {
   if (!j || !j.lectures) return;
   applyData(j);
+  renderData();
+}
+
+function renderData() {
   renderMine();
   renderTable();
   renderPending();
+  if (tab === "biblio") renderBiblio();
+  if (tab === "synth") renderSynth();
 }
 
 // Affiche l'attente le temps d'une écriture (l'API peut mettre quelques secondes à répondre).
@@ -140,6 +159,7 @@ async function boot() {
   try {
     const j = await api("init");
     me = j.me; users = j.utilisateurs;
+    chargerVu();
     applyData(j);
     $("gate").classList.add("hidden");
     $("app").classList.remove("hidden");
@@ -154,16 +174,19 @@ async function boot() {
   }
 }
 
-async function refresh() {
+async function refresh(manuel) {
   if (!token || !me) return;
+  if (manuel === true) showStatus("⏳ Actualisation…");
   try {
     applyData(await api("list"));
     // On ne reconstruit pas le tableau pendant qu'un commentaire est en cours de saisie.
     const a = document.activeElement;
-    const typing = a && a.tagName === "TEXTAREA" && a.closest("#rows");
+    const typing = a && a.tagName === "TEXTAREA" && a.closest("#rows, #cards");
     renderMine();
     if (!typing) renderTable();
     renderPending();
+    if (tab === "biblio") renderBiblio();
+    if (tab === "synth") renderSynth();
     if (tab === "admin" && canAdmin()) await loadAdmin();
     clearStatus();
   } catch (e) {
@@ -196,15 +219,26 @@ function renderPending() {
   el.classList.toggle("hidden", !(canAdmin() && pendingCount));
 }
 
+const ONGLETS = ["all", "mine", "biblio", "synth", "admin"];
 function setTab(t) {
   tab = t;
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.t === t));
-  ["mine", "all", "admin"].forEach(s => $(s).classList.toggle("hidden", t !== s));
+  document.querySelectorAll(".tab").forEach(b => {
+    const on = b.dataset.t === t;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", String(on));
+  });
+  ONGLETS.forEach(x => $(x).classList.toggle("hidden", t !== x));
   if (t === "admin" && canAdmin()) loadAdmin();
+  if (t === "biblio") { renderBiblioTools(); renderBiblio(); }
+  if (t === "synth") renderSynth();
 }
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.t));
 
 /* ---------- Mes lectures ---------- */
+
+const cleTitre = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const motsListe = txt => String(txt || "").split(/[,;\n]+/).map(x => x.trim()).filter(Boolean);
+let forceStatut = "", focusAvant = null;
 
 function field(id, label, val, opts = {}) {
   const req = opts.req ? '<span class="req"> *</span>' : "";
@@ -219,24 +253,26 @@ function renderForm() {
   $("ftitle").textContent = editing ? (override ? `Contribuer à la lecture de ${d.etudiant}` : "Modifier la lecture") : "Ajouter une lecture";
   $("fnote").textContent = override
     ? `⚠️ Cette lecture appartient à ${d.etudiant}. Vos modifications seront visibles de tous et l’ancienne version est conservée dans l’historique.`
-    : "Choisissez « 📖 En cours de lecture » si vous n’avez pas fini : seul le titre est alors obligatoire. Pour une lecture « ✅ Terminée », toute la première partie est obligatoire.";
-  const statut = d.statut || "Terminée";
+    : forceStatut
+      ? "Pour passer cette lecture à « Terminée », complétez d’abord les champs obligatoires de la première partie."
+      : "Choisissez « 📖 En cours de lecture » si vous n’avez pas fini : seul le titre est alors obligatoire. Pour une lecture « ✅ Terminée », toute la première partie est obligatoire.";
+  const statut = forceStatut || d.statut || "Terminée";
   $("form").innerHTML = `
   <div id="draftnote" class="meta" style="display:none;margin-bottom:10px"></div>
-  <fieldset><legend>Colonne 1 · Identification de l’article <span class="req" style="color:#d33">(obligatoire)</span></legend>
+  <details class="sec" open><summary>Colonne 1 · Identification de l’article <span class="req" style="color:#d33">(obligatoire)</span></summary>
    <div style="margin-bottom:12px"><label for="f_statut">Statut</label><select id="f_statut">
      <option value="Terminée" ${statut === "Terminée" ? "selected" : ""}>✅ Terminée</option>
      <option value="En cours" ${statut === "En cours" ? "selected" : ""}>📖 En cours de lecture</option></select></div>
    <div class="grid">
     ${field("f_titre", "Titre de l’article", d.titre, { req: 1 })}
     ${field("f_parution", "Date de parution", fmtD(d.parution), { req: 1, ph: "2021, mars 2021 ou 04/03/2021" })}
-    ${field("f_auteur", "Auteur(s)", d.auteur, { req: 1 })}
+    ${field("f_auteur", "Auteur(s)", d.auteur, { req: 1, ph: "Nom, Prénom ; Nom, Prénom" })}
     ${field("f_qualite", "Qualité de l’auteur", d.qualite, { req: 1, ph: "chercheur, IDE, cadre de santé…" })}
     ${field("f_nation", "Nationalité", d.nation, { req: 1 })}
     ${field("f_type", "Type d’article", d.type, { req: 1, sel: TYPES })}
    </div>
-   <div id="dup" style="display:none;margin-top:10px;color:#b45309;font-weight:600"></div></fieldset>
-  <fieldset><legend>Compléments pour la référence APA (facultatifs, mais recommandés pour les articles)</legend>
+   <div id="dup" style="display:none;margin-top:10px;color:#b45309;font-weight:600"></div></details>
+  <details class="sec" open><summary>Compléments pour la référence APA (facultatifs, mais recommandés pour les articles)</summary>
    <div class="grid">
     ${field("f_source", "Revue / éditeur / établissement", d.source, { ph: "revue de l’article, éditeur du rapport, université de la thèse" })}
     ${field("f_volume", "Volume", d.volume)}
@@ -244,27 +280,81 @@ function renderForm() {
     ${field("f_pages", "Pages", d.pages, { ph: "ex. 12-25" })}
     ${field("f_doi", "DOI ou URL", d.doi, { ph: "10.xxxx/xxxxx ou https://…" })}
    </div>
-   <div id="apaprev" class="meta" style="margin-top:12px;padding:10px 12px;border:1px dashed #cbd5e1;border-radius:8px"></div>
-  </fieldset>
-  <fieldset><legend>Colonnes 2 à 8 · Libres (à remplir comme vous voulez, modifiable à tout moment)</legend>
+   <div id="apaprev" class="meta" style="margin-top:12px;padding:10px 12px;border:1px dashed var(--bd);border-radius:8px"></div>
+  </details>
+  <details class="sec" open><summary>Colonnes 2 à 8 · Libres (à remplir comme vous voulez, modifiable à tout moment)</summary>
    <div class="grid">
     ${field("f_mots", "Mots-clés", d.mots, { area: 1 })}
-    ${field("f_kw", "Mots-clés en anglais", d.kw, { area: 1 })}
+    <div><label for="f_kw">Mots-clés en anglais</label><textarea id="f_kw" maxlength="2500">${esc(d.kw)}</textarea>
+     <div class="tr"><button type="button" class="btn sm sec" id="trad">🌐 Traduire les mots-clés français</button><span id="tradmsg" class="meta"></span></div>
+     <div id="tradres" aria-live="polite"></div></div>
     ${field("f_concepts", "Concepts en sciences infirmières développés", d.concepts, { area: 1 })}
     ${field("f_objet", "Objet / sujet principal du texte", d.objet, { area: 1 })}
     ${field("f_opinion", "Opinion de l’auteur", d.opinion, { area: 1 })}
     ${field("f_controverse", "Controverse", d.controverse, { area: 1 })}
     ${field("f_libre", "Colonne libre", d.libre, { area: 1 })}
-   </div></fieldset>
-  <div id="ferr" class="err"></div>
-  <button class="btn" id="save">${editing ? "Enregistrer les modifications" : "Enregistrer la lecture"}</button>
-  ${editing ? '<button class="btn sec" id="cancel">Annuler</button>' : ""}`;
+   </div></details>
+  <div class="savebar"><div id="ferr" class="err" role="alert"></div>
+   <button class="btn" id="save" type="button">${editing ? "Enregistrer les modifications" : "Enregistrer la lecture"}</button>
+   <button class="btn sec" id="cancel" type="button">Annuler</button></div>`;
   $("save").onclick = save;
-  if (editing) $("cancel").onclick = () => { effacerBrouillon(); editing = null; override = false; renderForm(); };
+  $("trad").onclick = traduire;
+  $("cancel").onclick = () => { effacerBrouillon(); closeDrawer(true); };
   formBase = JSON.stringify(snapshot());
   restaurerBrouillon();
   $("form").oninput = $("form").onchange = surSaisie;
   majApercu(); majDoublon();
+}
+
+function openForm() {
+  if (!canWrite()) return;
+  focusAvant = document.activeElement;
+  renderForm();
+  $("overlay").classList.remove("hidden");
+  $("drawer").classList.remove("hidden");
+  document.body.classList.add("noscroll");
+  $("drawer").scrollTop = 0;
+  const f = $("f_titre"); if (f) f.focus();
+}
+
+function closeDrawer(sansBrouillon) {
+  if ($("drawer").classList.contains("hidden")) return;
+  if (!sansBrouillon && $("f_titre")) { clearTimeout(brouillonTimer); sauverBrouillon(); }
+  $("overlay").classList.add("hidden");
+  $("drawer").classList.add("hidden");
+  document.body.classList.remove("noscroll");
+  editing = null; override = false; forceStatut = "";
+  if (focusAvant && focusAvant.focus) { try { focusAvant.focus(); } catch (e) { /* ignoré */ } }
+}
+$("drawerclose").onclick = () => closeDrawer();
+$("overlay").onclick = () => closeDrawer();
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+$("addbtn").onclick = () => { editing = null; override = false; forceStatut = ""; openForm(); };
+
+/* ---------- Traduction des mots-clés ---------- */
+
+const ICONE_FIAB = { haute: "🟢", moyenne: "🟠", faible: "🔴" };
+const LIBELLE_FIAB = { haute: "fiable", moyenne: "à vérifier", faible: "douteux" };
+
+async function traduire() {
+  const msg = $("tradmsg");
+  const src = $("f_mots").value.trim();
+  if (!src) { msg.textContent = "Saisissez d’abord les mots-clés en français."; return; }
+  if ($("f_kw").value.trim() && !confirm("Le champ anglais contient déjà du texte. Le remplacer par la traduction ?")) return;
+  $("trad").disabled = true;
+  msg.textContent = "⏳ Traduction…";
+  try {
+    const r = await api("translate", { texte: src });
+    $("f_kw").value = r.items.map(i => i.en).filter(Boolean).join(", ");
+    $("tradres").innerHTML = r.items.map(i =>
+      `<span class="fiab fiab-${esc(i.niveau)}" title="${esc(i.raison)}">${ICONE_FIAB[i.niveau] || ""} ${esc(i.fr)} → ${esc(i.en)} <span class="meta">(${LIBELLE_FIAB[i.niveau] || ""})</span></span>`).join("")
+      + '<div class="legende">🟢 fiable · 🟠 à vérifier · 🔴 douteux. Indice automatique fondé sur le glossaire et sur la retraduction en français : ce n’est pas une garantie, relisez les termes importants (survolez une pastille pour le détail).</div>';
+    msg.textContent = "";
+    planifierBrouillon();
+  } catch (e) {
+    if (e.code === "unauthorized") sessionError(e);
+    msg.textContent = "Traduction impossible : " + e.message;
+  } finally { if ($("trad")) $("trad").disabled = false; }
 }
 
 /* ---------- Aperçu APA, doublons, brouillon ---------- */
@@ -288,13 +378,12 @@ function majApercu() {
   const { data, dateOk } = lireForm();
   if (!data.titre) { box.innerHTML = "📚 La référence APA apparaîtra ici au fil de la saisie."; return; }
   const r = LydiaApa.apa(data);
-  box.innerHTML = `<b>Aperçu APA</b><br><span style="color:var(--text,inherit)">${r.html}</span>`
+  box.innerHTML = `<b>Aperçu APA</b><br><span style="color:var(--tx)">${r.html}</span>`
     + (data.parution && !dateOk ? '<br><span style="color:#b45309">⚠ Date non reconnue (ex. 2021, mars 2021, 04/03/2021)</span>' : "")
     + (r.incomplet ? '<br>⚠ À compléter : revue et pages' : "")
     + (!data.auteur ? '<br>⚠ Sans auteur, le titre passe en tête de la référence' : "");
 }
 
-const cleTitre = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const cleDoi = s => {
   const t = String(s || "").trim().toLowerCase().replace(/^doi:\s*/, "").replace(/^https?:\/\/(dx\.)?doi\.org\//, "");
   return /^10\.\d{4,9}\//.test(t) ? t : "";
@@ -324,6 +413,8 @@ function sauverBrouillon() {
   } catch (e) { /* stockage indisponible : le brouillon est simplement désactivé */ }
 }
 
+function planifierBrouillon() { clearTimeout(brouillonTimer); brouillonTimer = setTimeout(sauverBrouillon, 600); }
+
 function restaurerBrouillon() {
   let b = null;
   try { b = JSON.parse(localStorage.getItem(cleBrouillon()) || "null"); } catch (e) { b = null; }
@@ -335,10 +426,10 @@ function restaurerBrouillon() {
   $("draftreset").onclick = () => { effacerBrouillon(); renderForm(); };
 }
 
-function surSaisie() {
+function surSaisie(e) {
+  if (e && e.target && e.target.id === "f_kw" && $("tradres")) $("tradres").innerHTML = "";   // les pastilles ne décrivent plus le texte
   majApercu(); majDoublon();
-  clearTimeout(brouillonTimer);
-  brouillonTimer = setTimeout(sauverBrouillon, 600);
+  planifierBrouillon();
 }
 
 async function save() {
@@ -354,9 +445,8 @@ async function save() {
       ? api("update", { id: editing, override, data })
       : api("add", { data }));
     effacerBrouillon();
-    editing = null; override = false;
+    closeDrawer(true);
     applyResult(res);
-    renderForm();
   } catch (e) {
     $("ferr").textContent = "Enregistrement impossible : " + e.message;
     if (e.code === "unauthorized") sessionError(e);
@@ -370,66 +460,126 @@ async function del(id) {
   catch (e) { alert("Suppression impossible : " + e.message); }
 }
 
-function startEdit(id, ov) {
+function startEdit(id, ov, statut) {
   const it = items.find(i => i.id === id);
   if (!it) return;
   if (ov && !confirm(`Cette lecture appartient à ${it.etudiant}.\n\nVoulez-vous vraiment la modifier ? L’ancienne version sera conservée dans l’historique.`)) return;
-  editing = id; override = ov;
-  setTab("mine");
-  renderForm();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  editing = id; override = ov; forceStatut = statut || "";
+  openForm();
+}
+
+// « Terminée » en un clic quand tous les champs obligatoires sont déjà remplis ; sinon on ouvre le formulaire.
+async function marquerTerminee(id) {
+  const it = items.find(x => x.id === id);
+  if (!it) return;
+  if (FIN.some(k => !String(it[k] || "").trim())) { startEdit(id, false, "Terminée"); return; }
+  const data = Object.fromEntries(CHAMPS_FORM.map(k => [k, String(it[k] || "")]));
+  data.statut = "Terminée";
+  try { applyResult(await enCours("Enregistrement…", () => api("update", { id, override: false, data }))); }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Enregistrement impossible : " + e.message); }
 }
 
 function renderMine() {
   if (!canWrite()) return;
-  const mine = items.filter(i => i.mine);
-  if (!mine.length) { $("mylist").innerHTML = '<div class="empty">Aucune lecture pour l’instant.</div>'; return; }
-  $("mylist").innerHTML = mine.map(i => `<div class="card" style="border-left:6px solid ${esc(i.couleur)};padding:10px 14px"><div class="tools" style="justify-content:space-between"><div><span class="badge ${i.statut === "En cours" ? "prog" : ""}" style="--c:${esc(i.couleur)}">${i.statut === "En cours" ? "📖 En cours" : "✅ Terminée"}</span> <b>${esc(i.titre)}</b> <span class="meta">· saisi le ${esc(fmtD(i.ajoute))}${i.modifie_par ? ` · modifié par ${esc(i.modifie_par)}` : ""}</span></div><div><button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> <button class="btn sm sec del" data-d="${esc(i.id)}">Supprimer</button></div></div></div>`).join("");
+  const mine = items.filter(i => i.mine).sort((a, b) =>
+    (a.statut === "En cours" ? 0 : 1) - (b.statut === "En cours" ? 0 : 1) || String(b.ajoute).localeCompare(a.ajoute));
+  const enc = mine.filter(i => i.statut === "En cours").length;
+  $("mysum").textContent = mine.length ? `${mine.length} lecture${mine.length > 1 ? "s" : ""} · ${enc} en cours · ${mine.length - enc} terminée${mine.length - enc > 1 ? "s" : ""}` : "";
+  if (!mine.length) { $("mylist").innerHTML = '<div class="empty">Aucune lecture pour l’instant.<br>Cliquez sur « ＋ Ajouter une lecture » pour saisir la première.</div>'; return; }
+  $("mylist").innerHTML = mine.map(i => `<div class="card" style="border-left:6px solid ${esc(i.couleur)};padding:10px 14px"><div class="tools" style="justify-content:space-between"><div><span class="badge ${i.statut === "En cours" ? "prog" : ""}" style="--c:${esc(i.couleur)}">${i.statut === "En cours" ? "📖 En cours" : "✅ Terminée"}</span> <b>${esc(i.titre)}</b> <span class="meta">· saisi le ${esc(fmtD(i.ajoute))}${i.modifie_par ? ` · modifié par ${esc(i.modifie_par)}` : ""}</span></div><div>${i.statut === "En cours" ? `<button class="btn sm" data-done="${esc(i.id)}">✅ Marquer terminée</button> ` : ""}<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> <button class="btn sm sec del" data-d="${esc(i.id)}">Supprimer</button></div></div></div>`).join("");
   $("mylist").querySelectorAll("[data-e]").forEach(b => b.onclick = () => startEdit(b.dataset.e, false));
   $("mylist").querySelectorAll("[data-d]").forEach(b => b.onclick = () => del(b.dataset.d));
+  $("mylist").querySelectorAll("[data-done]").forEach(b => b.onclick = () => marquerTerminee(b.dataset.done));
 }
 
-/* ---------- Tableau commun et commentaires ---------- */
+/* ---------- Tableau commun, cartes et commentaires ---------- */
+
+const openRows = new Set();   // lectures dont les textes longs sont dépliés
+
+const chips = txt => motsListe(txt).map(k =>
+  `<button type="button" class="chip ${cleTitre(k) === F.kw ? "on" : ""}" data-kw="${esc(k)}" title="Filtrer sur ce mot-clé">${esc(k)}</button>`).join("");
+
+function clampTxt(id, txt) { return `<div class="clamp">${esc(txt)}</div>`; }
+
+const anneeDe = i => (/^(\d{4})/.exec(i.parution || "") || [])[1] || "";
+
+function badgeNouveau(i) {
+  if (!vuDepuis || i.mine) return "";
+  if (String(i.ajoute || "") > vuDepuis) return '<span class="new">🆕 Nouveau</span>';
+  if (String(i.modifie_le || "") > vuDepuis) return '<span class="new">✏️ Modifié</span>';
+  return "";
+}
+
+function actionsHtml(i) {
+  const edit = !canWrite() ? "" : i.mine
+    ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> `
+    : `<button class="btn sm sec" data-o="${esc(i.id)}">Contribuer</button> `;
+  const n = comments.filter(x => x.lecture_id === i.id).length;
+  return `${edit}<button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n})">💬 ${n}</button>`;
+}
+
+function infosHtml(i) {
+  return `Parution : ${esc(fmtD(i.parution)) || "—"}<br>Auteur : ${esc(i.auteur) || "—"} (${esc(i.qualite) || "—"})<br>Nationalité : ${esc(i.nation) || "—"}<br>Type : ${esc(i.type) || "—"}<br><i>Saisi le ${esc(fmtD(i.ajoute))}</i>${i.modifie_par ? `<br><i>Modifié par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}</i>` : ""}`;
+}
 
 function cells(i) {
   const c = esc(i.couleur);
   const prog = i.statut === "En cours";
-  const n = comments.filter(x => x.lecture_id === i.id).length;
-  const edit = !canWrite() ? "" : i.mine
-    ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> `
-    : `<button class="btn sm sec" data-o="${esc(i.id)}">Contribuer</button> `;
-  const cm = `<button class="btn sm sec" data-c="${esc(i.id)}">💬 ${n}</button>`;
-  const main = `<tr class="${prog ? "prog" : ""}" style="--c:${c}"><td class="first"><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>
+  const main = `<tr data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeNouveau(i)}
    <b style="margin-top:6px">${esc(i.titre)}</b>
-   <div class="meta">Parution : ${esc(fmtD(i.parution)) || "—"}<br>Auteur : ${esc(i.auteur) || "—"} (${esc(i.qualite) || "—"})<br>Nationalité : ${esc(i.nation) || "—"}<br>Type : ${esc(i.type) || "—"}<br><i>Saisi le ${esc(fmtD(i.ajoute))}</i>${i.modifie_par ? `<br><i>Modifié par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}</i>` : ""}</div></td>
-   <td>${esc(i.mots)}</td><td>${esc(i.kw)}</td><td>${esc(i.concepts)}</td><td>${esc(i.objet)}</td><td>${esc(i.opinion)}</td><td>${esc(i.controverse)}</td><td>${esc(i.libre)}</td><td class="apa">${apaCell(i)}</td><td>${edit}${cm}</td></tr>`;
+   <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
+   <div class="meta full">${infosHtml(i)}</div></td>
+   <td class="c2 nowrapc"><div class="chipsc">${chips(i.mots)}</div></td><td class="c3 nowrapc"><div class="chipsc">${chips(i.kw)}</div></td>
+   <td class="c4">${clampTxt(i.id, i.concepts)}</td><td class="c5">${clampTxt(i.id, i.objet)}</td><td class="c6">${clampTxt(i.id, i.opinion)}</td>
+   <td class="c7">${clampTxt(i.id, i.controverse)}</td><td class="c8">${clampTxt(i.id, i.libre)}</td><td class="apa c9">${apaCell(i)}</td><td class="c10">${actionsHtml(i)}</td></tr>`;
   return main + (openCm.has(i.id) ? commentsRow(i) : "");
+}
+
+function cardHtml(i) {
+  const c = esc(i.couleur);
+  const prog = i.statut === "En cours";
+  const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b>${clampTxt(i.id, v)}</div>` : "";
+  return `<article class="cardc ${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
+   <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeNouveau(i)}</div>
+   <h3><span class="chev" aria-hidden="true"></span>${esc(i.titre)}</h3>
+   <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
+   <div class="meta full">${infosHtml(i)}</div>
+   ${motsListe(i.mots).length || motsListe(i.kw).length ? `<div class="chipsc">${chips(i.mots)}${chips(i.kw)}</div>` : ""}
+   ${sect("Concepts en sciences infirmières", i.concepts)}${sect("Objet / sujet principal", i.objet)}${sect("Opinion de l’auteur", i.opinion)}${sect("Controverse", i.controverse)}${sect("Libre", i.libre)}
+   <div class="sect"><b>Référence APA</b>${apaCell(i)}</div>
+   <div class="acts">${actionsHtml(i)}</div>
+   ${openCm.has(i.id) ? `<div class="cmbox">${commentsBox(i)}</div>` : ""}
+  </article>`;
 }
 
 function apaCell(i) {
   const r = LydiaApa.apa(i);
   const note = r.incomplet ? '<div class="meta" style="margin-top:4px">⚠ À compléter : revue et pages (formulaire, section APA)</div>' : "";
-  return `<div class="apatxt">${r.html}</div>${note}<button class="btn sm sec" style="margin-top:6px" data-apa="${esc(i.id)}">📋 Copier</button>`;
+  return `<div class="apatxt clamp">${r.html}</div>${note}<button class="btn sm sec" style="margin-top:6px" data-apa="${esc(i.id)}">📋 Copier</button>`;
 }
 
-async function copierApa(id) {
-  const it = items.find(x => x.id === id);
-  if (!it) return;
-  const r = LydiaApa.apa(it);
+async function copier(html, texte, message) {
   try {
     if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
       // HTML pour conserver l'italique dans Word ; texte brut en secours.
       await navigator.clipboard.write([new ClipboardItem({
-        "text/html": new Blob([r.html], { type: "text/html" }),
-        "text/plain": new Blob([r.text], { type: "text/plain" })
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([texte], { type: "text/plain" })
       })]);
-    } else await navigator.clipboard.writeText(r.text);
-    showStatus("📋 Référence copiée");
+    } else await navigator.clipboard.writeText(texte);
+    showStatus(message);
     setTimeout(clearStatus, 1500);
-  } catch (e) { alert("Copie impossible : sélectionnez le texte à la main.\n\n" + r.text); }
+  } catch (e) { alert("Copie impossible : sélectionnez le texte à la main.\n\n" + texte); }
 }
 
-function commentsRow(i) {
+function copierApa(id) {
+  const it = items.find(x => x.id === id);
+  if (!it) return;
+  const r = LydiaApa.apa(it);
+  copier(r.html, r.text, "📋 Référence copiée");
+}
+
+function commentsBox(i) {
   const l = comments.filter(c => c.lecture_id === i.id).sort((a, b) => String(a.date).localeCompare(b.date));
   const list = l.length ? l.map(c => {
     const own = c.mine && canComment();
@@ -440,9 +590,13 @@ function commentsRow(i) {
       <div class="cmtxt">${esc(c.texte)}</div>${acts}</div>`;
   }).join("") : '<div class="meta">Aucun commentaire.</div>';
   const form = canComment()
-    ? `<div><textarea data-cm="${esc(i.id)}" maxlength="2000" placeholder="Ajouter un commentaire…">${esc(drafts[i.id] || "")}</textarea>
+    ? `<div><textarea data-cm="${esc(i.id)}" maxlength="2000" placeholder="Ajouter un commentaire…" aria-label="Nouveau commentaire">${esc(drafts[i.id] || "")}</textarea>
        <button class="btn sm" data-ca="${esc(i.id)}" style="margin-top:6px">Publier</button></div>` : "";
-  return `<tr class="cmrow"><td colspan="10"><div class="cmbox">${list}${form}</div></td></tr>`;
+  return list + form;
+}
+
+function commentsRow(i) {
+  return `<tr class="cmrow"><td colspan="10"><div class="cmbox">${commentsBox(i)}</div></td></tr>`;
 }
 
 async function commentAction(fn, errLabel) {
@@ -450,22 +604,72 @@ async function commentAction(fn, errLabel) {
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert(errLabel + " : " + e.message); }
 }
 
+const COLS = { 2: "Mots-clés", 3: "Keywords (EN)", 4: "Concepts", 5: "Objet / sujet", 6: "Opinion", 7: "Controverse", 8: "Libre", 9: "Référence APA" };
+
+function applyCols() {
+  for (let k = 2; k <= 9; k++) $("tbl").classList.toggle("hc" + k, masquees.has(k));
+}
+
 function renderFilters() {
-  $("filters").innerHTML = `<input id="q" placeholder="🔍 Rechercher…" value="${esc(F.q)}">
-   <select id="who"><option value="">Tous les étudiants</option>${students().map(s => `<option ${F.who === s.prenom ? "selected" : ""}>${esc(s.prenom)}</option>`).join("")}</select>
-   <select id="st"><option value="">Tous les statuts</option><option value="Terminée" ${F.st === "Terminée" ? "selected" : ""}>✅ Terminées</option><option value="En cours" ${F.st === "En cours" ? "selected" : ""}>📖 En cours</option></select>
-   <select id="sort"><option value="ajoute" ${F.sort === "ajoute" ? "selected" : ""}>Tri : date de saisie</option><option value="etudiant" ${F.sort === "etudiant" ? "selected" : ""}>Tri : étudiant</option><option value="titre" ${F.sort === "titre" ? "selected" : ""}>Tri : titre</option><option value="parution" ${F.sort === "parution" ? "selected" : ""}>Tri : date de parution</option></select>
+  const types = [...new Set(TYPES.concat(items.map(i => i.type).filter(Boolean)))];
+  const tableau = F.view !== "cartes";
+  $("filters").innerHTML = `<input id="q" placeholder="🔍 Rechercher…" aria-label="Rechercher" value="${esc(F.q)}">
+   <select id="who" aria-label="Étudiant"><option value="">Tous les étudiants</option>${students().map(s => `<option ${F.who === s.prenom ? "selected" : ""}>${esc(s.prenom)}</option>`).join("")}</select>
+   <select id="st" aria-label="Statut"><option value="">Tous les statuts</option><option value="Terminée" ${F.st === "Terminée" ? "selected" : ""}>✅ Terminées</option><option value="En cours" ${F.st === "En cours" ? "selected" : ""}>📖 En cours</option></select>
+   <select id="type" aria-label="Type d’article"><option value="">Tous les types</option>${types.map(t => `<option ${F.type === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
+   <select id="sort" aria-label="Tri"><option value="ajoute" ${F.sort === "ajoute" ? "selected" : ""}>Tri : date de saisie</option><option value="etudiant" ${F.sort === "etudiant" ? "selected" : ""}>Tri : étudiant</option><option value="titre" ${F.sort === "titre" ? "selected" : ""}>Tri : titre</option><option value="parution" ${F.sort === "parution" ? "selected" : ""}>Tri : date de parution</option></select>
+   ${F.kw ? `<button type="button" class="chip on" id="kwoff" title="Retirer le filtre">Mot-clé : ${esc(F.kwLabel)} ✕</button>` : ""}
+   <span class="seg"><button type="button" class="btn sm sec ${tableau ? "on" : ""}" id="vt" aria-pressed="${tableau}">▦ Tableau</button><button type="button" class="btn sm sec ${tableau ? "" : "on"}" id="vc" aria-pressed="${!tableau}">🗂 Cartes</button></span>
+   ${tableau ? `<details class="colmenu"><summary class="btn sm sec">Colonnes ▾</summary><div class="colpop">${Object.keys(COLS).map(k => `<label><input type="checkbox" data-col="${k}" ${masquees.has(+k) ? "" : "checked"}> ${COLS[k]}</label>`).join("")}</div></details>` : ""}
+   <button type="button" class="btn sm sec" id="expall"></button>
+   <button type="button" class="btn sm sec" id="refresh" title="Actualisation automatique toutes les ${CFG.REFRESH_SECONDS || 0} s tant que la page est ouverte">↻ Actualiser</button><span class="meta" id="sync"></span>
+   ${canWrite() ? '<button type="button" class="btn sm" id="add2">＋ Ajouter une lecture</button>' : ""}
    <button class="btn sm" id="xl">⬇️ Excel</button> <button class="btn sm" id="pdf">⬇️ PDF</button>`;
+  $("expall").onclick = toutDeplier;
+  $("refresh").onclick = () => refresh(true);
+  majBoutonDeplier(); majSync();
   $("q").oninput = e => { F.q = e.target.value; renderTable(); };
-  ["who", "st", "sort"].forEach(k => $(k).onchange = e => { F[k] = e.target.value; renderTable(); });
+  ["who", "st", "type", "sort"].forEach(k => $(k).onchange = e => { F[k] = e.target.value; renderTable(); });
+  if ($("kwoff")) $("kwoff").onclick = () => filtrerMotCle(F.kwLabel);
+  $("vt").onclick = () => changerVue("tableau");
+  $("vc").onclick = () => changerVue("cartes");
+  $("filters").querySelectorAll("[data-col]").forEach(cb => cb.onchange = () => {
+    if (cb.checked) masquees.delete(+cb.dataset.col); else masquees.add(+cb.dataset.col);
+    try { localStorage.setItem("lydia_cols", JSON.stringify([...masquees])); } catch (e) { /* ignoré */ }
+    applyCols();
+  });
+  if ($("add2")) $("add2").onclick = () => { editing = null; override = false; forceStatut = ""; openForm(); };
   $("xl").onclick = exportXlsx;
   $("pdf").onclick = exportPdf;
 }
 
+function changerVue(v) {
+  F.view = v;
+  try { localStorage.setItem("lydia_vue", v); } catch (e) { /* ignoré */ }
+  renderFilters();
+  renderTable();
+}
+
+function filtrerMotCle(label) {
+  const k = cleTitre(label);
+  if (F.kw === k) { F.kw = ""; F.kwLabel = ""; } else { F.kw = k; F.kwLabel = label; }
+  renderFilters();
+  renderTable();
+}
+
+// Recherche : champs visibles + commentaires, sans accents ni casse ; chaque mot saisi doit apparaître quelque part.
+const CHAMPS_RECHERCHE = ["etudiant", "titre", "parution", "auteur", "qualite", "nation", "type", "mots", "kw", "concepts", "objet",
+  "opinion", "controverse", "libre", "source", "volume", "numero", "pages", "doi"];
+function correspond(i, q) {
+  const texte = cleTitre(CHAMPS_RECHERCHE.map(k => i[k]).concat(comments.filter(c => c.lecture_id === i.id).map(c => c.texte)).join(" "));
+  return q.split(" ").every(m => texte.includes(m));
+}
+
 function filtered() {
-  const q = F.q.toLowerCase();
-  const l = items.filter(i => (!F.who || i.etudiant === F.who) && (!F.st || i.statut === F.st)
-    && (!q || JSON.stringify(i).toLowerCase().includes(q)));
+  const q = cleTitre(F.q);
+  const l = items.filter(i => (!F.who || i.etudiant === F.who) && (!F.st || i.statut === F.st) && (!F.type || i.type === F.type)
+    && (!F.kw || motsListe(i.mots).concat(motsListe(i.kw)).some(k => cleTitre(k) === F.kw))
+    && (!q || correspond(i, q)));
   return l.sort((a, b) => F.sort === "ajoute"
     ? String(b.ajoute).localeCompare(a.ajoute)
     : String(a[F.sort] || "").localeCompare(String(b[F.sort] || ""), "fr"));
@@ -473,20 +677,54 @@ function filtered() {
 
 function renderTable() {
   const l = filtered();
-  $("rows").innerHTML = l.length ? l.map(cells).join("") : '<tr><td colspan="10" class="empty">Aucune lecture à afficher.</td></tr>';
+  const cartes = F.view === "cartes";
+  const vide = items.length ? "Aucune lecture ne correspond aux filtres."
+    : canWrite() ? "Aucune lecture pour l’instant : utilisez « ＋ Ajouter une lecture »." : "Aucune lecture pour l’instant.";
+  $("tablewrap").classList.toggle("hidden", cartes);
+  $("cards").classList.toggle("hidden", !cartes);
+  if (cartes) $("cards").innerHTML = l.length ? l.map(cardHtml).join("") : `<div class="empty">${vide}</div>`;
+  else $("rows").innerHTML = l.length ? l.map(cells).join("") : `<tr><td colspan="10" class="empty">${vide}</td></tr>`;
+  applyCols();
   $("stats").innerHTML = students().map(s => {
     const n = items.filter(i => i.etudiant === s.prenom);
     return `<span class="badge" style="--c:${esc(s.couleur)}">${esc(s.prenom)} : ${n.length} lecture${n.length > 1 ? "s" : ""} (${n.filter(i => i.statut === "En cours").length} en cours)</span>`;
   }).join("");
 }
 
-$("rows").onclick = e => {
+function majBoutonDeplier() {
+  const b = $("expall");
+  if (b) b.textContent = openRows.size ? "⇱ Tout replier" : "⇲ Tout déplier";
+}
+
+function toggleOpen(id, host) {
+  if (openRows.has(id)) openRows.delete(id); else openRows.add(id);
+  if (host) {
+    host.classList.toggle("open", openRows.has(id));
+    host.setAttribute("aria-expanded", String(openRows.has(id)));
+  }
+  majBoutonDeplier();
+}
+
+function toutDeplier() {
+  if (openRows.size) openRows.clear(); else filtered().forEach(i => openRows.add(i.id));
+  renderTable();
+  majBoutonDeplier();
+}
+
+const onAction = e => {
   const b = e.target.closest("button");
-  if (!b) return;
+  if (!b) {
+    // Clic ailleurs que sur un bouton, un lien ou un commentaire : on déplie / replie la ligne (sauf sélection de texte en cours).
+    if (e.target.closest("a, input, select, textarea, label, .cmbox") || (window.getSelection && String(window.getSelection()).length)) return;
+    const h = e.target.closest("tr[data-id], .cardc[data-id]");
+    if (h) toggleOpen(h.dataset.id, h);
+    return;
+  }
   const d = b.dataset;
   if (d.e) startEdit(d.e, false);
   else if (d.o) startEdit(d.o, true);
   else if (d.apa) copierApa(d.apa);
+  else if (d.kw !== undefined) filtrerMotCle(d.kw);
   else if (d.c) { if (openCm.has(d.c)) openCm.delete(d.c); else openCm.add(d.c); renderTable(); }
   else if (d.ca) {
     const t = (drafts[d.ca] || "").trim();
@@ -501,7 +739,118 @@ $("rows").onclick = e => {
     if (confirm("Supprimer ce commentaire ?")) commentAction(() => api("comment_delete", { id: d.cd }), "Suppression impossible");
   }
 };
-$("rows").oninput = e => { if (e.target.dataset.cm) drafts[e.target.dataset.cm] = e.target.value; };
+const onDraft = e => { if (e.target.dataset.cm) drafts[e.target.dataset.cm] = e.target.value; };
+$("rows").onclick = $("cards").onclick = onAction;
+$("rows").oninput = $("cards").oninput = onDraft;
+$("rows").onkeydown = $("cards").onkeydown = e => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("tr[data-id], .cardc[data-id]")) {
+    e.preventDefault();
+    toggleOpen(e.target.dataset.id, e.target);
+  }
+};
+
+/* ---------- Bibliographie ---------- */
+
+const B = { who: "", enCours: false };
+
+function biblioListe() {
+  return LydiaApa.bibliographie(items.filter(i => (!B.who || i.etudiant === B.who) && (B.enCours || i.statut === "Terminée")));
+}
+
+function renderBiblioTools() {
+  $("bibtools").innerHTML = `<label for="bwho" class="meta" style="margin:0">Étudiant</label>
+   <select id="bwho"><option value="">Tous</option>${students().map(s => `<option ${B.who === s.prenom ? "selected" : ""}>${esc(s.prenom)}</option>`).join("")}</select>
+   <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400;color:var(--tx)"><input type="checkbox" id="ben" style="width:auto" ${B.enCours ? "checked" : ""}> Inclure les lectures en cours</label>
+   <button type="button" class="btn sm" id="bcopy">📋 Tout copier</button>
+   <button type="button" class="btn sm sec" id="bdoc">⬇️ Word</button>
+   <button type="button" class="btn sm sec" id="btxt">⬇️ Texte</button>
+   <button type="button" class="btn sm sec" id="bprint">🖨️ Imprimer</button>`;
+  $("bwho").onchange = e => { B.who = e.target.value; renderBiblio(); };
+  $("ben").onchange = e => { B.enCours = e.target.checked; renderBiblio(); };
+  $("bcopy").onclick = () => {
+    const l = biblioListe();
+    if (l.length) copier(l.map(r => `<p style="margin-left:36pt;text-indent:-36pt">${r.html}</p>`).join(""), l.map(r => r.text).join("\n\n"), "📋 Bibliographie copiée");
+  };
+  $("bdoc").onclick = exportBiblioWord;
+  $("btxt").onclick = () => { const l = biblioListe(); if (l.length) telecharger(new Blob([l.map(r => r.text).join("\n\n")], { type: "text/plain;charset=utf-8" }), "bibliographie-" + stamp() + ".txt"); };
+  $("bprint").onclick = () => window.print();
+}
+
+function renderBiblio() {
+  const l = biblioListe();
+  $("biblist").innerHTML = `<h2 style="margin-top:0;font-size:16px">Références (${l.length})</h2>
+   <div class="note noprint">Classées par ordre alphabétique d’auteur (APA 7). Les références marquées « incomplète » n’ont pas encore de revue ou de pages : complétez-les dans le formulaire de la lecture.</div>
+   <div class="biblio">${l.length ? l.map(r => `<p>${r.html}${r.incomplet ? '<span class="warn noprint">⚠ incomplète</span>' : ""}</p>`).join("") : '<div class="empty">Aucune référence à afficher.</div>'}</div>`;
+}
+
+function telecharger(blob, nom) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = nom;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+function exportBiblioWord() {
+  const l = biblioListe();
+  if (!l.length) return;
+  // Word ouvre ce HTML tel quel : retrait suspendu de 1,27 cm et interligne double, comme l'exige l'APA.
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Références</title></head>
+<body style="font-family:'Times New Roman',serif;font-size:12pt"><h1 style="font-size:14pt;text-align:center">Références</h1>
+${l.map(r => `<p style="margin:0 0 0 36pt;text-indent:-36pt;line-height:200%">${r.html}</p>`).join("\n")}</body></html>`;
+  telecharger(new Blob(["﻿" + html], { type: "application/msword" }), "bibliographie-" + stamp() + ".doc");
+}
+
+/* ---------- Synthèse ---------- */
+
+function barres(titre, entrees, couleur) {
+  if (!entrees.length) return "";
+  const max = Math.max(...entrees.map(e => e[1]));
+  return `<div class="card"><h3>${titre}</h3>${entrees.map(([lib, n, c]) =>
+    `<div class="bar"><span class="bl" title="${esc(lib)}">${esc(lib)}</span><div class="bt"><div class="bf" style="width:${Math.round(n / max * 100)}%;background:${esc(c || couleur)}"></div></div><span class="bn">${n}</span></div>`).join("")}</div>`;
+}
+
+function compter(valeurs, max) {
+  const m = new Map();
+  valeurs.forEach(v => { const k = cleTitre(v); if (!k) return; const e = m.get(k) || [String(v).trim(), 0]; e[1]++; m.set(k, e); });
+  return [...m.values()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr")).slice(0, max);
+}
+
+function renderSynth() {
+  if (!items.length) { $("synthbox").innerHTML = '<div class="card empty">Pas encore de données à synthétiser.</div>'; return; }
+  const fin = items.filter(i => i.statut === "Terminée").length;
+  const annees = new Map();
+  items.forEach(i => { const a = (/^(\d{4})/.exec(i.parution || "") || [])[1]; if (a) annees.set(a, (annees.get(a) || 0) + 1); });
+  const parAnnee = [...annees.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12);
+  const kpi = (n, t) => `<div class="kpi"><b>${n}</b>${t}</div>`;
+  $("synthbox").innerHTML = `<div class="kpis">${kpi(items.length, "lectures")}${kpi(fin, "terminées")}${kpi(items.length - fin, "en cours")}${kpi(comments.length, "commentaires")}</div>
+   <div class="synth">
+   ${barres("Lectures par étudiant", students().map(s => [s.prenom, items.filter(i => i.etudiant === s.prenom).length, s.couleur]), "var(--pri)")}
+   ${barres("Types d’articles", compter(items.map(i => i.type), 8), "var(--pri)")}
+   ${barres("Nationalité des auteurs", compter(items.map(i => i.nation), 10), "var(--pri)")}
+   ${barres("Qualité des auteurs", compter(items.map(i => i.qualite), 8), "var(--pri)")}
+   ${barres("Années de parution", parAnnee, "var(--pri)")}
+   ${barres("Mots-clés les plus fréquents", compter(items.flatMap(i => motsListe(i.mots)), 12), "var(--pri)")}
+   </div>`;
+}
+
+/* ---------- Thème et « nouveautés » ---------- */
+
+$("theme").onclick = () => {
+  const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("lydia_theme", next); } catch (e) { /* ignoré */ }
+};
+
+let vuDepuis = null;
+const cleVu = () => "lydia_vu:" + (me ? me.prenom : "");
+function chargerVu() { try { vuDepuis = localStorage.getItem(cleVu()) || null; } catch (e) { vuDepuis = null; } }
+function marquerVu() { if (!me) return; try { localStorage.setItem(cleVu(), new Date().toISOString()); } catch (e) { /* ignoré */ } }
+window.addEventListener("pagehide", marquerVu);
+document.addEventListener("visibilitychange", () => { if (document.hidden) marquerVu(); });
+
 
 /* ---------- Administration des accès (étudiants) ---------- */
 
@@ -611,7 +960,7 @@ function renderAll() {
   document.querySelector('.tab[data-t="admin"]').classList.toggle("hidden", !canAdmin());
   if ((!canWrite() && tab === "mine") || (!canAdmin() && tab === "admin")) setTab("all");
   else setTab(tab);
-  if (canWrite()) { renderForm(); renderMine(); }
+  if (canWrite()) renderMine();
   renderPending();
   renderFilters();
   renderTable();

@@ -130,6 +130,9 @@ function doPost(e) {
       case 'comment_delete':
         muter_(function () { supprimerCommentaire_(user, req.id); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'translate':
+        exigerEtudiant_(user);
+        return json_({ ok: true, items: traduireMotsCles_(req.texte) });
       case 'admin_list':
         exigerGestion_(user);
         return json_({ ok: true, acces: listerAcces_() });
@@ -475,6 +478,94 @@ function valider_(d) {
   }
   if (d.type && TYPES.indexOf(d.type) < 0) throw err_('invalid', 'Type d’article invalide');
   if (d.parution && !/^\d{4}(-\d{2}(-\d{2})?)?$/.test(d.parution)) throw err_('invalid', 'Date de parution invalide');
+}
+
+/* ---------- Traduction des mots-clés (fr -> en) avec indice de fiabilité ---------- */
+
+const TRAD_MAX_CARACTERES = 600;
+const TRAD_MAX_TERMES = 30;
+// Termes courants en sciences infirmières : la traduction du glossaire prime sur la traduction automatique.
+const GLOSSAIRE = {
+  'soins infirmiers': 'nursing care', 'sciences infirmieres': 'nursing science', 'science infirmiere': 'nursing science',
+  'relation soignant soigne': 'nurse-patient relationship', 'relation de soin': 'care relationship',
+  'relation d aide': 'helping relationship', 'vecu': 'lived experience', 'patient': 'patient',
+  'etudiant en soins infirmiers': 'nursing student', 'etudiants en soins infirmiers': 'nursing students',
+  'stage': 'clinical placement', 'formation initiale': 'initial training', 'pratique reflexive': 'reflective practice',
+  'raisonnement clinique': 'clinical reasoning', 'ethique': 'ethics', 'dignite': 'dignity', 'empathie': 'empathy',
+  'douleur': 'pain', 'fin de vie': 'end of life', 'soins palliatifs': 'palliative care', 'qualite de vie': 'quality of life',
+  'education therapeutique': 'therapeutic patient education', 'bientraitance': 'good care practices',
+  'maltraitance': 'mistreatment', 'burn out': 'burnout', 'burnout': 'burnout', 'stress': 'stress',
+  'sante mentale': 'mental health', 'psychiatrie': 'psychiatry', 'personne agee': 'older adult',
+  'personnes agees': 'older adults', 'geriatrie': 'geriatrics', 'pediatrie': 'paediatrics', 'autonomie': 'autonomy',
+  'consentement': 'consent', 'communication': 'communication', 'humanisation des soins': 'humanization of care',
+  'posture professionnelle': 'professional stance', 'identite professionnelle': 'professional identity',
+  'competences': 'competencies', 'tutorat': 'mentoring', 'hopital': 'hospital', 'infirmier': 'nurse',
+  'infirmiere': 'nurse', 'aide soignant': 'nursing assistant', 'cadre de sante': 'nurse manager',
+  'prevention': 'prevention', 'promotion de la sante': 'health promotion', 'sante publique': 'public health',
+  'hygiene': 'hygiene', 'securite des patients': 'patient safety', 'erreur medicamenteuse': 'medication error',
+  'charge de travail': 'workload', 'qualite des soins': 'quality of care', 'prise en charge': 'care management',
+  'accompagnement': 'support', 'collaboration interprofessionnelle': 'interprofessional collaboration',
+  'travail en equipe': 'teamwork', 'sentiment d efficacite personnelle': 'self-efficacy'
+};
+const MOTS_VIDES_FR = ['le', 'la', 'les', 'l', 'un', 'une', 'des', 'de', 'du', 'd', 'et', 'en', 'au', 'aux'];
+
+function normaliserTerme_(t) {
+  return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function jetons_(t) {
+  return normaliserTerme_(t).split(' ').filter(function (m) { return m && MOTS_VIDES_FR.indexOf(m) < 0; })
+    .map(function (m) { return m.length > 3 ? m.replace(/(s|x)$/, '') : m; });
+}
+
+// Proximité de deux termes (1 = mêmes mots, à l'accord et aux mots vides près).
+function similitude_(a, b) {
+  const x = jetons_(a), y = jetons_(b);
+  if (!x.length || !y.length) return 0;
+  const communs = x.filter(function (m) { return y.indexOf(m) >= 0; }).length;
+  return communs / (x.length + y.length - communs);
+}
+
+// Traduit une liste en un seul appel (lignes), ou terme par terme si le service ne conserve pas les lignes.
+function traduireListe_(liste, de, vers) {
+  const sortie = LanguageApp.translate(liste.join('\n'), de, vers).split('\n');
+  if (sortie.length === liste.length) return sortie.map(function (x) { return x.trim(); });
+  return liste.map(function (t) { return String(LanguageApp.translate(t, de, vers)).trim(); });
+}
+
+function traduireMotsCles_(texte) {
+  const brut = String(texte === undefined || texte === null ? '' : texte);
+  if (brut.length > TRAD_MAX_CARACTERES) throw err_('invalid', 'Texte trop long pour la traduction');
+  const vus = {};
+  const termes = brut.split(/[,;\n]+/).map(function (t) { return t.trim(); }).filter(function (t) {
+    const k = normaliserTerme_(t);
+    if (!t || !k || vus[k]) return false;
+    vus[k] = true;
+    return true;
+  });
+  if (!termes.length) throw err_('invalid', 'Aucun mot-clé à traduire');
+  if (termes.length > TRAD_MAX_TERMES) throw err_('invalid', 'Trop de mots-clés (' + TRAD_MAX_TERMES + ' maximum)');
+
+  const aTraduire = termes.filter(function (t) { return !GLOSSAIRE[normaliserTerme_(t)]; });
+  const aller = aTraduire.length ? traduireListe_(aTraduire, 'fr', 'en') : [];
+  const retour = aTraduire.length ? traduireListe_(aller, 'en', 'fr') : [];
+  const parTerme = {};
+  aTraduire.forEach(function (t, i) { parTerme[normaliserTerme_(t)] = { en: aller[i], fr2: retour[i] }; });
+
+  return termes.map(function (t) {
+    const k = normaliserTerme_(t);
+    if (GLOSSAIRE[k]) return { fr: t, en: GLOSSAIRE[k], niveau: 'haute', raison: 'terme du glossaire de sciences infirmières' };
+    const r = parTerme[k];
+    if (!r.en) return { fr: t, en: '', niveau: 'faible', raison: 'aucune traduction obtenue' };
+    if (r.en.toLowerCase() === t.toLowerCase()) {
+      return { fr: t, en: r.en, niveau: 'moyenne', raison: 'identique au français (sigle, nom propre ou emprunt ?)' };
+    }
+    const sim = similitude_(t, r.fr2);
+    if (sim >= 0.99) return { fr: t, en: r.en, niveau: 'haute', raison: 'la retraduction en français redonne le même terme' };
+    if (sim >= 0.5) return { fr: t, en: r.en, niveau: 'moyenne', raison: 'retraduction proche (« ' + r.fr2 + ' ») : vérifier le sens' };
+    return { fr: t, en: r.en, niveau: 'faible', raison: 'la retraduction (« ' + r.fr2 + ' ») s’écarte du terme : à vérifier' };
+  });
 }
 
 /* ---------- Utilitaires ---------- */
