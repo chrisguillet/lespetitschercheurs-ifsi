@@ -70,6 +70,25 @@ async function api(action, payload = {}) {
 
 /* ---------- Connexion ---------- */
 
+// Écran de connexion : état d'attente (le serveur peut mettre quelques secondes à répondre au premier appel).
+let attenteTimer = null;
+function gateAttente(msg) {
+  $("gate").classList.remove("hidden");
+  $("login").classList.add("hidden");
+  $("retry").classList.add("hidden");
+  $("gatemsg").classList.add("hidden");
+  $("gatewaitmsg").textContent = msg;
+  $("gatewait").classList.remove("hidden");
+  clearTimeout(attenteTimer);
+  attenteTimer = setTimeout(() => { $("gatewaitmsg").textContent = "Le serveur démarre, cela peut prendre encore quelques secondes…"; }, 6000);
+}
+function gatePret() {
+  clearTimeout(attenteTimer);
+  $("gatewait").classList.add("hidden");
+  $("login").classList.remove("hidden");
+  $("gatemsg").classList.remove("hidden");
+}
+
 function initGoogle() {
   if (!(window.google && google.accounts && google.accounts.id)) { setTimeout(initGoogle, 200); return; }
   google.accounts.id.initialize({ client_id: CFG.GOOGLE_CLIENT_ID, callback: onCredential, auto_select: true });
@@ -85,6 +104,7 @@ function onCredential(resp) {
 }
 
 function showGate(msg, retry) {
+  gatePret();
   $("gate").classList.remove("hidden");
   $("app").classList.add("hidden");
   $("tabs").classList.add("hidden");
@@ -153,12 +173,17 @@ async function enCours(msg, fn) {
   try { return await fn(); } finally { clearStatus(); }
 }
 
+let bootEnCours = false;
 async function boot() {
+  if (bootEnCours) return;                      // évite un second « init » si on reclique pendant l'attente
+  bootEnCours = true;
+  gateAttente("Connexion en cours… vérification de votre compte");
   try {
     const j = await api("init");
     me = j.me; users = j.utilisateurs;
     chargerVu();
     applyData(j);
+    clearTimeout(attenteTimer);
     $("gate").classList.add("hidden");
     $("app").classList.remove("hidden");
     clearStatus();
@@ -169,7 +194,7 @@ async function boot() {
     else if (e.code === "pending") showGate(e.message, true);
     else if (e.code === "forbidden") showGate(e.message + ". Changez de compte si besoin.");
     else showGate("Erreur : " + e.message);
-  }
+  } finally { bootEnCours = false; }
 }
 
 async function refresh(manuel) {
