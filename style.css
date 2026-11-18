@@ -9,7 +9,7 @@ header{padding:16px 16px 0;max-width:1400px;margin:auto}
 h1{font-size:20px;margin:0 0 4px}
 .sub{color:var(--mut);font-size:13px}
 main{max-width:1400px;margin:auto;padding:12px 16px 40px}
-.me{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0;min-height:30px}
+.me{display:flex;gap:8px;align-items:center;margin:0;flex-shrink:0}
 .who{border:2px solid var(--c);border-radius:999px;padding:4px 14px;background:var(--c);color:#fff}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--bd);margin-top:8px}
 .tab{background:none;border:0;padding:10px 16px;font:inherit;color:var(--mut);cursor:pointer;border-bottom:3px solid transparent}
@@ -58,7 +58,7 @@ td.apa{min-width:280px;white-space:normal}
 .apatxt{white-space:pre-wrap}
 
 /* ---------- Thème, accessibilité ---------- */
-.toprow{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.toprow{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
 :focus-visible{outline:3px solid var(--pri);outline-offset:2px}
 .btn.sm{min-height:30px}
 .tabs{overflow-x:auto;scrollbar-width:thin}
@@ -151,7 +151,7 @@ details.sec:not([open])>summary::before{content:"▸ "}
 @media (max-width:700px){main{padding:8px 10px 40px}.tools input,.tools select{min-width:0;flex:1 1 140px}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 @media print{
-  header .tabs,header .me,#theme,.noprint,.tools,#status,.drawer,footer,.btn{display:none!important}
+  header .tabs,header .me,.noprint,.tools,#status,.drawer,footer,.btn{display:none!important}
   body{background:#fff;color:#000}
   .card{border:0;padding:0}
   section.hidden{display:none!important}
@@ -172,3 +172,10 @@ tr.open .rowacts{display:block}
 .colpop.pop-filtres label{display:block;font-size:12px;font-weight:600;color:var(--mut);margin:0 0 3px}
 .colpop.pop-filtres input,.colpop.pop-filtres select{width:100%;min-width:0}
 .colmenu summary .count{margin-left:4px}
+
+/* ---------- Menu du compte (en haut à droite) ---------- */
+.avatar{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--c);color:#fff;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-right:6px;vertical-align:middle}
+.acctbtn{display:inline-flex;align-items:center;min-height:34px}
+.acctpop{display:flex!important;flex-direction:column;gap:8px;min-width:230px;top:40px}
+.acctwho{padding-bottom:6px;border-bottom:1px solid var(--bd)}
+@media (max-width:520px){.acctname{display:none}}

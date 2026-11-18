@@ -42,8 +42,6 @@ const canWrite = () => !!me && me.role === "etudiant";
 const canComment = () => !!me && me.role === "formateur";
 const canAdmin = () => !!me && (me.role === "etudiant" || me.role === "admin");   // valide les accès, modère
 const isSuper = () => !!me && me.role === "admin";                                // gère aussi les étudiants
-const ROLE_LABEL = { etudiant: "", formateur: " (formateur : lecture + commentaires)", lecteur: " (lecture seule)",
-  admin: " (administrateur)" };
 
 /* ---------- API ---------- */
 
@@ -90,7 +88,7 @@ function showGate(msg, retry) {
   $("gate").classList.remove("hidden");
   $("app").classList.add("hidden");
   $("tabs").classList.add("hidden");
-  $("me").innerHTML = "";
+  renderMeAnonyme();
   $("retry").classList.toggle("hidden", !retry);
   if (msg) $("gatemsg").textContent = msg;
 }
@@ -207,10 +205,35 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) refr
 
 const students = () => users.filter(u => u.role === "etudiant");
 
+const ROLE_NOM = { etudiant: "Étudiant", formateur: "Formateur · lecture et commentaires", lecteur: "Lecteur · lecture seule", admin: "Administrateur" };
+
+const themeSombre = () => (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+function majLibelleTheme() { const b = $("themebtn"); if (b) b.textContent = themeSombre() ? "☀️ Mode clair" : "🌙 Mode sombre"; }
+function basculerTheme() {
+  const next = themeSombre() ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("lydia_theme", next); } catch (e) { /* ignoré */ }
+  majLibelleTheme();
+}
+
+// En haut à droite : menu du compte (statut de connexion, thème, déconnexion).
 function renderMe() {
-  $("me").innerHTML = `<span class="who" style="--c:${esc(me.couleur)}">Connecté(e) : ${esc(me.prenom)}${ROLE_LABEL[me.role] || ""}</span>
-    <button class="btn sm sec" id="logout">Se déconnecter</button>`;
+  $("me").innerHTML = `<details class="colmenu acct"><summary class="btn sm sec acctbtn" aria-label="Menu du compte : ${esc(me.prenom)}">
+      <span class="avatar" style="--c:${esc(me.couleur)}">${esc(String(me.prenom || "?").trim().charAt(0).toUpperCase())}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
+    <div class="colpop right acctpop">
+      <div class="acctwho"><span class="meta">Connecté(e) :</span> <b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div>
+      <button type="button" class="btn sm sec" id="themebtn"></button>
+      <button type="button" class="btn sm sec" id="logout">Se déconnecter</button>
+    </div></details>`;
   $("logout").onclick = logout;
+  $("themebtn").onclick = basculerTheme;
+  majLibelleTheme();
+}
+
+function renderMeAnonyme() {
+  $("me").innerHTML = '<button type="button" class="btn sm sec" id="themebtn"></button>';
+  $("themebtn").onclick = basculerTheme;
+  majLibelleTheme();
 }
 
 function renderPending() {
@@ -861,13 +884,6 @@ function renderSynth() {
 
 /* ---------- Thème et « nouveautés » ---------- */
 
-$("theme").onclick = () => {
-  const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  const next = cur === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = next;
-  try { localStorage.setItem("lydia_theme", next); } catch (e) { /* ignoré */ }
-};
-
 let vuDepuis = null;
 const cleVu = () => "lydia_vu:" + (me ? me.prenom : "");
 function chargerVu() { try { vuDepuis = localStorage.getItem(cleVu()) || null; } catch (e) { vuDepuis = null; } }
@@ -990,4 +1006,5 @@ function renderAll() {
   renderTable();
 }
 
+renderMeAnonyme();
 initGoogle();
