@@ -118,6 +118,21 @@ function applyData(j) {
   pendingCount = j.enAttente || 0;
 }
 
+// Les écritures renvoient les données à jour : on les applique sans second appel.
+function applyResult(j) {
+  if (!j || !j.lectures) return;
+  applyData(j);
+  renderMine();
+  renderTable();
+  renderPending();
+}
+
+// Affiche l'attente le temps d'une écriture (l'API peut mettre quelques secondes à répondre).
+async function enCours(msg, fn) {
+  showStatus("⏳ " + msg);
+  try { return await fn(); } finally { clearStatus(); }
+}
+
 async function boot() {
   try {
     const j = await api("init");
@@ -246,10 +261,11 @@ async function save() {
   if (miss.length) { $("ferr").textContent = "À compléter : " + miss.map(k => LAB[k]).join(", "); return; }
   $("save").disabled = true;
   try {
-    if (editing) await api("update", { id: editing, override, data });
-    else await api("add", { data });
+    const res = await enCours("Enregistrement…", () => editing
+      ? api("update", { id: editing, override, data })
+      : api("add", { data }));
     editing = null; override = false;
-    await refresh();
+    applyResult(res);
     renderForm();
   } catch (e) {
     $("ferr").textContent = "Enregistrement impossible : " + e.message;
@@ -260,7 +276,7 @@ async function save() {
 
 async function del(id) {
   if (!confirm("Supprimer cette lecture et ses commentaires ?")) return;
-  try { await api("delete", { id }); await refresh(); }
+  try { applyResult(await enCours("Suppression…", () => api("delete", { id }))); }
   catch (e) { alert("Suppression impossible : " + e.message); }
 }
 
@@ -317,7 +333,7 @@ function commentsRow(i) {
 }
 
 async function commentAction(fn, errLabel) {
-  try { await fn(); await refresh(); }
+  try { applyResult(await enCours("Enregistrement…", fn)); }
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert(errLabel + " : " + e.message); }
 }
 
@@ -362,7 +378,7 @@ $("rows").onclick = e => {
     const t = (drafts[d.ca] || "").trim();
     if (!t) return;
     b.disabled = true;
-    commentAction(async () => { await api("comment_add", { lecture_id: d.ca, texte: t }); drafts[d.ca] = ""; }, "Commentaire impossible");
+    commentAction(async () => { const j = await api("comment_add", { lecture_id: d.ca, texte: t }); drafts[d.ca] = ""; return j; }, "Commentaire impossible");
   } else if (d.ce) {
     const c = comments.find(x => x.id === d.ce);
     const t = c && prompt("Modifier le commentaire :", c.texte);
@@ -428,9 +444,10 @@ $("adminbox").onclick = async e => {
   if (data.statut === "refuse" && !confirm("Retirer ou refuser l’accès de " + data.email + " ?")) return;
   b.disabled = true;
   try {
-    acces = (await api("admin_set", { data })).acces;
+    const res = await enCours("Enregistrement…", () => api("admin_set", { data }));
+    acces = res.acces;
     renderAdmin();
-    refresh();
+    applyResult(res);
   } catch (err) {
     b.disabled = false;
     if (err.code === "unauthorized") sessionError(err); else alert("Action impossible : " + err.message);

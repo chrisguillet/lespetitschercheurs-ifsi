@@ -5,5 +5,5 @@ window.LYDIA_CONFIG = {
   // URL de déploiement de l'application web Apps Script (se termine par /exec).
   API_URL: "https://script.google.com/macros/s/AKfycbwgDDMZFvHH8SqGNb4iJfzJOgG3VsxwCbK8Bf-rSg__nDwNfo0jwZt9g13b56p6yidTXQ/exec",
   // Rafraîchissement automatique du tableau, en secondes (0 = désactivé).
-  REFRESH_SECONDS: 20
+  REFRESH_SECONDS: 45
 };

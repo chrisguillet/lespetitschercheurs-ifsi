@@ -91,7 +91,7 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
   et la recopier dans la lecture concernée.
 - **Ne pas modifier** les colonnes `id` et `owner` de `Lectures`, ni les ids de `Commentaires`.
 - **Rôle inconnu ou mal orthographié** dans `Utilisateurs` : traité comme `lecteur` (le moins privilégié).
-- Le tableau se rafraîchit toutes les 20 secondes (réglable dans `config.js`).
+- Le tableau se rafraîchit toutes les 45 secondes (et au retour sur l’onglet) (réglable dans `config.js`).
 
 ## Notes de sécurité
 

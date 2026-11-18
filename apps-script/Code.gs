@@ -42,6 +42,20 @@ const MAX_EN_ATTENTE = 50;
 const COULEUR_DEFAUT = '#888888';
 const DELAI_CONNEXION_MS = 10 * 60 * 1000;
 const COULEUR_ADMIN = '#475569';
+const CACHE_JETON_MAX_S = 3000;
+
+// Lectures de feuilles mémorisées pour la durée d'une requête (désactivées pendant une écriture).
+let memo_ = {};
+let memoOn_ = true;
+function lu_(cle, fn) {
+  if (!memoOn_) return fn();
+  if (!(cle in memo_)) memo_[cle] = fn();
+  return memo_[cle];
+}
+function muter_(fn) {
+  memoOn_ = false;
+  try { return avecVerrou_(fn); } finally { memo_ = {}; memoOn_ = true; }
+}
 const EMAIL_VALIDE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /* ---------- Installation (à lancer depuis l'éditeur, sans risque de le relancer) ---------- */
@@ -79,6 +93,7 @@ function doGet() {
 
 function doPost(e) {
   try {
+    memo_ = {}; memoOn_ = true;
     const req = JSON.parse(e.postData.contents);
     const user = authentifier_(req.token, req.action);
     switch (req.action) {
@@ -93,28 +108,32 @@ function doPost(e) {
         }, donnees_(user)));
       case 'list':
         return json_(Object.assign({ ok: true }, donnees_(user)));
-      case 'add':
-        return json_({ ok: true, id: avecVerrou_(function () { return ajouter_(user, req.data); }) });
+      case 'add': {
+        const id = muter_(function () { return ajouter_(user, req.data); });
+        return json_(Object.assign({ ok: true, id: id }, donnees_(user)));
+      }
       case 'update':
-        avecVerrou_(function () { modifier_(user, req.id, req.data, req.override === true); });
-        return json_({ ok: true });
+        muter_(function () { modifier_(user, req.id, req.data, req.override === true); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'delete':
-        avecVerrou_(function () { supprimer_(user, req.id); });
-        return json_({ ok: true });
-      case 'comment_add':
-        return json_({ ok: true, id: avecVerrou_(function () { return commenter_(user, req.lecture_id, req.texte); }) });
+        muter_(function () { supprimer_(user, req.id); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'comment_add': {
+        const id = muter_(function () { return commenter_(user, req.lecture_id, req.texte); });
+        return json_(Object.assign({ ok: true, id: id }, donnees_(user)));
+      }
       case 'comment_update':
-        avecVerrou_(function () { modifierCommentaire_(user, req.id, req.texte); });
-        return json_({ ok: true });
+        muter_(function () { modifierCommentaire_(user, req.id, req.texte); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'comment_delete':
-        avecVerrou_(function () { supprimerCommentaire_(user, req.id); });
-        return json_({ ok: true });
+        muter_(function () { supprimerCommentaire_(user, req.id); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'admin_list':
         exigerGestion_(user);
         return json_({ ok: true, acces: listerAcces_() });
       case 'admin_set':
-        avecVerrou_(function () { administrer_(user, req.data); });
-        return json_({ ok: true, acces: listerAcces_() });
+        muter_(function () { administrer_(user, req.data); });
+        return json_(Object.assign({ ok: true, acces: listerAcces_() }, donnees_(user)));
       default:
         throw err_('bad_request', 'Action inconnue');
     }
@@ -152,7 +171,7 @@ function authentifier_(token, action) {
     if (String(info.email_verified) !== 'true') throw err_('unauthorized', 'Adresse non vérifiée');
     email = String(info.email).toLowerCase();
     const restant = Number(info.exp) - Math.floor(Date.now() / 1000);
-    cache.put(cle, email, Math.max(1, Math.min(300, restant)));
+    cache.put(cle, email, Math.max(1, Math.min(CACHE_JETON_MAX_S, restant)));
   }
   if (email === emailAdmin_()) {
     return { _row: 0, email: email, prenom: 'Administrateur', role: 'admin', couleur: COULEUR_ADMIN,
@@ -176,6 +195,10 @@ function feuilleUtilisateurs_() {
 }
 
 function listerUtilisateurs_() {
+  return lu_('u', lireUtilisateurs_);
+}
+
+function lireUtilisateurs_() {
   return feuilleUtilisateurs_().getDataRange().getDisplayValues().slice(1).map(function (r, i) {
     const role = String(r[2]).trim().toLowerCase();
     const statut = String(r[4] || '').trim().toLowerCase();
@@ -278,11 +301,13 @@ function feuilleLectures_() {
 }
 
 function lireTable_(sh, colonnes) {
-  return sh.getDataRange().getDisplayValues().slice(1).map(function (v, i) {
-    const o = { _row: i + 2 };
-    colonnes.forEach(function (c, j) { o[c] = v[j] === undefined ? '' : String(v[j]); });
-    return o;
-  }).filter(function (o) { return o.id; });
+  return lu_('t:' + sh.getName(), function () {
+    return sh.getDataRange().getDisplayValues().slice(1).map(function (v, i) {
+      const o = { _row: i + 2 };
+      colonnes.forEach(function (c, j) { o[c] = v[j] === undefined ? '' : String(v[j]); });
+      return o;
+    }).filter(function (o) { return o.id; });
+  });
 }
 
 function lister_(user) {
