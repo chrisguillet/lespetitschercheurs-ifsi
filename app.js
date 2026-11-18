@@ -34,7 +34,10 @@ const F = { q: "", who: "", st: "", sort: "ajoute" };
 // etudiant : écrit et administre ; formateur : lit et commente ; lecteur : lit.
 const canWrite = () => !!me && me.role === "etudiant";
 const canComment = () => !!me && me.role === "formateur";
-const ROLE_LABEL = { etudiant: "", formateur: " (formateur : lecture + commentaires)", lecteur: " (lecture seule)" };
+const canAdmin = () => !!me && (me.role === "etudiant" || me.role === "admin");   // valide les accès, modère
+const isSuper = () => !!me && me.role === "admin";                                // gère aussi les étudiants
+const ROLE_LABEL = { etudiant: "", formateur: " (formateur : lecture + commentaires)", lecteur: " (lecture seule)",
+  admin: " (administrateur)" };
 
 /* ---------- API ---------- */
 
@@ -143,7 +146,7 @@ async function refresh() {
     renderMine();
     if (!typing) renderTable();
     renderPending();
-    if (tab === "admin" && canWrite()) await loadAdmin();
+    if (tab === "admin" && canAdmin()) await loadAdmin();
     clearStatus();
   } catch (e) {
     if (e.code === "unauthorized") sessionError(e);
@@ -172,14 +175,14 @@ function renderMe() {
 function renderPending() {
   const el = $("pending");
   el.textContent = pendingCount || "";
-  el.classList.toggle("hidden", !(canWrite() && pendingCount));
+  el.classList.toggle("hidden", !(canAdmin() && pendingCount));
 }
 
 function setTab(t) {
   tab = t;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.t === t));
   ["mine", "all", "admin"].forEach(s => $(s).classList.toggle("hidden", t !== s));
-  if (t === "admin" && canWrite()) loadAdmin();
+  if (t === "admin" && canAdmin()) loadAdmin();
 }
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.t));
 
@@ -303,7 +306,7 @@ function commentsRow(i) {
     const own = c.mine && canComment();
     const acts = own
       ? `<button class="btn sm sec" data-ce="${esc(c.id)}">Modifier</button> <button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>`
-      : canWrite() ? `<button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>` : "";
+      : canAdmin() ? `<button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>` : "";
     return `<div class="cm"><b>${esc(c.auteur)}</b> <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>
       <div class="cmtxt">${esc(c.texte)}</div>${acts}</div>`;
   }).join("") : '<div class="meta">Aucun commentaire.</div>';
@@ -384,24 +387,30 @@ async function loadAdmin() {
 }
 
 function accesRow(a) {
+  const sup = isSuper();
   const k = esc(a.email);
-  const base = `<td>${k}</td><td>${esc(fmtDT(a.demande_le))}</td><td>${esc(fmtDT(a.derniere_connexion))}</td>`;
-  if (a.protege) return `<tr>${base}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Géré dans le Sheet</td></tr>`;
+  const dates = `<td>${esc(fmtDT(a.demande_le))}</td><td>${esc(fmtDT(a.derniere_connexion))}</td>`;
+  // Un étudiant ne peut pas gérer les étudiants ; l'administrateur, si.
+  if (a.protege && !sup) return `<tr><td>${k}</td>${dates}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Géré par l’administrateur</td></tr>`;
   const opt = (v, lbl) => `<option value="${v}" ${a.role === v ? "selected" : ""}>${lbl}</option>`;
+  const roles = (sup ? opt("etudiant", "Étudiant") : "") + opt("lecteur", "Lecteur") + opt("formateur", "Formateur");
   const acts = a.statut === "actif"
     ? `<button class="btn sm" data-as="actif">Enregistrer</button> <button class="btn sm sec del" data-as="refuse">Retirer l’accès</button>`
     : a.statut === "en_attente"
       ? `<button class="btn sm" data-as="actif">Valider</button> <button class="btn sm sec del" data-as="refuse">Refuser</button>`
       : `<button class="btn sm" data-as="actif">Réactiver</button>`;
-  return `<tr data-k="${k}">${base}<td><input data-f="prenom" maxlength="60" value="${esc(a.prenom)}" placeholder="Prénom"></td>
-    <td><select data-f="role">${opt("lecteur", "Lecteur")}${opt("formateur", "Formateur")}</select></td><td>${acts}</td></tr>`;
+  const adresse = sup ? `<td><input data-f="nouvel_email" type="email" value="${k}"></td>` : `<td>${k}</td>`;
+  const couleur = sup ? `<td><input data-f="couleur" type="color" value="${esc(a.couleur)}" style="min-width:48px;padding:2px"></td>` : "";
+  return `<tr data-k="${k}">${adresse}${dates}<td><input data-f="prenom" maxlength="60" value="${esc(a.prenom)}" placeholder="Prénom"></td>${couleur}
+    <td><select data-f="role">${roles}</select></td><td>${acts}</td></tr>`;
 }
 
 let renderedAcces = "";
 function renderAdmin() {
   renderedAcces = JSON.stringify(acces);
+  const head = `<tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th>${isSuper() ? "<th>Couleur</th>" : ""}<th>Rôle</th><th>Actions</th></tr>`;
   const bloc = (titre, list, vide) => `<h3>${titre} (${list.length})</h3>` + (list.length
-    ? `<div class="wrap"><table class="adm"><thead><tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th><th>Rôle</th><th>Actions</th></tr></thead><tbody>${list.map(accesRow).join("")}</tbody></table></div>`
+    ? `<div class="wrap"><table class="adm"><thead>${head}</thead><tbody>${list.map(accesRow).join("")}</tbody></table></div>`
     : `<div class="meta">${vide}</div>`);
   $("adminbox").innerHTML =
     bloc("⏳ Demandes en attente", acces.filter(a => a.statut === "en_attente"), "Aucune demande en attente.") +
@@ -413,8 +422,9 @@ $("adminbox").onclick = async e => {
   const b = e.target.closest("button[data-as]");
   if (!b) return;
   const row = b.closest("tr");
-  const data = { email: row.dataset.k, prenom: row.querySelector('[data-f="prenom"]').value,
-    role: row.querySelector('[data-f="role"]').value, statut: b.dataset.as };
+  const val = f => { const el = row.querySelector(`[data-f="${f}"]`); return el ? el.value : undefined; };
+  const data = { email: row.dataset.k, prenom: val("prenom"), role: val("role"), statut: b.dataset.as };
+  if (isSuper()) { data.nouvel_email = val("nouvel_email"); data.couleur = val("couleur"); }
   if (data.statut === "refuse" && !confirm("Retirer ou refuser l’accès de " + data.email + " ?")) return;
   b.disabled = true;
   try {
@@ -467,8 +477,8 @@ function renderAll() {
   renderMe();
   $("tabs").classList.remove("hidden");
   document.querySelector('.tab[data-t="mine"]').classList.toggle("hidden", !canWrite());
-  document.querySelector('.tab[data-t="admin"]').classList.toggle("hidden", !canWrite());
-  if (!canWrite() && tab !== "all") setTab("all");
+  document.querySelector('.tab[data-t="admin"]').classList.toggle("hidden", !canAdmin());
+  if ((!canWrite() && tab === "mine") || (!canAdmin() && tab === "admin")) setTab("all");
   else setTab(tab);
   if (canWrite()) { renderForm(); renderMine(); }
   renderPending();

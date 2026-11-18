@@ -24,12 +24,17 @@ Navigateur (GitHub Pages)  ──jeton Google──▶  Apps Script (API)  ─�
 | **Étudiant** | oui | modifier, supprimer | « Contribuer » (avertissement, ancienne version dans `Historique`) ; suppression interdite | supprimer (modération) | oui |
 | **Formateur** | oui | — | — | publier, modifier et supprimer les siens | non |
 | **Lecteur** | oui | — | — | — | non |
+| **Administrateur** | oui | — | — | supprimer (modération) | oui, **y compris les étudiants** (prénom, couleur, rôle, adresse e-mail) |
+
+L'**administrateur** est une adresse fixe, définie dans la propriété de script `ADMIN_EMAIL` (voir plus bas). Elle n'apparaît
+ni dans la feuille ni dans le dépôt, et l'application ne permet pas de la modifier. Quand il change l'adresse d'un étudiant,
+ses lectures et ses commentaires suivent automatiquement.
 
 **Demande d'accès** : une personne dont l'adresse n'est pas connue se connecte avec Google ; une ligne
 `en_attente` est créée dans `Utilisateurs` (50 demandes en attente au maximum) et elle voit « demande envoyée ».
 Elle ne lit rien tant qu'un étudiant n'a pas validé. Dans l'onglet **👥 Administration** (visible des
-étudiants, avec un compteur de demandes), un étudiant donne un prénom et un rôle (Lecteur ou Formateur), ou refuse.
-Il peut ensuite changer le rôle, ou retirer l'accès. Les étudiants eux-mêmes se gèrent dans le Sheet.
+étudiants et de l'administrateur, avec un compteur de demandes), on donne un prénom et un rôle (Lecteur ou Formateur), ou on refuse.
+On peut ensuite changer le rôle, ou retirer l'accès. Seul l'administrateur peut gérer les étudiants.
 
 ## Mise en place
 
@@ -57,7 +62,9 @@ Il peut ensuite changer le rôle, ou retirer l'accès. Les étudiants eux-mêmes
 4. **Clients → Créer un client** → type « Application Web ».
    - **Origines JavaScript autorisées** : `https://chrisguillet.github.io` et, pour les tests locaux, `http://localhost:8080`.
 5. Copier l'**ID client** (`xxxx.apps.googleusercontent.com`).
-6. Dans Apps Script : **Paramètres du projet → Propriétés du script** → `GOOGLE_CLIENT_ID` = l'ID client.
+6. Dans Apps Script : **Paramètres du projet → Propriétés du script**, ajouter deux propriétés :
+   - `GOOGLE_CLIENT_ID` = l'ID client ;
+   - `ADMIN_EMAIL` = l'adresse de l'administrateur (par exemple `prenom.nom@gmail.com`).
 
 ### 3. Déployer l'API
 
@@ -77,7 +84,9 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 
 ## Exploitation
 
-- **Ajouter un étudiant** : nouvelle ligne dans `Utilisateurs` avec `role` = `etudiant` et `statut` = `actif`.
+- **Ajouter ou corriger un étudiant** : par l'administrateur, dans l'onglet Administration (rôle « Étudiant » pour en promouvoir un,
+  champ « Adresse » pour corriger une adresse). On peut aussi éditer `Utilisateurs` à la main, mais alors les lectures
+  ne suivent pas un changement d'adresse.
 - **Annuler une contribution** : retrouver l'ancienne version dans `Historique` (colonne `avant`, JSON)
   et la recopier dans la lecture concernée.
 - **Ne pas modifier** les colonnes `id` et `owner` de `Lectures`, ni les ids de `Commentaires`.
@@ -88,5 +97,6 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 
 - `config.js` ne contient aucun secret : l'ID client et l'URL de l'API sont publics par nature.
 - Le script refuse tout jeton dont l'audience n'est pas votre ID client, ou dont l'adresse n'est pas vérifiée.
-- Les adresses e-mail ne sont renvoyées au navigateur qu'aux étudiants, dans l'onglet Administration.
+- Les adresses e-mail ne sont renvoyées au navigateur qu'aux étudiants et à l'administrateur, dans l'onglet Administration.
+- L'adresse de l'administrateur n'est pas dans le dépôt : elle vit dans les propriétés du script.
 - Tant qu'une demande est en attente, ou refusée, aucune lecture ni aucun commentaire n'est renvoyé.
