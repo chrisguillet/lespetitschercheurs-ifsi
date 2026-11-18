@@ -21,12 +21,15 @@ const FEUILLE_LECTURES = 'Lectures';
 const FEUILLE_UTILISATEURS = 'Utilisateurs';
 const FEUILLE_HISTORIQUE = 'Historique';
 const FEUILLE_COMMENTAIRES = 'Commentaires';
+const FEUILLE_LUS = 'Lus';
 
 const COLONNES = ['id', 'owner', 'statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'ajoute', 'modifie_le', 'modifie_par',
   'source', 'volume', 'numero', 'pages', 'doi'];
 const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion'];
 const COL_COMMENTAIRES = ['id', 'lecture_id', 'auteur_email', 'auteur', 'date', 'texte', 'modifie_le'];
+// Une ligne par personne (id = adresse) : identifiants des commentaires déjà lus, séparés par des virgules.
+const COL_LUS = ['id', 'commentaires'];
 const COL_HISTORIQUE = ['date', 'id', 'modifie_par', 'proprietaire', 'avant'];
 const CHAMPS = ['statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre',
@@ -67,6 +70,7 @@ function setup() {
   preparer_(ss, FEUILLE_LECTURES, COLONNES);
   preparer_(ss, FEUILLE_HISTORIQUE, COL_HISTORIQUE);
   preparer_(ss, FEUILLE_COMMENTAIRES, COL_COMMENTAIRES);
+  preparer_(ss, FEUILLE_LUS, COL_LUS);
   const u = preparer_(ss, FEUILLE_UTILISATEURS, COL_UTILISATEURS);
   if (u.getLastRow() < 2) {
     u.getRange(2, 1, 4, 5).setValues([
@@ -103,10 +107,7 @@ function doPost(e) {
         majConnexion_(user);
         return json_(Object.assign({
           ok: true,
-          me: { prenom: user.prenom, role: user.role, couleur: user.couleur },
-          utilisateurs: listerUtilisateurs_().filter(function (u) {
-            return u.role === 'etudiant' && u.statut === 'actif';
-          }).map(function (u) { return { prenom: u.prenom, role: u.role, couleur: u.couleur }; })
+          me: { prenom: user.prenom, role: user.role, couleur: user.couleur }
         }, donnees_(user)));
       case 'list':
         return json_(Object.assign({ ok: true }, donnees_(user)));
@@ -130,6 +131,9 @@ function doPost(e) {
       case 'comment_delete':
         muter_(function () { supprimerCommentaire_(user, req.id); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'comments_read':
+        muter_(function () { marquerLus_(user, req.ids, req.tous === true); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'translate':
         exigerEtudiant_(user);
         return json_({ ok: true, items: traduireMotsCles_(req.texte) });
@@ -148,10 +152,19 @@ function doPost(e) {
   }
 }
 
+// Étudiants actifs : listés à chaque réponse pour que les écrans déjà ouverts suivent les changements de l'administration.
+function etudiantsActifs_() {
+  return listerUtilisateurs_().filter(function (u) {
+    return u.role === 'etudiant' && u.statut === 'actif';
+  }).map(function (u) { return { prenom: u.prenom, role: u.role, couleur: u.couleur }; });
+}
+
 function donnees_(user) {
   return {
+    utilisateurs: etudiantsActifs_(),
     lectures: lister_(user),
     commentaires: listerCommentaires_(user),
+    lus: listerLus_(user),
     enAttente: peutGerer_(user)
       ? listerUtilisateurs_().filter(function (u) { return u.statut === 'en_attente'; }).length : 0
   };
@@ -290,8 +303,9 @@ function administrer_(user, data) {
 }
 
 function migrerEmail_(ancien, nouveau) {
-  [[feuilleLectures_(), COLONNES, 'owner'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']]
-    .forEach(function (t) {
+  const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
+  if (feuilleLus_(false)) tables.push([feuilleLus_(false), COL_LUS, 'id']);
+  tables.forEach(function (t) {
       lireTable_(t[0], t[1]).filter(function (r) { return r[t[2]].toLowerCase() === ancien; })
         .forEach(function (r) { t[0].getRange(r._row, t[1].indexOf(t[2]) + 1, 1, 1).setValues([[nouveau]]); });
     });
@@ -380,7 +394,7 @@ function historiser_(ancienne, user, date) {
   h.appendRow([date, ancienne.id, user.prenom, proprio ? proprio.prenom : '', JSON.stringify(avant).slice(0, 49000)]);
 }
 
-/* ---------- Commentaires (formateurs) ---------- */
+/* ---------- Commentaires (étudiants et formateurs) ---------- */
 
 function feuilleCommentaires_() {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(FEUILLE_COMMENTAIRES);
@@ -396,7 +410,7 @@ function listerCommentaires_(user) {
 }
 
 function commenter_(user, lectureId, texte) {
-  exigerFormateur_(user);
+  exigerCommentateur_(user);
   const t = nettoyerCommentaire_(texte);
   trouver_(feuilleLectures_(), lectureId);
   const id = Utilities.getUuid();
@@ -405,7 +419,7 @@ function commenter_(user, lectureId, texte) {
 }
 
 function modifierCommentaire_(user, id, texte) {
-  exigerFormateur_(user);
+  exigerCommentateur_(user);
   const sh = feuilleCommentaires_();
   const c = trouverCommentaire_(sh, id);
   if (c.auteur_email !== user.email) throw err_('not_owner', 'Vous ne pouvez modifier que vos commentaires');
@@ -416,9 +430,44 @@ function modifierCommentaire_(user, id, texte) {
 function supprimerCommentaire_(user, id) {
   const sh = feuilleCommentaires_();
   const c = trouverCommentaire_(sh, id);
-  const auteur = c.auteur_email === user.email && user.role === 'formateur';
+  const auteur = c.auteur_email === user.email && peutCommenter_(user);
   if (!auteur && !peutGerer_(user)) throw err_('forbidden', 'Suppression non autorisée');
   sh.deleteRow(c._row);
+}
+
+/* ---------- Commentaires lus / non lus (par personne, suivis d'un appareil à l'autre) ---------- */
+
+function feuilleLus_(creer) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(FEUILLE_LUS);
+  // La feuille est créée au besoin : une installation antérieure fonctionne sans relancer setup().
+  return sh || (creer ? preparer_(ss, FEUILLE_LUS, COL_LUS) : null);
+}
+
+function listerLus_(user) {
+  const sh = feuilleLus_(false);
+  if (!sh) return [];
+  const ligne = lireTable_(sh, COL_LUS).filter(function (r) { return r.id === user.email; })[0];
+  if (!ligne || !ligne.commentaires) return [];
+  const existants = {};
+  lireTable_(feuilleCommentaires_(), COL_COMMENTAIRES).forEach(function (c) { existants[c.id] = true; });
+  return ligne.commentaires.split(',').filter(function (id) { return existants[id]; });
+}
+
+// ids : commentaires à marquer lus ; tous : marque tout ce qui existe. Les identifiants de commentaires
+// supprimés sont retirés au passage, pour que la liste reste courte.
+function marquerLus_(user, ids, tous) {
+  const existants = {};
+  lireTable_(feuilleCommentaires_(), COL_COMMENTAIRES).forEach(function (c) { existants[c.id] = true; });
+  const demandes = tous ? Object.keys(existants) : (Array.isArray(ids) ? ids : []);
+  const sh = feuilleLus_(true);
+  const ligne = lireTable_(sh, COL_LUS).filter(function (r) { return r.id === user.email; })[0];
+  const deja = ligne && ligne.commentaires ? ligne.commentaires.split(',') : [];
+  const fusion = {};
+  deja.concat(demandes.map(String)).forEach(function (id) { if (existants[id]) fusion[id] = true; });
+  const texte = Object.keys(fusion).join(',');
+  if (ligne) sh.getRange(ligne._row, 2, 1, 1).setValues([[texte]]);
+  else sh.appendRow([user.email, texte]);
 }
 
 function trouverCommentaire_(sh, id) {
@@ -448,8 +497,12 @@ function exigerGestion_(user) {
   if (!peutGerer_(user)) throw err_('forbidden', 'Réservé aux étudiants et à l’administrateur');
 }
 
-function exigerFormateur_(user) {
-  if (user.role !== 'formateur') throw err_('forbidden', 'Réservé aux formateurs');
+function peutCommenter_(user) {
+  return user.role === 'etudiant' || user.role === 'formateur';
+}
+
+function exigerCommentateur_(user) {
+  if (!peutCommenter_(user)) throw err_('forbidden', 'Réservé aux étudiants et aux formateurs');
 }
 
 function trouver_(sh, id) {

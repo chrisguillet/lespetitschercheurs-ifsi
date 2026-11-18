@@ -1,11 +1,11 @@
 # Les petits chercheurs – Lectures du mémoire (IFSI)
 
 Outil partagé de suivi des lectures pour le mémoire : chaque étudiant saisit ses lectures,
-le tableau commun les rassemble (filtres, recherche, export Excel/PDF), les formateurs commentent.
+le tableau commun les rassemble (filtres, recherche, export Excel/PDF), les étudiants et les formateurs commentent.
 Une dernière colonne génère une référence APA 7 à partir des champs saisis (bouton « Copier », italique conservé dans Word) ; le formulaire propose revue/éditeur, volume, numéro, pages et DOI/URL (facultatifs).
 Le formulaire accepte une date partielle (2021, mars 2021…), affiche la référence APA en direct, signale les doublons (même titre ou DOI) et garde un brouillon local si la page est fermée avant l’enregistrement.
 
-Interface : l’accueil est le tableau commun (vue tableau ou cartes, colonnes masquables, mots-clés cliquables, badge « Nouveau »). Le formulaire s’ouvre dans un panneau latéral. Les onglets **Bibliographie** (références APA triées, copie, export Word/texte) et **Synthèse** (graphiques) complètent « Mes lectures ». Un bouton traduit les mots-clés en anglais (service de traduction d’Apps Script) avec un indice de fiabilité : glossaire de sciences infirmières, ou retraduction en français. Thème clair/sombre manuel.
+Interface : l’accueil est le tableau commun (vue tableau ou cartes, colonnes masquables, mots-clés cliquables, badge « Nouveau »). Le formulaire s’ouvre dans un panneau latéral. Les onglets **Bibliographie** (références APA triées, copie, export Word/texte) et **Synthèse** (graphiques) complètent « Mes lectures ». Un bouton traduit les mots-clés en anglais (service de traduction d’Apps Script) avec un indice de fiabilité : glossaire de sciences infirmières, ou retraduction en français. Thème clair/sombre manuel. L’onglet **Commentaires** rassemble tous les commentaires (récents en tête) avec un suivi **lu / non lu** par personne, mémorisé sur le serveur donc identique d’un appareil à l’autre : pastille sur l’onglet, mention « non lus » sur chaque lecture, surlignage à l’ouverture d’une discussion, filtres « non lus seulement » et « sur mes lectures », bouton « tout marquer comme lu ».
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Navigateur (GitHub Pages)  ──jeton Google──▶  Apps Script (API)  ─�
 
 | Rôle | Lire | Ses lectures | Lectures des autres | Commentaires | Administration |
 |---|---|---|---|---|---|
-| **Étudiant** | oui | modifier, supprimer | « Contribuer » (avertissement, ancienne version dans `Historique`) ; suppression interdite | supprimer (modération) | oui |
+| **Étudiant** | oui | modifier, supprimer | « Contribuer » (avertissement, ancienne version dans `Historique`) ; suppression interdite | publier, modifier et supprimer les siens ; supprimer ceux des autres (modération) | oui |
 | **Formateur** | oui | — | — | publier, modifier et supprimer les siens | non |
 | **Lecteur** | oui | — | — | — | non |
 | **Administrateur** | oui | — | — | supprimer (modération) | oui, **y compris les étudiants** (prénom, couleur, rôle, adresse e-mail) |
@@ -49,7 +49,7 @@ On peut ensuite changer le rôle, ou retirer l'accès. Seul l'administrateur peu
 3. **Paramètres du projet** → cocher « Afficher le fichier manifeste appsscript.json », puis remplacer
    son contenu par `apps-script/appsscript.json`.
 4. Choisir la fonction `setup` et cliquer sur **Exécuter** (autoriser l'accès demandé).
-   Elle crée les onglets `Lectures`, `Utilisateurs`, `Commentaires` et `Historique`. On peut la relancer
+   Elle crée les onglets `Lectures`, `Utilisateurs`, `Commentaires`, `Lus` (suivi lu/non lu) et `Historique`. On peut la relancer
    sans risque après une mise à jour du code : elle n'efface aucune donnée.
 5. Dans `Utilisateurs`, remplacer les adresses factices des **quatre étudiants** par les vraies adresses Gmail
    (colonnes `email`, `prenom`, `role` = `etudiant`, `couleur` = `#rrggbb`, `statut` = `actif`).

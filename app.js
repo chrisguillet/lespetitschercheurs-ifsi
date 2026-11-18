@@ -32,14 +32,18 @@ let me = null, users = [], items = [], comments = [], acces = [], pendingCount =
 let editing = null, override = false, tab = "all", timer = null;
 const drafts = {};          // brouillons de commentaires, par lecture
 const openCm = new Set();   // lectures dont les commentaires sont dépliés
+let lusSet = new Set();     // commentaires déjà lus par la personne connectée (suivi côté serveur)
+const lusEnvoi = new Set(); // lus marqués ici mais pas encore confirmés par le serveur
+const frais = new Set();    // commentaires qui étaient non lus à l'ouverture : surlignés tant que la discussion reste ouverte
+const CM = { nonLus: false, miennes: false };
 const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
 const F = { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute",
   view: lsGet("lydia_vue", matchMedia("(max-width:700px)").matches ? "cartes" : "tableau") };
 const masquees = new Set((() => { try { return JSON.parse(lsGet("lydia_cols", "[]")); } catch (e) { return []; } })());
 
-// etudiant : écrit et administre ; formateur : lit et commente ; lecteur : lit.
+// etudiant : écrit, administre et commente ; formateur : lit et commente ; lecteur : lit.
 const canWrite = () => !!me && me.role === "etudiant";
-const canComment = () => !!me && me.role === "formateur";
+const canComment = () => !!me && (me.role === "formateur" || me.role === "etudiant");
 const canAdmin = () => !!me && (me.role === "etudiant" || me.role === "admin");   // valide les accès, modère
 const isSuper = () => !!me && me.role === "admin";                                // gère aussi les étudiants
 
@@ -113,12 +117,25 @@ function showGate(msg, retry) {
   if (msg) $("gatemsg").textContent = msg;
 }
 
+// Remet à zéro tout ce qui dépend du compte : rien ne doit survivre d'une session à l'autre.
+function reinitialiserEtat() {
+  closeDrawer(true);
+  token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
+  editing = null; override = false; forceStatut = "";
+  openRows.clear(); openCm.clear(); lusSet = new Set(); lusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
+  Object.keys(drafts).forEach(k => delete drafts[k]);
+  Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute" });
+  B.who = ""; B.enCours = false;
+  tab = "all"; vuDepuis = null; renderedAcces = ""; derniereSync = null; usersChanged = false;
+  ["rows", "cards", "mylist", "mysum", "adminbox", "bibtools", "biblist", "synthbox", "cmtsbox", "filters", "stats", "form"].forEach(id => { $(id).innerHTML = ""; });
+  $("pending").textContent = ""; $("cmtcount").textContent = "";
+}
+
 function logout() {
   marquerVu();
-  closeDrawer(true);
-  token = null; me = null; items = []; comments = []; acces = []; editing = null; override = false;
-  try { sessionStorage.removeItem("lydia_token"); } catch (e) { /* ignoré */ }
   if (timer) clearInterval(timer);
+  reinitialiserEtat();
+  try { sessionStorage.removeItem("lydia_token"); } catch (e) { /* ignoré */ }
   if (window.google) google.accounts.id.disableAutoSelect();
   showGate("Vous êtes déconnecté(e). Connectez-vous avec votre compte Google.");
 }
@@ -138,7 +155,7 @@ function sessionError(e) {
 function showStatus(msg) { $("status").textContent = msg; $("status").classList.remove("hidden"); }
 function clearStatus() { $("status").classList.add("hidden"); }
 
-let derniereSync = null;
+let derniereSync = null, usersChanged = false;
 function majSync() {
   const el = $("sync");
   if (el && derniereSync) el.textContent = "mis à jour à " + derniereSync.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -147,8 +164,16 @@ function majSync() {
 function applyData(j) {
   derniereSync = new Date();
   majSync();
+  if (j.utilisateurs) {
+    usersChanged = JSON.stringify(j.utilisateurs) !== JSON.stringify(users);
+    users = j.utilisateurs;
+    // Un filtre sur un étudiant qui n'est plus actif n'a plus de sens.
+    if (F.who && !users.some(u => u.prenom === F.who)) F.who = "";
+    if (B.who && !users.some(u => u.prenom === B.who)) B.who = "";
+  }
   items = j.lectures;
   comments = j.commentaires || [];
+  lusSet = new Set((j.lus || []).concat([...lusEnvoi]));
   pendingCount = j.enAttente || 0;
 }
 
@@ -160,9 +185,11 @@ function applyResult(j) {
 }
 
 function renderData() {
+  if (usersChanged && me) renderFilters();
   renderMine();
   renderTable();
   renderPending();
+  renderComments();
   if (tab === "biblio") renderBiblio();
   if (tab === "synth") renderSynth();
 }
@@ -180,7 +207,7 @@ async function boot() {
   gateAttente("Connexion en cours… vérification de votre compte");
   try {
     const j = await api("init");
-    me = j.me; users = j.utilisateurs;
+    me = j.me;
     chargerVu();
     applyData(j);
     clearTimeout(attenteTimer);
@@ -202,19 +229,25 @@ async function refresh(manuel) {
   if (manuel === true) showStatus("⏳ Actualisation…");
   try {
     applyData(await api("list"));
+    if (usersChanged) renderFilters();
     // On ne reconstruit pas le tableau pendant qu'un commentaire est en cours de saisie.
     const a = document.activeElement;
     const typing = a && a.tagName === "TEXTAREA" && a.closest("#rows, #cards");
     renderMine();
     if (!typing) renderTable();
     renderPending();
+    renderComments();
     if (tab === "biblio") renderBiblio();
     if (tab === "synth") renderSynth();
     if (tab === "admin" && canAdmin()) await loadAdmin();
     clearStatus();
   } catch (e) {
     if (e.code === "unauthorized") sessionError(e);
-    else showStatus("Actualisation impossible : " + e.message);
+    else if (e.code === "forbidden" || e.code === "pending") {   // l'accès a été retiré ou suspendu pendant la session
+      if (timer) clearInterval(timer);
+      reinitialiserEtat();
+      showGate(e.message, e.code === "pending");
+    } else showStatus("Actualisation impossible : " + e.message);
   }
 }
 
@@ -267,7 +300,7 @@ function renderPending() {
   el.classList.toggle("hidden", !(canAdmin() && pendingCount));
 }
 
-const ONGLETS = ["all", "mine", "biblio", "synth", "admin"];
+const ONGLETS = ["all", "mine", "cmts", "biblio", "synth", "admin"];
 function setTab(t) {
   tab = t;
   document.querySelectorAll(".tab").forEach(b => {
@@ -277,6 +310,7 @@ function setTab(t) {
   });
   ONGLETS.forEach(x => $(x).classList.toggle("hidden", t !== x));
   if (t === "admin" && canAdmin()) loadAdmin();
+  if (t === "cmts") renderComments();
   if (t === "biblio") { renderBiblioTools(); renderBiblio(); }
   if (t === "synth") renderSynth();
 }
@@ -561,14 +595,47 @@ function badgeNouveau(i) {
   return "";
 }
 
-const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).length; return n ? `<span class="cn" title="${n} commentaire${n > 1 ? "s" : ""}">💬 ${n}</span>` : ""; };
+const nonLu = c => !c.mine && !lusSet.has(c.id);
+const nbNonLus = id => comments.filter(c => c.lecture_id === id && nonLu(c)).length;
+
+// Marque des commentaires comme lus (immédiatement à l'écran, puis confirmé par le serveur).
+async function marquerLus(ids, tous) {
+  const aMarquer = tous ? comments.filter(nonLu).map(c => c.id) : ids.filter(id => !lusSet.has(id));
+  if (!aMarquer.length) return;
+  aMarquer.forEach(id => { lusSet.add(id); lusEnvoi.add(id); });
+  renderComments();
+  try {
+    const j = await api("comments_read", tous ? { tous: true } : { ids: aMarquer });
+    aMarquer.forEach(id => lusEnvoi.delete(id));
+    applyResult(j);
+  } catch (e) {
+    aMarquer.forEach(id => lusEnvoi.delete(id));
+    if (e.code === "unauthorized") sessionError(e);
+    // Autre erreur : ils redeviendront non lus à la prochaine actualisation, sans autre conséquence.
+  }
+}
+
+function basculerDiscussion(id) {
+  if (openCm.has(id)) {
+    openCm.delete(id);
+    comments.filter(c => c.lecture_id === id).forEach(c => frais.delete(c.id));
+  } else {
+    openCm.add(id);
+    const nv = comments.filter(c => c.lecture_id === id && nonLu(c)).map(c => c.id);
+    nv.forEach(x => frais.add(x));
+    marquerLus(nv);
+  }
+  renderTable();
+}
+
+const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).length; const u = nbNonLus(i.id); return n ? `<span class="cn" title="${n} commentaire${n > 1 ? "s" : ""}${u ? ", " + u + " non lu" + (u > 1 ? "s" : "") : ""}">💬 ${n}</span>${u ? `<span class="new">${u} non lu${u > 1 ? "s" : ""}</span>` : ""}` : ""; };
 
 function actionsHtml(i) {
   const edit = !canWrite() ? "" : i.mine
     ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> `
     : `<button class="btn sm sec" data-o="${esc(i.id)}">Contribuer</button> `;
-  const n = comments.filter(x => x.lecture_id === i.id).length;
-  return `${edit}<button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n})">💬 ${n}</button>`;
+  const n = comments.filter(x => x.lecture_id === i.id).length, u = nbNonLus(i.id);
+  return `${edit}<button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n}${u ? ", " + u + " non lus" : ""})">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button>`;
 }
 
 function infosHtml(i) {
@@ -640,7 +707,7 @@ function commentsBox(i) {
     const acts = own
       ? `<button class="btn sm sec" data-ce="${esc(c.id)}">Modifier</button> <button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>`
       : canAdmin() ? `<button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>` : "";
-    return `<div class="cm"><b>${esc(c.auteur)}</b> <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>
+    return `<div class="cm ${frais.has(c.id) ? "fresh" : ""}"><b>${esc(c.auteur)}</b>${frais.has(c.id) ? ' <span class="new">Nouveau</span>' : ""} <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>
       <div class="cmtxt">${esc(c.texte)}</div>${acts}</div>`;
   }).join("") : '<div class="meta">Aucun commentaire.</div>';
   const form = canComment()
@@ -652,6 +719,65 @@ function commentsBox(i) {
 function commentsRow(i) {
   return `<tr class="cmrow"><td colspan="9"><div class="cmbox">${commentsBox(i)}</div></td></tr>`;
 }
+
+/* ---------- Onglet « Commentaires » : tous les commentaires, non lus en tête ---------- */
+
+function renderComments() {
+  if (!me) return;
+  const nv = comments.filter(nonLu).length;
+  $("cmtcount").textContent = nv || "";
+  $("cmtcount").classList.toggle("hidden", !nv);
+  if (tab !== "cmts") return;
+  const parId = new Map(items.map(i => [i.id, i]));
+  let l = comments.filter(c => parId.has(c.lecture_id));
+  if (CM.nonLus) l = l.filter(nonLu);
+  if (CM.miennes) l = l.filter(c => parId.get(c.lecture_id).mine);
+  l.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const cartes = l.map(c => {
+    const it = parId.get(c.lecture_id), nvC = nonLu(c);
+    return `<article class="cmcard ${nvC ? "fresh" : ""}" data-cid="${esc(c.id)}">
+      <div class="cmhead"><b>${esc(c.auteur)}</b> <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>${nvC ? ' <span class="new">Nouveau</span>' : ""}</div>
+      <div class="meta">sur <b>${esc(it.titre)}</b> · lecture de ${esc(it.etudiant)}</div>
+      <div class="cmtxt">${esc(c.texte)}</div>
+      <div class="cmacts"><button class="btn sm" data-cgo="${esc(it.id)}">Ouvrir la lecture${canComment() ? " et répondre" : ""}</button>${nvC ? ` <button class="btn sm sec" data-cr="${esc(c.id)}">Marquer comme lu</button>` : ""}</div>
+    </article>`;
+  }).join("");
+  const vide = CM.nonLus ? "Aucun commentaire non lu. 🎉" : CM.miennes ? "Aucun commentaire sur vos lectures." : "Aucun commentaire pour le moment.";
+  $("cmtsbox").innerHTML = `
+    <div class="card tools">
+      <label class="chk"><input type="checkbox" id="cmtnl" ${CM.nonLus ? "checked" : ""}> Non lus seulement</label>
+      ${canWrite() ? `<label class="chk"><input type="checkbox" id="cmtmine" ${CM.miennes ? "checked" : ""}> Sur mes lectures</label>` : ""}
+      <span class="meta">${nv ? nv + " non lu" + (nv > 1 ? "s" : "") : "Tout est lu"} · ${comments.length} au total</span>
+      <button class="btn sm sec" id="cmtall" ${nv ? "" : "disabled"} style="margin-left:auto">Tout marquer comme lu</button>
+    </div>
+    <div class="cmlist">${cartes || `<div class="note">${vide}</div>`}</div>`;
+}
+
+function ouvrirLecture(id) {
+  if (!filtered().some(i => i.id === id)) {
+    Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "" });
+    renderFilters();
+  }
+  setTab("all");
+  openRows.add(id);
+  if (!openCm.has(id)) basculerDiscussion(id); else renderTable();
+  const el = document.querySelector(`#rows tr[data-id="${CSS.escape(id)}"], #cards .cardc[data-id="${CSS.escape(id)}"]`);
+  if (el && el.scrollIntoView) el.scrollIntoView({ block: "center" });
+}
+
+$("cmtsbox").onclick = e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.cgo) ouvrirLecture(b.dataset.cgo);
+  else if (b.dataset.cr) marquerLus([b.dataset.cr]);
+  else if (b.id === "cmtall") marquerLus([], true);
+};
+$("cmtsbox").onchange = e => {
+  if (e.target.id === "cmtnl") CM.nonLus = e.target.checked;
+  else if (e.target.id === "cmtmine") CM.miennes = e.target.checked;
+  else return;
+  renderComments();
+};
 
 async function commentAction(fn, errLabel) {
   try { applyResult(await enCours("Enregistrement…", fn)); }
@@ -665,6 +791,7 @@ function applyCols() {
 }
 
 function renderFilters() {
+  usersChanged = false;
   const types = [...new Set(TYPES.concat(items.map(i => i.type).filter(Boolean)))];
   const tableau = F.view !== "cartes";
   const actifs = [["q", F.q ? `« ${F.q} »` : ""], ["who", F.who], ["st", F.st], ["type", F.type]].filter(x => x[1]);
@@ -752,8 +879,9 @@ function renderTable() {
     : canWrite() ? "Aucune lecture pour l’instant : utilisez « ＋ Ajouter une lecture »." : "Aucune lecture pour l’instant.";
   $("tablewrap").classList.toggle("hidden", cartes);
   $("cards").classList.toggle("hidden", !cartes);
-  if (cartes) $("cards").innerHTML = l.length ? l.map(cardHtml).join("") : `<div class="empty">${vide}</div>`;
-  else $("rows").innerHTML = l.length ? l.map(cells).join("") : `<tr><td colspan="9" class="empty">${vide}</td></tr>`;
+  // La vue inutilisée est vidée, pas seulement masquée : rien ne peut réapparaître en dessous si une feuille de style périmée est en cache.
+  if (cartes) { $("rows").innerHTML = ""; $("cards").innerHTML = l.length ? l.map(cardHtml).join("") : `<div class="empty">${vide}</div>`; }
+  else { $("cards").innerHTML = ""; $("rows").innerHTML = l.length ? l.map(cells).join("") : `<tr><td colspan="9" class="empty">${vide}</td></tr>`; }
   applyCols();
   const nbres = $("nbres");
   if (nbres) nbres.textContent = (F.q || F.who || F.st || F.type || F.kw) ? `${l.length} / ${items.length} lectures` : "";
@@ -797,7 +925,7 @@ const onAction = e => {
   else if (d.o) startEdit(d.o, true);
   else if (d.apa) copierApa(d.apa);
   else if (d.kw !== undefined) filtrerMotCle(d.kw);
-  else if (d.c) { if (openCm.has(d.c)) openCm.delete(d.c); else openCm.add(d.c); renderTable(); }
+  else if (d.c) basculerDiscussion(d.c);
   else if (d.ca) {
     const t = (drafts[d.ca] || "").trim();
     if (!t) return;
@@ -926,7 +1054,7 @@ async function loadAdmin() {
     const a = document.activeElement;
     const typing = a && a.closest && a.closest("#adminbox") && (a.tagName === "INPUT" || a.tagName === "SELECT");
     acces = next;
-    if (JSON.stringify(next) !== renderedAcces && !typing) renderAdmin();
+    if (signatureAcces(next) !== renderedAcces && !typing) renderAdmin();
   } catch (e) { if (e.code === "unauthorized") sessionError(e); else showStatus("Administration indisponible : " + e.message); }
 }
 
@@ -950,8 +1078,10 @@ function accesRow(a) {
 }
 
 let renderedAcces = "";
+// Le rendu dépend du rôle (étudiant ou administrateur) autant que de la liste : les deux entrent dans la signature.
+const signatureAcces = l => (me ? me.role : "") + "|" + JSON.stringify(l);
 function renderAdmin() {
-  renderedAcces = JSON.stringify(acces);
+  renderedAcces = signatureAcces(acces);
   const head = `<tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th>${isSuper() ? "<th>Couleur</th>" : ""}<th>Rôle</th><th>Actions</th></tr>`;
   const bloc = (titre, list, vide) => `<h3>${titre} (${list.length})</h3>` + (list.length
     ? `<div class="wrap"><table class="adm"><thead>${head}</thead><tbody>${list.map(accesRow).join("")}</tbody></table></div>`
@@ -1027,6 +1157,7 @@ function renderAll() {
   else setTab(tab);
   if (canWrite()) renderMine();
   renderPending();
+  renderComments();
   renderFilters();
   renderTable();
 }

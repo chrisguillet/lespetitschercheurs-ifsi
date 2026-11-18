@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Lectures du mémoire – IFSI</title>
 <script>try{var t=localStorage.getItem("lydia_theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="stylesheet" href="style.css">
+<script>
+// Les fichiers sont redemandés au plus toutes les 10 minutes : après un « git push », plus besoin de Ctrl+F5.
+var V = Math.floor(Date.now() / 600000);
+document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
+</script>
 </head>
 <body>
 <header>
@@ -17,6 +21,7 @@
   <div class="tabs hidden" id="tabs" role="tablist">
     <button class="tab on" data-t="all" role="tab" aria-selected="true">📊 Tableau commun</button>
     <button class="tab" data-t="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
+    <button class="tab" data-t="cmts" role="tab" aria-selected="false">💬 Commentaires <span id="cmtcount" class="count hidden"></span></button>
     <button class="tab" data-t="biblio" role="tab" aria-selected="false">📖 Bibliographie</button>
     <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
     <button class="tab hidden" data-t="admin" role="tab" aria-selected="false">👥 Administration <span id="pending" class="count hidden"></span></button>
@@ -56,6 +61,10 @@
       <div id="cards" class="cards hidden"></div>
     </section>
 
+    <section id="cmts" class="hidden">
+      <div id="cmtsbox"></div>
+    </section>
+
     <section id="biblio" class="hidden">
       <div class="card tools noprint" id="bibtools"></div>
       <div class="card" id="biblist"></div>
@@ -87,7 +96,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
-<script src="apa.js"></script>
-<script src="app.js"></script>
+<script>document.write('<script src="apa.js?v=' + V + '"><\/script><script src="app.js?v=' + V + '"><\/script>');</script>
 </body>
 </html>
