@@ -238,7 +238,7 @@ document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.datase
 
 const cleTitre = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const motsListe = txt => String(txt || "").split(/[,;\n]+/).map(x => x.trim()).filter(Boolean);
-let forceStatut = "", focusAvant = null;
+let forceStatut = "", focusAvant = null, scrollAvant = 0;
 
 function field(id, label, val, opts = {}) {
   const req = opts.req ? '<span class="req"> *</span>' : "";
@@ -309,26 +309,29 @@ function renderForm() {
 function openForm() {
   if (!canWrite()) return;
   focusAvant = document.activeElement;
+  scrollAvant = window.scrollY;
   renderForm();
-  $("overlay").classList.remove("hidden");
   $("drawer").classList.remove("hidden");
-  document.body.classList.add("noscroll");
-  $("drawer").scrollTop = 0;
+  document.body.classList.add("formmode");          // page à part : le reste de l'interface est masqué
+  window.scrollTo(0, 0);
   const f = $("f_titre"); if (f) f.focus();
 }
 
 function closeDrawer(sansBrouillon) {
   if ($("drawer").classList.contains("hidden")) return;
   if (!sansBrouillon && $("f_titre")) { clearTimeout(brouillonTimer); sauverBrouillon(); }
-  $("overlay").classList.add("hidden");
   $("drawer").classList.add("hidden");
-  document.body.classList.remove("noscroll");
+  document.body.classList.remove("formmode");
   editing = null; override = false; forceStatut = "";
-  if (focusAvant && focusAvant.focus) { try { focusAvant.focus(); } catch (e) { /* ignoré */ } }
+  window.scrollTo(0, scrollAvant);
+  if (focusAvant && focusAvant.focus) { try { focusAvant.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
 }
 $("drawerclose").onclick = () => closeDrawer();
-$("overlay").onclick = () => closeDrawer();
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  const ouvert = document.querySelector("details.colmenu[open]");
+  if (ouvert) ouvert.removeAttribute("open"); else closeDrawer();
+});
 $("addbtn").onclick = () => { editing = null; override = false; forceStatut = ""; openForm(); };
 
 /* ---------- Traduction des mots-clés ---------- */
@@ -510,6 +513,8 @@ function badgeNouveau(i) {
   return "";
 }
 
+const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).length; return n ? `<span class="cn" title="${n} commentaire${n > 1 ? "s" : ""}">💬 ${n}</span>` : ""; };
+
 function actionsHtml(i) {
   const edit = !canWrite() ? "" : i.mine
     ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> `
@@ -525,13 +530,14 @@ function infosHtml(i) {
 function cells(i) {
   const c = esc(i.couleur);
   const prog = i.statut === "En cours";
-  const main = `<tr data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeNouveau(i)}
-   <b style="margin-top:6px">${esc(i.titre)}</b>
+  const main = `<tr data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours" : "✅ Terminée"}</span>${badgeNouveau(i)}${nbComm(i)}
+   <b>${esc(i.titre)}</b>
    <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
-   <div class="meta full">${infosHtml(i)}</div></td>
+   <div class="meta full">${infosHtml(i)}</div>
+   <div class="rowacts">${actionsHtml(i)}</div></td>
    <td class="c2 nowrapc"><div class="chipsc">${chips(i.mots)}</div></td><td class="c3 nowrapc"><div class="chipsc">${chips(i.kw)}</div></td>
    <td class="c4">${clampTxt(i.id, i.concepts)}</td><td class="c5">${clampTxt(i.id, i.objet)}</td><td class="c6">${clampTxt(i.id, i.opinion)}</td>
-   <td class="c7">${clampTxt(i.id, i.controverse)}</td><td class="c8">${clampTxt(i.id, i.libre)}</td><td class="apa c9">${apaCell(i)}</td><td class="c10">${actionsHtml(i)}</td></tr>`;
+   <td class="c7">${clampTxt(i.id, i.controverse)}</td><td class="c8">${clampTxt(i.id, i.libre)}</td><td class="apa c9">${apaCell(i)}</td></tr>`;
   return main + (openCm.has(i.id) ? commentsRow(i) : "");
 }
 
@@ -596,7 +602,7 @@ function commentsBox(i) {
 }
 
 function commentsRow(i) {
-  return `<tr class="cmrow"><td colspan="10"><div class="cmbox">${commentsBox(i)}</div></td></tr>`;
+  return `<tr class="cmrow"><td colspan="9"><div class="cmbox">${commentsBox(i)}</div></td></tr>`;
 }
 
 async function commentAction(fn, errLabel) {
@@ -613,23 +619,33 @@ function applyCols() {
 function renderFilters() {
   const types = [...new Set(TYPES.concat(items.map(i => i.type).filter(Boolean)))];
   const tableau = F.view !== "cartes";
-  $("filters").innerHTML = `<input id="q" placeholder="🔍 Rechercher…" aria-label="Rechercher" value="${esc(F.q)}">
-   <select id="who" aria-label="Étudiant"><option value="">Tous les étudiants</option>${students().map(s => `<option ${F.who === s.prenom ? "selected" : ""}>${esc(s.prenom)}</option>`).join("")}</select>
-   <select id="st" aria-label="Statut"><option value="">Tous les statuts</option><option value="Terminée" ${F.st === "Terminée" ? "selected" : ""}>✅ Terminées</option><option value="En cours" ${F.st === "En cours" ? "selected" : ""}>📖 En cours</option></select>
-   <select id="type" aria-label="Type d’article"><option value="">Tous les types</option>${types.map(t => `<option ${F.type === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
-   <select id="sort" aria-label="Tri"><option value="ajoute" ${F.sort === "ajoute" ? "selected" : ""}>Tri : date de saisie</option><option value="etudiant" ${F.sort === "etudiant" ? "selected" : ""}>Tri : étudiant</option><option value="titre" ${F.sort === "titre" ? "selected" : ""}>Tri : titre</option><option value="parution" ${F.sort === "parution" ? "selected" : ""}>Tri : date de parution</option></select>
+  const actifs = [["q", F.q ? `« ${F.q} »` : ""], ["who", F.who], ["st", F.st], ["type", F.type]].filter(x => x[1]);
+  const nb = actifs.length + (F.kw ? 1 : 0);
+  $("filters").innerHTML = `
+   <details class="colmenu" id="mfilt"><summary class="btn sm sec" aria-label="Rechercher et filtrer">🔍 Rechercher / filtrer${nb ? ` <span class="count">${nb}</span>` : ""}</summary>
+    <div class="colpop pop-filtres">
+     <div><label for="q">Recherche</label><input id="q" placeholder="Titre, auteur, mot-clé, commentaire…" value="${esc(F.q)}"></div>
+     <div><label for="who">Étudiant</label><select id="who"><option value="">Tous les étudiants</option>${students().map(s => `<option ${F.who === s.prenom ? "selected" : ""}>${esc(s.prenom)}</option>`).join("")}</select></div>
+     <div><label for="st">Statut</label><select id="st"><option value="">Tous les statuts</option><option value="Terminée" ${F.st === "Terminée" ? "selected" : ""}>✅ Terminées</option><option value="En cours" ${F.st === "En cours" ? "selected" : ""}>📖 En cours</option></select></div>
+     <div><label for="type">Type d’article</label><select id="type"><option value="">Tous les types</option>${types.map(t => `<option ${F.type === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
+     <div><label for="sort">Tri</label><select id="sort"><option value="ajoute" ${F.sort === "ajoute" ? "selected" : ""}>Date de saisie</option><option value="etudiant" ${F.sort === "etudiant" ? "selected" : ""}>Étudiant</option><option value="titre" ${F.sort === "titre" ? "selected" : ""}>Titre</option><option value="parution" ${F.sort === "parution" ? "selected" : ""}>Date de parution</option></select></div>
+     <button type="button" class="btn sm sec" id="reset">Réinitialiser les filtres</button>
+    </div></details>
+   ${actifs.map(([k, v]) => `<button type="button" class="chip on" data-clear="${k}" title="Retirer ce filtre">${esc(v)} ✕</button>`).join("")}
    ${F.kw ? `<button type="button" class="chip on" id="kwoff" title="Retirer le filtre">Mot-clé : ${esc(F.kwLabel)} ✕</button>` : ""}
+   <span class="meta" id="nbres"></span>
+   <span class="spacer"></span>
    <span class="seg"><button type="button" class="btn sm sec ${tableau ? "on" : ""}" id="vt" aria-pressed="${tableau}">▦ Tableau</button><button type="button" class="btn sm sec ${tableau ? "" : "on"}" id="vc" aria-pressed="${!tableau}">🗂 Cartes</button></span>
    ${tableau ? `<details class="colmenu"><summary class="btn sm sec">Colonnes ▾</summary><div class="colpop">${Object.keys(COLS).map(k => `<label><input type="checkbox" data-col="${k}" ${masquees.has(+k) ? "" : "checked"}> ${COLS[k]}</label>`).join("")}</div></details>` : ""}
    <button type="button" class="btn sm sec" id="expall"></button>
-   <button type="button" class="btn sm sec" id="refresh" title="Actualisation automatique toutes les ${CFG.REFRESH_SECONDS || 0} s tant que la page est ouverte">↻ Actualiser</button><span class="meta" id="sync"></span>
+   <button type="button" class="btn sm sec" id="refresh" title="Actualisation automatique toutes les ${CFG.REFRESH_SECONDS || 0} s tant que la page est ouverte" aria-label="Actualiser">↻</button><span class="meta" id="sync"></span>
    ${canWrite() ? '<button type="button" class="btn sm" id="add2">＋ Ajouter une lecture</button>' : ""}
-   <button class="btn sm" id="xl">⬇️ Excel</button> <button class="btn sm" id="pdf">⬇️ PDF</button>`;
-  $("expall").onclick = toutDeplier;
-  $("refresh").onclick = () => refresh(true);
-  majBoutonDeplier(); majSync();
+   <details class="colmenu"><summary class="btn sm sec">⬇️ Exporter ▾</summary><div class="colpop right"><button class="btn sm" id="xl" type="button">Excel</button> <button class="btn sm" id="pdf" type="button">PDF</button></div></details>`;
   $("q").oninput = e => { F.q = e.target.value; renderTable(); };
   ["who", "st", "type", "sort"].forEach(k => $(k).onchange = e => { F[k] = e.target.value; renderTable(); });
+  $("mfilt").ontoggle = () => { if ($("mfilt").open) $("q").focus(); };
+  $("reset").onclick = () => { F.q = ""; F.who = ""; F.st = ""; F.type = ""; F.kw = ""; F.kwLabel = ""; renderFilters(); renderTable(); };
+  $("filters").querySelectorAll("[data-clear]").forEach(b => b.onclick = () => { F[b.dataset.clear] = ""; renderFilters(); renderTable(); });
   if ($("kwoff")) $("kwoff").onclick = () => filtrerMotCle(F.kwLabel);
   $("vt").onclick = () => changerVue("tableau");
   $("vc").onclick = () => changerVue("cartes");
@@ -638,10 +654,16 @@ function renderFilters() {
     try { localStorage.setItem("lydia_cols", JSON.stringify([...masquees])); } catch (e) { /* ignoré */ }
     applyCols();
   });
+  $("expall").onclick = toutDeplier;
+  $("refresh").onclick = () => refresh(true);
   if ($("add2")) $("add2").onclick = () => { editing = null; override = false; forceStatut = ""; openForm(); };
   $("xl").onclick = exportXlsx;
   $("pdf").onclick = exportPdf;
+  majBoutonDeplier(); majSync();
 }
+
+// Les menus déroulants (recherche, colonnes, export) se ferment au clic en dehors ou avec Échap.
+document.addEventListener("click", e => document.querySelectorAll("details.colmenu[open]").forEach(d => { if (!d.contains(e.target)) d.removeAttribute("open"); }));
 
 function changerVue(v) {
   F.view = v;
@@ -683,8 +705,10 @@ function renderTable() {
   $("tablewrap").classList.toggle("hidden", cartes);
   $("cards").classList.toggle("hidden", !cartes);
   if (cartes) $("cards").innerHTML = l.length ? l.map(cardHtml).join("") : `<div class="empty">${vide}</div>`;
-  else $("rows").innerHTML = l.length ? l.map(cells).join("") : `<tr><td colspan="10" class="empty">${vide}</td></tr>`;
+  else $("rows").innerHTML = l.length ? l.map(cells).join("") : `<tr><td colspan="9" class="empty">${vide}</td></tr>`;
   applyCols();
+  const nbres = $("nbres");
+  if (nbres) nbres.textContent = (F.q || F.who || F.st || F.type || F.kw) ? `${l.length} / ${items.length} lectures` : "";
   $("stats").innerHTML = students().map(s => {
     const n = items.filter(i => i.etudiant === s.prenom);
     return `<span class="badge" style="--c:${esc(s.couleur)}">${esc(s.prenom)} : ${n.length} lecture${n.length > 1 ? "s" : ""} (${n.filter(i => i.statut === "En cours").length} en cours)</span>`;

@@ -33,10 +33,10 @@ legend{font-weight:700;font-size:13px;padding:0 6px}
 .tools input,.tools select{width:auto;min-width:160px}
 .wrap{overflow-x:auto;border:1px solid var(--bd);border-radius:12px;background:var(--card)}
 table{border-collapse:collapse;min-width:1800px;width:100%}
-th,td{vertical-align:top;text-align:left;padding:10px;border-bottom:1px solid var(--bd);font-size:13px;white-space:pre-wrap}
+th,td{vertical-align:top;text-align:left;padding:8px 10px;border-bottom:1px solid var(--bd);font-size:13px;white-space:normal}
 th{background:var(--bg);position:sticky;top:0;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mut)}
 td.first{min-width:290px;border-left:6px solid var(--c)}
-td.first b{font-size:14px;display:block;margin-bottom:4px}
+td.first b{font-size:14px;display:block;margin:6px 0 2px}
 .meta{color:var(--mut)}
 .badge{display:inline-block;color:#fff;background:var(--c);border-radius:999px;padding:1px 10px;font-size:12px;margin-right:4px}
 .badge.prog{background:transparent;color:var(--tx);border:2px dashed var(--c)}
@@ -63,7 +63,6 @@ td.apa{min-width:280px;white-space:normal}
 .btn.sm{min-height:30px}
 .tabs{overflow-x:auto;scrollbar-width:thin}
 .tab{white-space:nowrap}
-body.noscroll{overflow:hidden}
 
 /* ---------- Tableau : en-tête et première colonne figés, textes repliés ---------- */
 .wrap.tall{max-height:calc(100vh - 230px);overflow:auto}
@@ -114,10 +113,10 @@ td.nowrapc{white-space:normal}
 .cardc .cmbox{max-width:none}
 
 /* ---------- Panneau latéral du formulaire ---------- */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40}
-.drawer{position:fixed;top:0;right:0;bottom:0;width:min(720px,100vw);background:var(--card);z-index:50;overflow-y:auto;padding:16px 18px 0;box-shadow:-8px 0 30px rgba(0,0,0,.25);border-left:1px solid var(--bd)}
-.drawerhead{display:flex;justify-content:space-between;align-items:center;gap:8px;position:sticky;top:0;background:var(--card);padding:0 0 8px;z-index:3}
-.drawerhead h2{margin:0;font-size:17px}
+body.formmode #app,body.formmode #tabs,body.formmode .me{display:none}
+.drawer{max-width:920px;margin:14px auto;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px 18px 0}
+.drawerhead{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.drawerhead h2{margin:0;font-size:18px}
 details.sec{border:1px solid var(--bd);border-radius:10px;margin:0 0 14px;padding:0 12px 12px}
 details.sec>summary{font-weight:700;font-size:13px;cursor:pointer;padding:10px 0;list-style:none}
 details.sec>summary::-webkit-details-marker{display:none}
@@ -152,9 +151,24 @@ details.sec:not([open])>summary::before{content:"▸ "}
 @media (max-width:700px){main{padding:8px 10px 40px}.tools input,.tools select{min-width:0;flex:1 1 140px}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 @media print{
-  header .tabs,header .me,#theme,.noprint,.tools,#status,.overlay,.drawer,footer,.btn{display:none!important}
+  header .tabs,header .me,#theme,.noprint,.tools,#status,.drawer,footer,.btn{display:none!important}
   body{background:#fff;color:#000}
   .card{border:0;padding:0}
   section.hidden{display:none!important}
   #app>section:not(.hidden) .wrap{max-height:none;overflow:visible}
 }
+
+/* ---------- Lignes compactes : actions dans la ligne dépliée ---------- */
+tr[data-id]:focus-visible,.cardc[data-id]:focus-visible{outline:2px solid var(--pri);outline-offset:-2px}
+.rowacts{display:none;margin-top:10px}
+tr.open .rowacts{display:block}
+.cn{display:inline-block;margin-left:6px;font-size:12px;color:var(--mut)}
+
+/* ---------- Barre d'outils discrète, recherche en menu déroulant ---------- */
+#filters{padding:6px 10px;margin:8px 0;gap:6px}
+.spacer{flex:1}
+.colpop.right{left:auto;right:0;display:flex;gap:6px;min-width:0}
+.colpop.pop-filtres{display:grid;gap:10px;min-width:min(320px,86vw)}
+.colpop.pop-filtres label{display:block;font-size:12px;font-weight:600;color:var(--mut);margin:0 0 3px}
+.colpop.pop-filtres input,.colpop.pop-filtres select{width:100%;min-width:0}
+.colmenu summary .count{margin-left:4px}
