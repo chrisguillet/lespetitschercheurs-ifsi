@@ -34,6 +34,7 @@ const drafts = {};          // brouillons de commentaires, par lecture
 let cmId = null, cmFocus = null;   // lecture dont la discussion est ouverte dans la fenêtre « Commentaires »
 let lusSet = new Set();     // commentaires déjà lus par la personne connectée (suivi côté serveur)
 const lusEnvoi = new Set(); // lus marqués ici mais pas encore confirmés par le serveur
+const nonLusEnvoi = new Set(); // remis en non lu ici, pas encore confirmés par le serveur
 const frais = new Set();    // commentaires qui étaient non lus à l'ouverture : surlignés tant que la discussion reste ouverte
 const CM = { nonLus: false, miennes: false };
 const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
@@ -122,7 +123,7 @@ function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
   editing = null; override = false; forceStatut = "";
-  openRows.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
+  openRows.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
   Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute" });
   B.who = ""; B.enCours = false;
@@ -173,7 +174,7 @@ function applyData(j) {
   }
   items = j.lectures;
   comments = j.commentaires || [];
-  lusSet = new Set((j.lus || []).concat([...lusEnvoi]));
+  lusSet = new Set((j.lus || []).concat([...lusEnvoi]).filter(id => !nonLusEnvoi.has(id)));
   pendingCount = j.enAttente || 0;
 }
 
@@ -614,7 +615,7 @@ const nbNonLus = id => comments.filter(c => c.lecture_id === id && nonLu(c)).len
 async function marquerLus(ids, tous) {
   const aMarquer = tous ? comments.filter(nonLu).map(c => c.id) : ids.filter(id => !lusSet.has(id));
   if (!aMarquer.length) return;
-  aMarquer.forEach(id => { lusSet.add(id); lusEnvoi.add(id); });
+  aMarquer.forEach(id => { lusSet.add(id); lusEnvoi.add(id); nonLusEnvoi.delete(id); });
   renderComments();
   try {
     const j = await api("comments_read", tous ? { tous: true } : { ids: aMarquer });
@@ -625,6 +626,22 @@ async function marquerLus(ids, tous) {
     if (e.code === "unauthorized") sessionError(e);
     // Autre erreur : ils redeviendront non lus à la prochaine actualisation, sans autre conséquence.
   }
+}
+
+// Remet des commentaires en « non lu » (par exemple pour y revenir plus tard).
+async function marquerNonLus(ids) {
+  const cibles = ids.filter(id => lusSet.has(id));
+  if (!cibles.length) return;
+  cibles.forEach(id => { lusSet.delete(id); lusEnvoi.delete(id); nonLusEnvoi.add(id); frais.delete(id); });
+  renderComments(); renderTable();
+  if (cmId) {   // action de l'utilisateur : on reconstruit la fenêtre même si la zone de saisie a le focus (le brouillon est conservé)
+    const haut = $("cmbody").scrollTop; renderModal(); $("cmbody").scrollTop = haut;
+  }
+  try {
+    applyResult(await api("comments_unread", { ids: cibles }));
+  } catch (e) {
+    if (e.code === "unauthorized") sessionError(e);
+  } finally { cibles.forEach(id => nonLusEnvoi.delete(id)); }
 }
 
 // Discussion d'une lecture : fenêtre au-dessus de la page (tableau, cartes ou onglet Commentaires).
@@ -750,10 +767,12 @@ function commentsBox(i) {
   const l = comments.filter(c => c.lecture_id === i.id).sort((a, b) => String(a.date).localeCompare(b.date));
   const list = l.length ? l.map(c => {
     const own = c.mine && canComment();
-    const acts = own
+    const nl = `<button class="btn sm sec" data-cu="${esc(c.id)}" title="Le retrouver parmi les non lus">Marquer comme non lu</button>`;
+    const acts = (own
       ? `<button class="btn sm sec" data-ce="${esc(c.id)}">Modifier</button> <button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>`
-      : canAdmin() ? `<button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>` : "";
-    return `<div class="cm ${frais.has(c.id) ? "fresh" : ""}"><b>${esc(c.auteur)}</b>${frais.has(c.id) ? ' <span class="new">Nouveau</span>' : ""} <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>
+      : (!c.mine && lusSet.has(c.id) ? nl + " " : "") + (canAdmin() ? `<button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>` : ""));
+    const nouveau = frais.has(c.id) || nonLu(c);
+    return `<div class="cm ${nouveau ? "fresh" : ""}"><b>${esc(c.auteur)}</b>${nouveau ? ' <span class="new">Nouveau</span>' : ""} <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>
       <div class="cmtxt">${esc(c.texte)}</div>${acts}</div>`;
   }).join("") : '<div class="meta">Aucun commentaire.</div>';
   const form = canComment()
@@ -781,7 +800,7 @@ function renderComments() {
       <div class="cmhead"><b>${esc(c.auteur)}</b> <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>${nvC ? ' <span class="new">Nouveau</span>' : ""}</div>
       <div class="meta">sur <b>${esc(it.titre)}</b> · lecture de ${esc(it.etudiant)}</div>
       <div class="cmtxt">${esc(c.texte)}</div>
-      <div class="cmacts"><button class="btn sm" data-cgo="${esc(it.id)}">${canComment() ? "Voir et répondre" : "Voir la discussion"}</button>${nvC ? ` <button class="btn sm sec" data-cr="${esc(c.id)}">Marquer comme lu</button>` : ""}</div>
+      <div class="cmacts"><button class="btn sm" data-cgo="${esc(it.id)}">${canComment() ? "Voir et répondre" : "Voir la discussion"}</button>${nvC ? ` <button class="btn sm sec" data-cr="${esc(c.id)}">Marquer comme lu</button>` : !c.mine ? ` <button class="btn sm sec" data-cu="${esc(c.id)}">Marquer comme non lu</button>` : ""}</div>
     </article>`;
   }).join("");
   const vide = CM.nonLus ? "Aucun commentaire non lu. 🎉" : CM.miennes ? "Aucun commentaire sur vos lectures." : "Aucun commentaire pour le moment.";
@@ -800,6 +819,7 @@ $("cmtsbox").onclick = e => {
   if (!b) return;
   if (b.dataset.cgo) ouvrirDiscussion(b.dataset.cgo);
   else if (b.dataset.cr) marquerLus([b.dataset.cr]);
+  else if (b.dataset.cu) marquerNonLus([b.dataset.cu]);
   else if (b.id === "cmtall") marquerLus([], true);
 };
 $("cmtsbox").onchange = e => {
@@ -954,6 +974,7 @@ const onAction = e => {
   if (d.e) startEdit(d.e, false);
   else if (d.o) startEdit(d.o, true);
   else if (d.apa) copierApa(d.apa);
+  else if (d.cu) marquerNonLus([d.cu]);
   else if (d.kw !== undefined) filtrerMotCle(d.kw);
   else if (d.c) ouvrirDiscussion(d.c);
   else if (d.ca) {
@@ -995,7 +1016,7 @@ function biblioListe() {
 function renderBiblioTools() {
   $("bibtools").innerHTML = `<label for="bwho" class="meta" style="margin:0">Étudiant</label>
    <select id="bwho"><option value="">Tous</option>${students().map(s => `<option ${B.who === s.prenom ? "selected" : ""}>${esc(s.prenom)}</option>`).join("")}</select>
-   <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400;color:var(--tx)"><input type="checkbox" id="ben" style="width:auto" ${B.enCours ? "checked" : ""}> Inclure les lectures en cours</label>
+   <label class="chk"><input type="checkbox" id="ben" ${B.enCours ? "checked" : ""}> Inclure les lectures en cours</label>
    <button type="button" class="btn sm" id="bcopy">📋 Tout copier</button>
    <button type="button" class="btn sm sec" id="bdoc">⬇️ Word</button>
    <button type="button" class="btn sm sec" id="btxt">⬇️ Texte</button>

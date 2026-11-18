@@ -178,6 +178,9 @@ function doPost(e) {
       case 'comments_read':
         muter_(function () { marquerLus_(user, req.ids, req.tous === true); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'comments_unread':
+        muter_(function () { marquerNonLus_(user, req.ids); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'translate':
         exigerEtudiant_(user);
         return json_({ ok: true, items: traduireMotsCles_(req.texte) });
@@ -538,6 +541,18 @@ function marquerLus_(user, ids, tous) {
   const texte = Object.keys(fusion).join(',');
   if (ligne) sh.getRange(ligne._row, 2, 1, 1).setValues([[texte]]);
   else sh.appendRow([user.email, texte]);
+}
+
+// Remet des commentaires en « non lu » (les retire de la liste des lus).
+function marquerNonLus_(user, ids) {
+  const sh = feuilleLus_(false);
+  if (!sh || !Array.isArray(ids)) return;
+  const ligne = lireTable_(sh, COL_LUS).filter(function (r) { return r.id === user.email; })[0];
+  if (!ligne || !ligne.commentaires) return;
+  const retirer = {};
+  ids.forEach(function (id) { retirer[String(id)] = true; });
+  const reste = ligne.commentaires.split(',').filter(function (id) { return !retirer[id]; });
+  sh.getRange(ligne._row, 2, 1, 1).setValues([[reste.join(',')]]);
 }
 
 function trouverCommentaire_(sh, id) {
