@@ -3,19 +3,28 @@
  *
  * Le Sheet reste privé : seul ce script y accède (exécution avec le compte du
  * déployeur). Chaque appel porte un jeton d'identité Google (ID token) que le
- * script vérifie auprès de Google, puis il applique les règles :
- *  - étudiant : lit tout, modifie/supprime ses lectures ;
- *  - étudiant sur la lecture d'un autre : modification possible uniquement
- *    avec override explicite (l'ancienne version est gardée dans « Historique ») ;
- *  - formateur : lecture seule stricte.
+ * script vérifie auprès de Google, puis il applique les règles.
+ *
+ * Rôles (colonne « role » de l'onglet Utilisateurs) :
+ *  - etudiant  : ses lectures, « contribuer » aux lectures des autres, administration
+ *                des accès, modération des commentaires ;
+ *  - formateur : lecture + commentaires ;
+ *  - lecteur   : lecture seule.
+ *
+ * Une adresse inconnue qui se connecte crée une demande (statut « en_attente »).
+ * Un étudiant la valide depuis l'application (prénom + rôle) ou la refuse.
  */
 
 const FEUILLE_LECTURES = 'Lectures';
 const FEUILLE_UTILISATEURS = 'Utilisateurs';
 const FEUILLE_HISTORIQUE = 'Historique';
+const FEUILLE_COMMENTAIRES = 'Commentaires';
 
 const COLONNES = ['id', 'owner', 'statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'ajoute', 'modifie_le', 'modifie_par'];
+const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion'];
+const COL_COMMENTAIRES = ['id', 'lecture_id', 'auteur_email', 'auteur', 'date', 'texte', 'modifie_le'];
+const COL_HISTORIQUE = ['date', 'id', 'modifie_par', 'proprietaire', 'avant'];
 const CHAMPS = ['statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre'];
 const OBLIGATOIRES_TERMINEE = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type'];
@@ -25,22 +34,26 @@ const STATUTS = ['Terminée', 'En cours'];
 const TYPES = ['Article scientifique', 'Article de recherche', 'Revue de littérature', 'Article professionnel',
   'Rapport / recommandation HAS', 'Thèse / mémoire', 'Autre'];
 const LONGUEUR_MAX = 2500;
+const COMMENTAIRE_MAX = 2000;
+const PRENOM_MAX = 60;
+const MAX_EN_ATTENTE = 50;
 const COULEUR_DEFAUT = '#888888';
+const DELAI_CONNEXION_MS = 10 * 60 * 1000;
 
-/* ---------- Installation (à lancer une fois depuis l'éditeur) ---------- */
+/* ---------- Installation (à lancer depuis l'éditeur, sans risque de le relancer) ---------- */
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   preparer_(ss, FEUILLE_LECTURES, COLONNES);
-  preparer_(ss, FEUILLE_HISTORIQUE, ['date', 'id', 'modifie_par', 'proprietaire', 'avant']);
-  const u = preparer_(ss, FEUILLE_UTILISATEURS, ['email', 'prenom', 'role', 'couleur']);
+  preparer_(ss, FEUILLE_HISTORIQUE, COL_HISTORIQUE);
+  preparer_(ss, FEUILLE_COMMENTAIRES, COL_COMMENTAIRES);
+  const u = preparer_(ss, FEUILLE_UTILISATEURS, COL_UTILISATEURS);
   if (u.getLastRow() < 2) {
-    u.getRange(2, 1, 5, 4).setValues([
-      ['wacim@gmail.com', 'Wacim', 'etudiant', '#2563eb'],
-      ['ange-marie@gmail.com', 'Ange-Marie', 'etudiant', '#ea580c'],
-      ['helene@gmail.com', 'Hélène', 'etudiant', '#16a34a'],
-      ['lydia@gmail.com', 'Lydia', 'etudiant', '#9333ea'],
-      ['formateur@gmail.com', 'Formateur', 'formateur', '#475569']
+    u.getRange(2, 1, 4, 5).setValues([
+      ['wacim@gmail.com', 'Wacim', 'etudiant', '#2563eb', 'actif'],
+      ['ange-marie@gmail.com', 'Ange-Marie', 'etudiant', '#ea580c', 'actif'],
+      ['helene@gmail.com', 'Hélène', 'etudiant', '#16a34a', 'actif'],
+      ['lydia@gmail.com', 'Lydia', 'etudiant', '#9333ea', 'actif']
     ]);
   }
 }
@@ -63,19 +76,19 @@ function doGet() {
 function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
-    const user = authentifier_(req.token);
+    const user = authentifier_(req.token, req.action);
     switch (req.action) {
       case 'init':
-        return json_({
+        majConnexion_(user);
+        return json_(Object.assign({
           ok: true,
           me: { prenom: user.prenom, role: user.role, couleur: user.couleur },
-          utilisateurs: listerUtilisateurs_().map(function (u) {
-            return { prenom: u.prenom, role: u.role, couleur: u.couleur };
-          }),
-          lectures: lister_(user)
-        });
+          utilisateurs: listerUtilisateurs_().filter(function (u) {
+            return u.role === 'etudiant' && u.statut === 'actif';
+          }).map(function (u) { return { prenom: u.prenom, role: u.role, couleur: u.couleur }; })
+        }, donnees_(user)));
       case 'list':
-        return json_({ ok: true, lectures: lister_(user) });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'add':
         return json_({ ok: true, id: avecVerrou_(function () { return ajouter_(user, req.data); }) });
       case 'update':
@@ -84,6 +97,20 @@ function doPost(e) {
       case 'delete':
         avecVerrou_(function () { supprimer_(user, req.id); });
         return json_({ ok: true });
+      case 'comment_add':
+        return json_({ ok: true, id: avecVerrou_(function () { return commenter_(user, req.lecture_id, req.texte); }) });
+      case 'comment_update':
+        avecVerrou_(function () { modifierCommentaire_(user, req.id, req.texte); });
+        return json_({ ok: true });
+      case 'comment_delete':
+        avecVerrou_(function () { supprimerCommentaire_(user, req.id); });
+        return json_({ ok: true });
+      case 'admin_list':
+        exigerEtudiant_(user);
+        return json_({ ok: true, acces: listerAcces_() });
+      case 'admin_set':
+        avecVerrou_(function () { administrer_(user, req.data); });
+        return json_({ ok: true, acces: listerAcces_() });
       default:
         throw err_('bad_request', 'Action inconnue');
     }
@@ -93,9 +120,18 @@ function doPost(e) {
   }
 }
 
-/* ---------- Authentification ---------- */
+function donnees_(user) {
+  return {
+    lectures: lister_(user),
+    commentaires: listerCommentaires_(user),
+    enAttente: user.role === 'etudiant'
+      ? listerUtilisateurs_().filter(function (u) { return u.statut === 'en_attente'; }).length : 0
+  };
+}
 
-function authentifier_(token) {
+/* ---------- Authentification et accès ---------- */
+
+function authentifier_(token, action) {
   if (!token || typeof token !== 'string') throw err_('unauthorized', 'Connexion requise');
   const cache = CacheService.getScriptCache();
   const cle = 't_' + Utilities.base64EncodeWebSafe(
@@ -115,23 +151,79 @@ function authentifier_(token) {
     cache.put(cle, email, Math.max(1, Math.min(300, restant)));
   }
   const user = listerUtilisateurs_().filter(function (u) { return u.email === email; })[0];
-  if (!user) throw err_('forbidden', 'Cette adresse n’est pas autorisée');
+  if (!user) {
+    // Adresse inconnue : une demande est enregistrée à l'ouverture de l'application seulement.
+    if (action === 'init') avecVerrou_(function () { enregistrerDemande_(email); });
+    throw err_('pending', 'Votre demande d’accès a été envoyée : un étudiant du groupe doit la valider.');
+  }
+  if (user.statut === 'en_attente') throw err_('pending', 'Votre demande d’accès est en attente de validation.');
+  if (user.statut === 'refuse') throw err_('forbidden', 'Accès refusé');
   return user;
 }
 
-function listerUtilisateurs_() {
+function feuilleUtilisateurs_() {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(FEUILLE_UTILISATEURS);
   if (!sh) throw err_('server', 'Feuille Utilisateurs absente : lancez setup()');
-  return sh.getDataRange().getDisplayValues().slice(1)
-    .filter(function (r) { return r[0] && r[1]; })
-    .map(function (r) {
-      return {
-        email: String(r[0]).trim().toLowerCase(),
-        prenom: String(r[1]).trim(),
-        role: String(r[2]).trim().toLowerCase() === 'formateur' ? 'formateur' : 'etudiant',
-        couleur: /^#[0-9a-fA-F]{6}$/.test(String(r[3]).trim()) ? String(r[3]).trim() : COULEUR_DEFAUT
-      };
-    });
+  return sh;
+}
+
+function listerUtilisateurs_() {
+  return feuilleUtilisateurs_().getDataRange().getDisplayValues().slice(1).map(function (r, i) {
+    const role = String(r[2]).trim().toLowerCase();
+    const statut = String(r[4] || '').trim().toLowerCase();
+    return {
+      _row: i + 2,
+      email: String(r[0]).trim().toLowerCase(),
+      prenom: String(r[1]).trim(),
+      // Rôle inconnu ou vide : le moins privilégié.
+      role: role === 'etudiant' || role === 'formateur' ? role : 'lecteur',
+      couleur: /^#[0-9a-fA-F]{6}$/.test(String(r[3]).trim()) ? String(r[3]).trim() : COULEUR_DEFAUT,
+      // Ligne ancienne sans statut : considérée comme active.
+      statut: statut === 'en_attente' || statut === 'refuse' ? statut : 'actif',
+      demande_le: String(r[5] || ''),
+      derniere_connexion: String(r[6] || '')
+    };
+  }).filter(function (u) { return u.email; });
+}
+
+function enregistrerDemande_(email) {
+  const existants = listerUtilisateurs_();
+  if (existants.some(function (u) { return u.email === email; })) return;
+  const enAttente = existants.filter(function (u) { return u.statut === 'en_attente'; }).length;
+  if (enAttente >= MAX_EN_ATTENTE) throw err_('forbidden', 'Trop de demandes en attente, réessayez plus tard');
+  feuilleUtilisateurs_().appendRow([email, '', 'lecteur', COULEUR_DEFAUT, 'en_attente', new Date().toISOString(), '']);
+}
+
+function majConnexion_(user) {
+  const derniere = Date.parse(user.derniere_connexion);
+  if (derniere && Date.now() - derniere < DELAI_CONNEXION_MS) return;
+  feuilleUtilisateurs_().getRange(user._row, 7, 1, 1).setValues([[new Date().toISOString()]]);
+}
+
+/* ---------- Administration des accès (étudiants) ---------- */
+
+function listerAcces_() {
+  return listerUtilisateurs_().map(function (u) {
+    return { email: u.email, prenom: u.prenom, role: u.role, statut: u.statut,
+      demande_le: u.demande_le, derniere_connexion: u.derniere_connexion, protege: u.role === 'etudiant' };
+  });
+}
+
+function administrer_(user, data) {
+  exigerEtudiant_(user);
+  if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
+  const email = String(data.email || '').trim().toLowerCase();
+  const cible = listerUtilisateurs_().filter(function (u) { return u.email === email; })[0];
+  if (!cible) throw err_('not_found', 'Adresse introuvable');
+  if (cible.role === 'etudiant') throw err_('forbidden', 'Les étudiants se gèrent directement dans le Sheet');
+  const role = String(data.role || '');
+  const statut = String(data.statut || '');
+  const prenom = String(data.prenom === undefined || data.prenom === null ? '' : data.prenom).trim();
+  if (['formateur', 'lecteur'].indexOf(role) < 0) throw err_('invalid', 'Rôle invalide');
+  if (['actif', 'refuse'].indexOf(statut) < 0) throw err_('invalid', 'Statut invalide');
+  if (prenom.length > PRENOM_MAX) throw err_('invalid', 'Prénom trop long');
+  if (statut === 'actif' && !prenom) throw err_('invalid', 'Prénom requis pour valider un accès');
+  feuilleUtilisateurs_().getRange(cible._row, 2, 1, 4).setValues([[prenom, role, cible.couleur, statut]]);
 }
 
 /* ---------- Lectures ---------- */
@@ -142,10 +234,10 @@ function feuilleLectures_() {
   return sh;
 }
 
-function lireLignes_(sh) {
+function lireTable_(sh, colonnes) {
   return sh.getDataRange().getDisplayValues().slice(1).map(function (v, i) {
     const o = { _row: i + 2 };
-    COLONNES.forEach(function (c, j) { o[c] = v[j] === undefined ? '' : String(v[j]); });
+    colonnes.forEach(function (c, j) { o[c] = v[j] === undefined ? '' : String(v[j]); });
     return o;
   }).filter(function (o) { return o.id; });
 }
@@ -153,7 +245,7 @@ function lireLignes_(sh) {
 function lister_(user) {
   const parEmail = {};
   listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
-  return lireLignes_(feuilleLectures_()).map(function (r) {
+  return lireTable_(feuilleLectures_(), COLONNES).map(function (r) {
     const proprio = parEmail[r.owner];
     const pub = { etudiant: proprio ? proprio.prenom : 'Inconnu(e)', couleur: proprio ? proprio.couleur : COULEUR_DEFAUT,
       mine: r.owner === user.email };
@@ -200,6 +292,11 @@ function supprimer_(user, id) {
   const r = trouver_(sh, id);
   if (r.owner !== user.email) throw err_('not_owner', 'Seul le propriétaire peut supprimer une lecture');
   sh.deleteRow(r._row);
+  // Les commentaires d'une lecture supprimée sont supprimés avec elle (de bas en haut).
+  const c = feuilleCommentaires_();
+  lireTable_(c, COL_COMMENTAIRES).filter(function (x) { return x.lecture_id === id; })
+    .sort(function (a, b) { return b._row - a._row; })
+    .forEach(function (x) { c.deleteRow(x._row); });
 }
 
 function historiser_(ancienne, user, date) {
@@ -210,14 +307,72 @@ function historiser_(ancienne, user, date) {
   h.appendRow([date, ancienne.id, user.prenom, proprio ? proprio.prenom : '', JSON.stringify(avant).slice(0, 49000)]);
 }
 
+/* ---------- Commentaires (formateurs) ---------- */
+
+function feuilleCommentaires_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(FEUILLE_COMMENTAIRES);
+  if (!sh) throw err_('server', 'Feuille Commentaires absente : lancez setup()');
+  return sh;
+}
+
+function listerCommentaires_(user) {
+  return lireTable_(feuilleCommentaires_(), COL_COMMENTAIRES).map(function (r) {
+    return { id: r.id, lecture_id: r.lecture_id, auteur: r.auteur, date: r.date, modifie_le: r.modifie_le,
+      texte: r.texte, mine: r.auteur_email === user.email };
+  });
+}
+
+function commenter_(user, lectureId, texte) {
+  exigerFormateur_(user);
+  const t = nettoyerCommentaire_(texte);
+  trouver_(feuilleLectures_(), lectureId);
+  const id = Utilities.getUuid();
+  feuilleCommentaires_().appendRow([id, lectureId, user.email, user.prenom, new Date().toISOString(), t, '']);
+  return id;
+}
+
+function modifierCommentaire_(user, id, texte) {
+  exigerFormateur_(user);
+  const sh = feuilleCommentaires_();
+  const c = trouverCommentaire_(sh, id);
+  if (c.auteur_email !== user.email) throw err_('not_owner', 'Vous ne pouvez modifier que vos commentaires');
+  const t = nettoyerCommentaire_(texte);
+  sh.getRange(c._row, 6, 1, 2).setValues([[t, new Date().toISOString()]]);
+}
+
+function supprimerCommentaire_(user, id) {
+  const sh = feuilleCommentaires_();
+  const c = trouverCommentaire_(sh, id);
+  const auteur = c.auteur_email === user.email && user.role === 'formateur';
+  if (!auteur && user.role !== 'etudiant') throw err_('forbidden', 'Suppression non autorisée');
+  sh.deleteRow(c._row);
+}
+
+function trouverCommentaire_(sh, id) {
+  const c = lireTable_(sh, COL_COMMENTAIRES).filter(function (x) { return x.id === id; })[0];
+  if (!c) throw err_('not_found', 'Commentaire introuvable');
+  return c;
+}
+
+function nettoyerCommentaire_(texte) {
+  const t = texte === undefined || texte === null ? '' : String(texte).trim();
+  if (!t) throw err_('invalid', 'Commentaire vide');
+  if (t.length > COMMENTAIRE_MAX) throw err_('invalid', 'Commentaire trop long (' + COMMENTAIRE_MAX + ' caractères maximum)');
+  return t;
+}
+
 /* ---------- Validation ---------- */
 
 function exigerEtudiant_(user) {
   if (user.role !== 'etudiant') throw err_('forbidden', 'Accès en lecture seule');
 }
 
+function exigerFormateur_(user) {
+  if (user.role !== 'formateur') throw err_('forbidden', 'Réservé aux formateurs');
+}
+
 function trouver_(sh, id) {
-  const r = lireLignes_(sh).filter(function (x) { return x.id === id; })[0];
+  const r = lireTable_(sh, COLONNES).filter(function (x) { return x.id === id; })[0];
   if (!r) throw err_('not_found', 'Lecture introuvable');
   return r;
 }

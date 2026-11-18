@@ -14,6 +14,7 @@
   <div class="tabs hidden" id="tabs">
     <button class="tab on" data-t="mine">✍️ Mes lectures</button>
     <button class="tab" data-t="all">📊 Tableau commun</button>
+    <button class="tab hidden" data-t="admin">👥 Administration <span id="pending" class="count hidden"></span></button>
   </div>
 </header>
 <main>
@@ -22,6 +23,7 @@
   <section id="gate" class="card">
     <p id="gatemsg">Connectez-vous avec votre compte Google pour accéder aux lectures.</p>
     <div id="login"></div>
+    <button class="btn sec hidden" id="retry" style="margin-top:12px">Vérifier à nouveau</button>
   </section>
 
   <div id="app" class="hidden">
@@ -46,6 +48,15 @@
         <th>6 · Opinion de l’auteur</th>
         <th>7 · Controverse</th><th>8 · Libre</th><th>Actions</th>
       </tr></thead><tbody id="rows"></tbody></table></div>
+    </section>
+
+    <section id="admin" class="hidden">
+      <div class="card">
+        <h2 style="margin-top:0;font-size:16px">Demandes d’accès et droits</h2>
+        <div class="note">Une personne inconnue qui se connecte apparaît ici en attente. Donnez-lui un prénom puis un rôle :
+          <b>Lecteur</b> (lecture seule) ou <b>Formateur</b> (lecture + commentaires). Les étudiants se gèrent dans le Sheet.</div>
+        <div id="adminbox"></div>
+      </div>
     </section>
   </div>
 </main>

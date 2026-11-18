@@ -16,12 +16,25 @@ const fmtD = iso => {
   const d = new Date(iso);
   return isNaN(d) ? iso : d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 };
+const fmtDT = iso => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+};
 const stamp = () => new Date().toISOString().slice(0, 10);
 
 let token = null;
 try { token = sessionStorage.getItem("lydia_token"); } catch (e) { /* stockage indisponible */ }
-let me = null, users = [], items = [], editing = null, override = false, tab = "mine", timer = null;
+let me = null, users = [], items = [], comments = [], acces = [], pendingCount = 0;
+let editing = null, override = false, tab = "mine", timer = null;
+const drafts = {};          // brouillons de commentaires, par lecture
+const openCm = new Set();   // lectures dont les commentaires sont dépliés
 const F = { q: "", who: "", st: "", sort: "ajoute" };
+
+// etudiant : écrit et administre ; formateur : lit et commente ; lecteur : lit.
+const canWrite = () => !!me && me.role === "etudiant";
+const canComment = () => !!me && me.role === "formateur";
+const ROLE_LABEL = { etudiant: "", formateur: " (formateur : lecture + commentaires)", lecteur: " (lecture seule)" };
 
 /* ---------- API ---------- */
 
@@ -54,6 +67,7 @@ function initGoogle() {
   if (!(window.google && google.accounts && google.accounts.id)) { setTimeout(initGoogle, 200); return; }
   google.accounts.id.initialize({ client_id: CFG.GOOGLE_CLIENT_ID, callback: onCredential, auto_select: true });
   google.accounts.id.renderButton($("login"), { theme: "outline", size: "large", text: "signin_with", locale: "fr" });
+  $("retry").onclick = () => boot();
   if (token) boot(); else google.accounts.id.prompt();
 }
 
@@ -63,16 +77,17 @@ function onCredential(resp) {
   if (me) { clearStatus(); refresh(); } else boot();
 }
 
-function showGate(msg) {
+function showGate(msg, retry) {
   $("gate").classList.remove("hidden");
   $("app").classList.add("hidden");
   $("tabs").classList.add("hidden");
   $("me").innerHTML = "";
+  $("retry").classList.toggle("hidden", !retry);
   if (msg) $("gatemsg").textContent = msg;
 }
 
 function logout() {
-  token = null; me = null; items = []; editing = null; override = false;
+  token = null; me = null; items = []; comments = []; acces = []; editing = null; override = false;
   try { sessionStorage.removeItem("lydia_token"); } catch (e) { /* ignoré */ }
   if (timer) clearInterval(timer);
   if (window.google) google.accounts.id.disableAutoSelect();
@@ -94,10 +109,17 @@ function sessionError(e) {
 function showStatus(msg) { $("status").textContent = msg; $("status").classList.remove("hidden"); }
 function clearStatus() { $("status").classList.add("hidden"); }
 
+function applyData(j) {
+  items = j.lectures;
+  comments = j.commentaires || [];
+  pendingCount = j.enAttente || 0;
+}
+
 async function boot() {
   try {
     const j = await api("init");
-    me = j.me; users = j.utilisateurs; items = j.lectures;
+    me = j.me; users = j.utilisateurs;
+    applyData(j);
     $("gate").classList.add("hidden");
     $("app").classList.remove("hidden");
     clearStatus();
@@ -105,7 +127,8 @@ async function boot() {
     startPolling();
   } catch (e) {
     if (e.code === "unauthorized") sessionError(e);
-    else if (e.code === "forbidden") showGate(e.message + " : contactez l’administrateur ou changez de compte.");
+    else if (e.code === "pending") showGate(e.message, true);
+    else if (e.code === "forbidden") showGate(e.message + ". Changez de compte si besoin.");
     else showGate("Erreur : " + e.message);
   }
 }
@@ -113,10 +136,14 @@ async function boot() {
 async function refresh() {
   if (!token || !me) return;
   try {
-    const j = await api("list");
-    items = j.lectures;
+    applyData(await api("list"));
+    // On ne reconstruit pas le tableau pendant qu'un commentaire est en cours de saisie.
+    const a = document.activeElement;
+    const typing = a && a.tagName === "TEXTAREA" && a.closest("#rows");
     renderMine();
-    renderTable();
+    if (!typing) renderTable();
+    renderPending();
+    if (tab === "admin" && canWrite()) await loadAdmin();
     clearStatus();
   } catch (e) {
     if (e.code === "unauthorized") sessionError(e);
@@ -132,24 +159,31 @@ function startPolling() {
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 
-/* ---------- Interface ---------- */
+/* ---------- Interface générale ---------- */
 
 const students = () => users.filter(u => u.role === "etudiant");
-const isTeacher = () => me && me.role === "formateur";
 
 function renderMe() {
-  $("me").innerHTML = `<span class="who" style="--c:${esc(me.couleur)}">Connecté(e) : ${esc(me.prenom)}${isTeacher() ? " (lecture seule)" : ""}</span>
+  $("me").innerHTML = `<span class="who" style="--c:${esc(me.couleur)}">Connecté(e) : ${esc(me.prenom)}${ROLE_LABEL[me.role] || ""}</span>
     <button class="btn sm sec" id="logout">Se déconnecter</button>`;
   $("logout").onclick = logout;
+}
+
+function renderPending() {
+  const el = $("pending");
+  el.textContent = pendingCount || "";
+  el.classList.toggle("hidden", !(canWrite() && pendingCount));
 }
 
 function setTab(t) {
   tab = t;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.t === t));
-  $("mine").classList.toggle("hidden", t !== "mine");
-  $("all").classList.toggle("hidden", t !== "all");
+  ["mine", "all", "admin"].forEach(s => $(s).classList.toggle("hidden", t !== s));
+  if (t === "admin" && canWrite()) loadAdmin();
 }
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.t));
+
+/* ---------- Mes lectures ---------- */
 
 function field(id, label, val, opts = {}) {
   const req = opts.req ? '<span class="req"> *</span>' : "";
@@ -159,7 +193,7 @@ function field(id, label, val, opts = {}) {
 }
 
 function renderForm() {
-  if (isTeacher()) return;
+  if (!canWrite()) return;
   const d = editing ? items.find(i => i.id === editing) || {} : {};
   $("ftitle").textContent = editing ? (override ? `Contribuer à la lecture de ${d.etudiant}` : "Modifier la lecture") : "Ajouter une lecture";
   $("fnote").textContent = override
@@ -222,7 +256,7 @@ async function save() {
 }
 
 async function del(id) {
-  if (!confirm("Supprimer cette lecture ?")) return;
+  if (!confirm("Supprimer cette lecture et ses commentaires ?")) return;
   try { await api("delete", { id }); await refresh(); }
   catch (e) { alert("Suppression impossible : " + e.message); }
 }
@@ -238,7 +272,7 @@ function startEdit(id, ov) {
 }
 
 function renderMine() {
-  if (isTeacher()) return;
+  if (!canWrite()) return;
   const mine = items.filter(i => i.mine);
   if (!mine.length) { $("mylist").innerHTML = '<div class="empty">Aucune lecture pour l’instant.</div>'; return; }
   $("mylist").innerHTML = mine.map(i => `<div class="card" style="border-left:6px solid ${esc(i.couleur)};padding:10px 14px"><div class="tools" style="justify-content:space-between"><div><span class="badge ${i.statut === "En cours" ? "prog" : ""}" style="--c:${esc(i.couleur)}">${i.statut === "En cours" ? "📖 En cours" : "✅ Terminée"}</span> <b>${esc(i.titre)}</b> <span class="meta">· saisi le ${esc(fmtD(i.ajoute))}${i.modifie_par ? ` · modifié par ${esc(i.modifie_par)}` : ""}</span></div><div><button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> <button class="btn sm sec del" data-d="${esc(i.id)}">Supprimer</button></div></div></div>`).join("");
@@ -246,16 +280,42 @@ function renderMine() {
   $("mylist").querySelectorAll("[data-d]").forEach(b => b.onclick = () => del(b.dataset.d));
 }
 
+/* ---------- Tableau commun et commentaires ---------- */
+
 function cells(i) {
   const c = esc(i.couleur);
   const prog = i.statut === "En cours";
-  const action = isTeacher() ? "" : i.mine
-    ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button>`
-    : `<button class="btn sm sec" data-o="${esc(i.id)}">Contribuer</button>`;
-  return `<tr class="${prog ? "prog" : ""}" style="--c:${c}"><td class="first"><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>
+  const n = comments.filter(x => x.lecture_id === i.id).length;
+  const edit = !canWrite() ? "" : i.mine
+    ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> `
+    : `<button class="btn sm sec" data-o="${esc(i.id)}">Contribuer</button> `;
+  const cm = `<button class="btn sm sec" data-c="${esc(i.id)}">💬 ${n}</button>`;
+  const main = `<tr class="${prog ? "prog" : ""}" style="--c:${c}"><td class="first"><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>
    <b style="margin-top:6px">${esc(i.titre)}</b>
    <div class="meta">Parution : ${esc(fmtD(i.parution)) || "—"}<br>Auteur : ${esc(i.auteur) || "—"} (${esc(i.qualite) || "—"})<br>Nationalité : ${esc(i.nation) || "—"}<br>Type : ${esc(i.type) || "—"}<br><i>Saisi le ${esc(fmtD(i.ajoute))}</i>${i.modifie_par ? `<br><i>Modifié par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}</i>` : ""}</div></td>
-   <td>${esc(i.mots)}</td><td>${esc(i.kw)}</td><td>${esc(i.concepts)}</td><td>${esc(i.objet)}</td><td>${esc(i.opinion)}</td><td>${esc(i.controverse)}</td><td>${esc(i.libre)}</td><td>${action}</td></tr>`;
+   <td>${esc(i.mots)}</td><td>${esc(i.kw)}</td><td>${esc(i.concepts)}</td><td>${esc(i.objet)}</td><td>${esc(i.opinion)}</td><td>${esc(i.controverse)}</td><td>${esc(i.libre)}</td><td>${edit}${cm}</td></tr>`;
+  return main + (openCm.has(i.id) ? commentsRow(i) : "");
+}
+
+function commentsRow(i) {
+  const l = comments.filter(c => c.lecture_id === i.id).sort((a, b) => String(a.date).localeCompare(b.date));
+  const list = l.length ? l.map(c => {
+    const own = c.mine && canComment();
+    const acts = own
+      ? `<button class="btn sm sec" data-ce="${esc(c.id)}">Modifier</button> <button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>`
+      : canWrite() ? `<button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>` : "";
+    return `<div class="cm"><b>${esc(c.auteur)}</b> <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>
+      <div class="cmtxt">${esc(c.texte)}</div>${acts}</div>`;
+  }).join("") : '<div class="meta">Aucun commentaire.</div>';
+  const form = canComment()
+    ? `<div><textarea data-cm="${esc(i.id)}" maxlength="2000" placeholder="Ajouter un commentaire…">${esc(drafts[i.id] || "")}</textarea>
+       <button class="btn sm" data-ca="${esc(i.id)}" style="margin-top:6px">Publier</button></div>` : "";
+  return `<tr class="cmrow"><td colspan="9"><div class="cmbox">${list}${form}</div></td></tr>`;
+}
+
+async function commentAction(fn, errLabel) {
+  try { await fn(); await refresh(); }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else alert(errLabel + " : " + e.message); }
 }
 
 function renderFilters() {
@@ -287,11 +347,84 @@ function renderTable() {
     return `<span class="badge" style="--c:${esc(s.couleur)}">${esc(s.prenom)} : ${n.length} lecture${n.length > 1 ? "s" : ""} (${n.filter(i => i.statut === "En cours").length} en cours)</span>`;
   }).join("");
 }
+
 $("rows").onclick = e => {
   const b = e.target.closest("button");
   if (!b) return;
-  if (b.dataset.e) startEdit(b.dataset.e, false);
-  else if (b.dataset.o) startEdit(b.dataset.o, true);
+  const d = b.dataset;
+  if (d.e) startEdit(d.e, false);
+  else if (d.o) startEdit(d.o, true);
+  else if (d.c) { if (openCm.has(d.c)) openCm.delete(d.c); else openCm.add(d.c); renderTable(); }
+  else if (d.ca) {
+    const t = (drafts[d.ca] || "").trim();
+    if (!t) return;
+    b.disabled = true;
+    commentAction(async () => { await api("comment_add", { lecture_id: d.ca, texte: t }); drafts[d.ca] = ""; }, "Commentaire impossible");
+  } else if (d.ce) {
+    const c = comments.find(x => x.id === d.ce);
+    const t = c && prompt("Modifier le commentaire :", c.texte);
+    if (t && t.trim()) commentAction(() => api("comment_update", { id: d.ce, texte: t }), "Modification impossible");
+  } else if (d.cd) {
+    if (confirm("Supprimer ce commentaire ?")) commentAction(() => api("comment_delete", { id: d.cd }), "Suppression impossible");
+  }
+};
+$("rows").oninput = e => { if (e.target.dataset.cm) drafts[e.target.dataset.cm] = e.target.value; };
+
+/* ---------- Administration des accès (étudiants) ---------- */
+
+async function loadAdmin() {
+  try {
+    const next = (await api("admin_list")).acces;
+    // Pas de reconstruction si rien n'a changé ou si une saisie est en cours (sinon elle serait perdue).
+    const a = document.activeElement;
+    const typing = a && a.closest && a.closest("#adminbox") && (a.tagName === "INPUT" || a.tagName === "SELECT");
+    acces = next;
+    if (JSON.stringify(next) !== renderedAcces && !typing) renderAdmin();
+  } catch (e) { if (e.code === "unauthorized") sessionError(e); else showStatus("Administration indisponible : " + e.message); }
+}
+
+function accesRow(a) {
+  const k = esc(a.email);
+  const base = `<td>${k}</td><td>${esc(fmtDT(a.demande_le))}</td><td>${esc(fmtDT(a.derniere_connexion))}</td>`;
+  if (a.protege) return `<tr>${base}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Géré dans le Sheet</td></tr>`;
+  const opt = (v, lbl) => `<option value="${v}" ${a.role === v ? "selected" : ""}>${lbl}</option>`;
+  const acts = a.statut === "actif"
+    ? `<button class="btn sm" data-as="actif">Enregistrer</button> <button class="btn sm sec del" data-as="refuse">Retirer l’accès</button>`
+    : a.statut === "en_attente"
+      ? `<button class="btn sm" data-as="actif">Valider</button> <button class="btn sm sec del" data-as="refuse">Refuser</button>`
+      : `<button class="btn sm" data-as="actif">Réactiver</button>`;
+  return `<tr data-k="${k}">${base}<td><input data-f="prenom" maxlength="60" value="${esc(a.prenom)}" placeholder="Prénom"></td>
+    <td><select data-f="role">${opt("lecteur", "Lecteur")}${opt("formateur", "Formateur")}</select></td><td>${acts}</td></tr>`;
+}
+
+let renderedAcces = "";
+function renderAdmin() {
+  renderedAcces = JSON.stringify(acces);
+  const bloc = (titre, list, vide) => `<h3>${titre} (${list.length})</h3>` + (list.length
+    ? `<div class="wrap"><table class="adm"><thead><tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th><th>Rôle</th><th>Actions</th></tr></thead><tbody>${list.map(accesRow).join("")}</tbody></table></div>`
+    : `<div class="meta">${vide}</div>`);
+  $("adminbox").innerHTML =
+    bloc("⏳ Demandes en attente", acces.filter(a => a.statut === "en_attente"), "Aucune demande en attente.") +
+    bloc("✅ Accès actifs", acces.filter(a => a.statut === "actif"), "Aucun accès actif.") +
+    bloc("⛔ Accès refusés", acces.filter(a => a.statut === "refuse"), "Aucun accès refusé.");
+}
+
+$("adminbox").onclick = async e => {
+  const b = e.target.closest("button[data-as]");
+  if (!b) return;
+  const row = b.closest("tr");
+  const data = { email: row.dataset.k, prenom: row.querySelector('[data-f="prenom"]').value,
+    role: row.querySelector('[data-f="role"]').value, statut: b.dataset.as };
+  if (data.statut === "refuse" && !confirm("Retirer ou refuser l’accès de " + data.email + " ?")) return;
+  b.disabled = true;
+  try {
+    acces = (await api("admin_set", { data })).acces;
+    renderAdmin();
+    refresh();
+  } catch (err) {
+    b.disabled = false;
+    if (err.code === "unauthorized") sessionError(err); else alert("Action impossible : " + err.message);
+  }
 };
 
 /* ---------- Exports ---------- */
@@ -333,9 +466,12 @@ function exportPdf() {
 function renderAll() {
   renderMe();
   $("tabs").classList.remove("hidden");
-  document.querySelector('.tab[data-t="mine"]').classList.toggle("hidden", isTeacher());
-  if (isTeacher()) setTab("all");
-  else { renderForm(); renderMine(); }
+  document.querySelector('.tab[data-t="mine"]').classList.toggle("hidden", !canWrite());
+  document.querySelector('.tab[data-t="admin"]').classList.toggle("hidden", !canWrite());
+  if (!canWrite() && tab !== "all") setTab("all");
+  else setTab(tab);
+  if (canWrite()) { renderForm(); renderMine(); }
+  renderPending();
   renderFilters();
   renderTable();
 }
