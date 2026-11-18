@@ -28,7 +28,7 @@ Navigateur (GitHub Pages)  ──jeton Google──▶  Apps Script (API)  ─�
 | **Étudiant** | oui | modifier, supprimer | « Contribuer » (avertissement, ancienne version dans `Historique`) ; suppression interdite | publier, modifier et supprimer les siens ; supprimer ceux des autres (modération) | oui |
 | **Formateur** | oui | — | — | publier, modifier et supprimer les siens | non |
 | **Lecteur** | oui | — | — | — | non |
-| **Administrateur** | oui | — | — | supprimer (modération) | oui, **y compris les étudiants** (prénom, couleur, rôle, adresse e-mail) |
+| **Administrateur** | oui | — | — | supprimer (modération) | oui, **y compris les étudiants** (prénom, couleur, rôle, adresse e-mail) et peut **supprimer** un utilisateur (plus d’accès ; ses lectures restent dans le Sheet mais ne sont plus affichées, et ses commentaires sur les lectures des autres apparaissent sous « Utilisateur supprimé ») |
 
 L'**administrateur** est une adresse fixe, définie dans la propriété de script `ADMIN_EMAIL` (voir plus bas). Elle n'apparaît
 ni dans la feuille ni dans le dépôt, et l'application ne permet pas de la modifier. Quand il change l'adresse d'un étudiant,

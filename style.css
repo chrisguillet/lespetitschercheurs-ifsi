@@ -57,7 +57,8 @@ tr.cmrow td{background:var(--bg);white-space:normal}
 .cmlist{display:flex;flex-direction:column;gap:10px;margin-top:10px;max-width:900px}
 .cmcard{border:1px solid var(--bd);border-left:4px solid var(--bd);border-radius:8px;padding:10px 12px;background:var(--card,transparent);display:flex;flex-direction:column;gap:4px}
 .cmcard .cmacts{margin-top:4px}
-.chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:14px;font-weight:500;color:var(--tx)}
+.tools .chk input,.chk input{width:auto;min-width:0;margin:0;padding:0;flex:none}
 .cmbox textarea{min-height:56px}
 td.apa{min-width:280px;white-space:normal}
 .apatxt{white-space:pre-wrap}

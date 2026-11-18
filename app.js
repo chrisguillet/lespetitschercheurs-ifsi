@@ -1071,10 +1071,11 @@ function accesRow(a) {
     : a.statut === "en_attente"
       ? `<button class="btn sm" data-as="actif">Valider</button> <button class="btn sm sec del" data-as="refuse">Refuser</button>`
       : `<button class="btn sm" data-as="actif">Réactiver</button>`;
+  const suppr = sup ? ` <button class="btn sm sec del" data-del="1" title="Supprimer complètement cet utilisateur">🗑 Supprimer</button>` : "";
   const adresse = sup ? `<td><input data-f="nouvel_email" type="email" value="${k}"></td>` : `<td>${k}</td>`;
   const couleur = sup ? `<td><input data-f="couleur" type="color" value="${esc(a.couleur)}" style="min-width:48px;padding:2px"></td>` : "";
   return `<tr data-k="${k}">${adresse}${dates}<td><input data-f="prenom" maxlength="60" value="${esc(a.prenom)}" placeholder="Prénom"></td>${couleur}
-    <td><select data-f="role">${roles}</select></td><td>${acts}</td></tr>`;
+    <td><select data-f="role">${roles}</select></td><td>${acts}${suppr}</td></tr>`;
 }
 
 let renderedAcces = "";
@@ -1092,7 +1093,28 @@ function renderAdmin() {
     bloc("⛔ Accès refusés", acces.filter(a => a.statut === "refuse"), "Aucun accès refusé.");
 }
 
+async function supprimerUtilisateur(b) {
+  const email = b.closest("tr").dataset.k;
+  const a = acces.find(x => x.email === email);
+  if (!a) return;
+  const n = a.nb_lectures || 0;
+  const garde = n ? `\n\nSes ${n} lecture${n > 1 ? "s" : ""} et ses commentaires sont conservés dans le Google Sheet mais ne seront plus affichés (ses commentaires sur les lectures des autres apparaîtront sous « Utilisateur supprimé »).` : "";
+  if (!confirm(`Supprimer ${a.prenom || email} (${email}) ? Cette personne n’aura plus accès à l’application.${garde}`)) return;
+  b.disabled = true;
+  try {
+    const res = await enCours("Suppression…", () => api("admin_delete", { email }));
+    acces = res.acces;
+    renderAdmin();
+    applyResult(res);
+  } catch (err) {
+    b.disabled = false;
+    if (err.code === "unauthorized") sessionError(err); else alert("Suppression impossible : " + err.message);
+  }
+}
+
 $("adminbox").onclick = async e => {
+  const del = e.target.closest("button[data-del]");
+  if (del) return supprimerUtilisateur(del);
   const b = e.target.closest("button[data-as]");
   if (!b) return;
   const row = b.closest("tr");

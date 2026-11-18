@@ -143,6 +143,9 @@ function doPost(e) {
       case 'admin_set':
         muter_(function () { administrer_(user, req.data); });
         return json_(Object.assign({ ok: true, acces: listerAcces_() }, donnees_(user)));
+      case 'admin_delete':
+        muter_(function () { supprimerUtilisateur_(user, req.email); });
+        return json_(Object.assign({ ok: true, acces: listerAcces_() }, donnees_(user)));
       default:
         throw err_('bad_request', 'Action inconnue');
     }
@@ -257,10 +260,26 @@ function majConnexion_(user) {
 /* ---------- Administration des accès (étudiants) ---------- */
 
 function listerAcces_() {
+  const nbL = {}, nbC = {};
+  lireTable_(feuilleLectures_(), COLONNES).forEach(function (r) { nbL[r.owner] = (nbL[r.owner] || 0) + 1; });
+  lireTable_(feuilleCommentaires_(), COL_COMMENTAIRES).forEach(function (r) { nbC[r.auteur_email] = (nbC[r.auteur_email] || 0) + 1; });
   return listerUtilisateurs_().map(function (u) {
     return { email: u.email, prenom: u.prenom, role: u.role, statut: u.statut, couleur: u.couleur,
-      demande_le: u.demande_le, derniere_connexion: u.derniere_connexion, protege: u.role === 'etudiant' };
+      demande_le: u.demande_le, derniere_connexion: u.derniere_connexion, protege: u.role === 'etudiant',
+      nb_lectures: nbL[u.email] || 0, nb_commentaires: nbC[u.email] || 0 };
   });
+}
+
+// Suppression d'un accès (administrateur seulement). La ligne de l'utilisateur disparaît, donc plus aucun accès ;
+// ses lectures et commentaires restent dans le Sheet (récupérables), mais ne sont plus affichés : ses commentaires
+// sont masqués avec ses lectures ou, sur les lectures d'autrui, signés « Utilisateur supprimé ».
+// Si la même adresse est un jour revalidée, ses lectures réapparaissent.
+function supprimerUtilisateur_(user, email) {
+  if (user.role !== 'admin') throw err_('forbidden', 'Réservé à l’administrateur');
+  email = String(email || '').trim().toLowerCase();
+  const cible = listerUtilisateurs_().filter(function (u) { return u.email === email; })[0];
+  if (!cible) throw err_('not_found', 'Adresse introuvable');
+  feuilleUtilisateurs_().deleteRow(cible._row);
 }
 
 function administrer_(user, data) {
@@ -332,10 +351,10 @@ function lireTable_(sh, colonnes) {
 function lister_(user) {
   const parEmail = {};
   listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
-  return lireTable_(feuilleLectures_(), COLONNES).map(function (r) {
+  // Les lectures d'un utilisateur supprimé restent dans la feuille mais ne sont plus affichées.
+  return lireTable_(feuilleLectures_(), COLONNES).filter(function (r) { return parEmail[r.owner]; }).map(function (r) {
     const proprio = parEmail[r.owner];
-    const pub = { etudiant: proprio ? proprio.prenom : 'Inconnu(e)', couleur: proprio ? proprio.couleur : COULEUR_DEFAUT,
-      mine: r.owner === user.email };
+    const pub = { etudiant: proprio.prenom, couleur: proprio.couleur, mine: r.owner === user.email };
     COLONNES.forEach(function (c) { if (c !== 'owner') pub[c] = r[c]; });
     return pub;
   });
@@ -403,8 +422,15 @@ function feuilleCommentaires_() {
 }
 
 function listerCommentaires_(user) {
-  return lireTable_(feuilleCommentaires_(), COL_COMMENTAIRES).map(function (r) {
-    return { id: r.id, lecture_id: r.lecture_id, auteur: r.auteur, date: r.date, modifie_le: r.modifie_le,
+  const actifs = {};
+  listerUtilisateurs_().forEach(function (u) { actifs[u.email] = true; });
+  // Seules les lectures encore affichées (propriétaire non supprimé) ont leurs commentaires listés.
+  const visibles = {};
+  lister_(user).forEach(function (l) { visibles[l.id] = true; });
+  return lireTable_(feuilleCommentaires_(), COL_COMMENTAIRES).filter(function (r) { return visibles[r.lecture_id]; }).map(function (r) {
+    // Un commentaire d'un utilisateur supprimé est conservé, sous un nom neutre.
+    const connu = actifs[r.auteur_email] || r.auteur_email === emailAdmin_();
+    return { id: r.id, lecture_id: r.lecture_id, auteur: connu ? r.auteur : 'Utilisateur supprimé', date: r.date, modifie_le: r.modifie_le,
       texte: r.texte, mine: r.auteur_email === user.email };
   });
 }
