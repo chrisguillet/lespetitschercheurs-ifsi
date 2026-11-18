@@ -474,7 +474,7 @@ function valider_(d) {
     throw err_('invalid', 'À compléter : ' + manquants.map(function (k) { return LIBELLES[k]; }).join(', '));
   }
   if (d.type && TYPES.indexOf(d.type) < 0) throw err_('invalid', 'Type d’article invalide');
-  if (d.parution && !/^\d{4}-\d{2}-\d{2}$/.test(d.parution)) throw err_('invalid', 'Date de parution invalide');
+  if (d.parution && !/^\d{4}(-\d{2}(-\d{2})?)?$/.test(d.parution)) throw err_('invalid', 'Date de parution invalide');
 }
 
 /* ---------- Utilitaires ---------- */

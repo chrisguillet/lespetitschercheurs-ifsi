@@ -2,7 +2,8 @@
 
 Outil partagé de suivi des lectures pour le mémoire : chaque étudiant saisit ses lectures,
 le tableau commun les rassemble (filtres, recherche, export Excel/PDF), les formateurs commentent.
-Une dernière colonne génère une référence APA 7 à partir des champs saisis (bouton « Copier », italique conservé dans Word) ; pour les articles, revue/volume/pages/DOI restent à compléter à la main.
+Une dernière colonne génère une référence APA 7 à partir des champs saisis (bouton « Copier », italique conservé dans Word) ; le formulaire propose revue/éditeur, volume, numéro, pages et DOI/URL (facultatifs).
+Le formulaire accepte une date partielle (2021, mars 2021…), affiche la référence APA en direct, signale les doublons (même titre ou DOI) et garde un brouillon local si la page est fermée avant l’enregistrement.
 
 ## Architecture
 

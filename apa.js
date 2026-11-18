@@ -134,6 +134,30 @@
     return res;
   }
 
-  const api = { apa, parseAuteur, listeAuteurs, formaterAuteurs };
+  // Date de parution saisie librement -> "AAAA", "AAAA-MM" ou "AAAA-MM-JJ" ; "" si vide ; null si non reconnue.
+  const MOIS = ["jan", "fev", "mar", "avr", "mai", "juin", "juil", "aou", "sep", "oct", "nov", "dec"];
+  function normaliserDate(txt) {
+    const t = String(txt == null ? "" : txt).trim();
+    if (!t) return "";
+    const p2 = n => String(n).padStart(2, "0");
+    const ok = (a, m, j) => a >= 1800 && a <= 2100 && (m === undefined || (m >= 1 && m <= 12)) && (j === undefined || (j >= 1 && j <= 31));
+    let m;
+    if ((m = /^(\d{4})$/.exec(t))) return ok(+m[1]) ? m[1] : null;
+    if ((m = /^(\d{4})[-/](\d{1,2})$/.exec(t))) return ok(+m[1], +m[2]) ? m[1] + "-" + p2(m[2]) : null;
+    if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t))) return ok(+m[1], +m[2], +m[3]) ? m[1] + "-" + p2(m[2]) + "-" + p2(m[3]) : null;
+    if ((m = /^(\d{1,2})[/.-](\d{4})$/.exec(t))) return ok(+m[2], +m[1]) ? m[2] + "-" + p2(m[1]) : null;
+    if ((m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t))) return ok(+m[3], +m[2], +m[1]) ? m[3] + "-" + p2(m[2]) + "-" + p2(m[1]) : null;
+    const sans = t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    if ((m = /^(?:(\d{1,2})(?:er)?\s+)?([a-z]+)\.?\s+(\d{4})$/.exec(sans))) {
+      const mois = MOIS.findIndex(x => m[2].startsWith(x)) + 1;
+      if (!mois || (m[2] === "ju" )) return null;
+      const j = m[1] ? +m[1] : undefined;
+      if (!ok(+m[3], mois, j)) return null;
+      return m[3] + "-" + p2(mois) + (j ? "-" + p2(j) : "");
+    }
+    return null;
+  }
+
+  const api = { apa, normaliserDate, parseAuteur, listeAuteurs, formaterAuteurs };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.LydiaApa = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -13,6 +13,9 @@ const fmtD = iso => {
   if (!iso) return "";
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const my = /^(\d{4})-(\d{2})$/.exec(iso);
+  if (my) return `${my[2]}/${my[1]}`;
+  if (/^\d{4}$/.test(iso)) return iso;
   const d = new Date(iso);
   return isNaN(d) ? iso : d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 };
@@ -219,18 +222,20 @@ function renderForm() {
     : "Choisissez « 📖 En cours de lecture » si vous n’avez pas fini : seul le titre est alors obligatoire. Pour une lecture « ✅ Terminée », toute la première partie est obligatoire.";
   const statut = d.statut || "Terminée";
   $("form").innerHTML = `
+  <div id="draftnote" class="meta" style="display:none;margin-bottom:10px"></div>
   <fieldset><legend>Colonne 1 · Identification de l’article <span class="req" style="color:#d33">(obligatoire)</span></legend>
    <div style="margin-bottom:12px"><label for="f_statut">Statut</label><select id="f_statut">
      <option value="Terminée" ${statut === "Terminée" ? "selected" : ""}>✅ Terminée</option>
      <option value="En cours" ${statut === "En cours" ? "selected" : ""}>📖 En cours de lecture</option></select></div>
    <div class="grid">
     ${field("f_titre", "Titre de l’article", d.titre, { req: 1 })}
-    ${field("f_parution", "Date de parution", d.parution, { req: 1, type: "date" })}
+    ${field("f_parution", "Date de parution", fmtD(d.parution), { req: 1, ph: "2021, mars 2021 ou 04/03/2021" })}
     ${field("f_auteur", "Auteur(s)", d.auteur, { req: 1 })}
     ${field("f_qualite", "Qualité de l’auteur", d.qualite, { req: 1, ph: "chercheur, IDE, cadre de santé…" })}
     ${field("f_nation", "Nationalité", d.nation, { req: 1 })}
     ${field("f_type", "Type d’article", d.type, { req: 1, sel: TYPES })}
-   </div></fieldset>
+   </div>
+   <div id="dup" style="display:none;margin-top:10px;color:#b45309;font-weight:600"></div></fieldset>
   <fieldset><legend>Compléments pour la référence APA (facultatifs, mais recommandés pour les articles)</legend>
    <div class="grid">
     ${field("f_source", "Revue / éditeur / établissement", d.source, { ph: "revue de l’article, éditeur du rapport, université de la thèse" })}
@@ -238,7 +243,9 @@ function renderForm() {
     ${field("f_numero", "Numéro", d.numero)}
     ${field("f_pages", "Pages", d.pages, { ph: "ex. 12-25" })}
     ${field("f_doi", "DOI ou URL", d.doi, { ph: "10.xxxx/xxxxx ou https://…" })}
-   </div></fieldset>
+   </div>
+   <div id="apaprev" class="meta" style="margin-top:12px;padding:10px 12px;border:1px dashed #cbd5e1;border-radius:8px"></div>
+  </fieldset>
   <fieldset><legend>Colonnes 2 à 8 · Libres (à remplir comme vous voulez, modifiable à tout moment)</legend>
    <div class="grid">
     ${field("f_mots", "Mots-clés", d.mots, { area: 1 })}
@@ -253,18 +260,91 @@ function renderForm() {
   <button class="btn" id="save">${editing ? "Enregistrer les modifications" : "Enregistrer la lecture"}</button>
   ${editing ? '<button class="btn sec" id="cancel">Annuler</button>' : ""}`;
   $("save").onclick = save;
-  if (editing) $("cancel").onclick = () => { editing = null; override = false; renderForm(); };
+  if (editing) $("cancel").onclick = () => { effacerBrouillon(); editing = null; override = false; renderForm(); };
+  formBase = JSON.stringify(snapshot());
+  restaurerBrouillon();
+  $("form").oninput = $("form").onchange = surSaisie;
+  majApercu(); majDoublon();
+}
+
+/* ---------- Aperçu APA, doublons, brouillon ---------- */
+
+const CHAMPS_FORM = ["statut", "titre", "parution", "auteur", "qualite", "nation", "type", "source", "volume", "numero",
+  "pages", "doi", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre"];
+let formBase = "", brouillonTimer = null;
+
+const snapshot = () => Object.fromEntries(CHAMPS_FORM.map(k => [k, $("f_" + k) ? $("f_" + k).value : ""]));
+
+function lireForm() {
+  const v = snapshot();
+  Object.keys(v).forEach(k => { v[k] = v[k].trim(); });
+  const norm = LydiaApa.normaliserDate(v.parution);
+  return { data: { ...v, parution: norm === null ? v.parution : norm }, dateOk: norm !== null };
+}
+
+function majApercu() {
+  const box = $("apaprev");
+  if (!box) return;
+  const { data, dateOk } = lireForm();
+  if (!data.titre) { box.innerHTML = "📚 La référence APA apparaîtra ici au fil de la saisie."; return; }
+  const r = LydiaApa.apa(data);
+  box.innerHTML = `<b>Aperçu APA</b><br><span style="color:var(--text,inherit)">${r.html}</span>`
+    + (data.parution && !dateOk ? '<br><span style="color:#b45309">⚠ Date non reconnue (ex. 2021, mars 2021, 04/03/2021)</span>' : "")
+    + (r.incomplet ? '<br>⚠ À compléter : revue et pages' : "")
+    + (!data.auteur ? '<br>⚠ Sans auteur, le titre passe en tête de la référence' : "");
+}
+
+const cleTitre = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const cleDoi = s => {
+  const t = String(s || "").trim().toLowerCase().replace(/^doi:\s*/, "").replace(/^https?:\/\/(dx\.)?doi\.org\//, "");
+  return /^10\.\d{4,9}\//.test(t) ? t : "";
+};
+
+function majDoublon() {
+  const box = $("dup");
+  if (!box) return;
+  const { data } = lireForm();
+  const t = cleTitre(data.titre), d = cleDoi(data.doi);
+  const autre = (t.length >= 8 || d) ? items.find(i => i.id !== editing && ((d && cleDoi(i.doi) === d) || (t.length >= 8 && cleTitre(i.titre) === t))) : null;
+  if (!autre) { box.style.display = "none"; return; }
+  box.textContent = autre.mine
+    ? "⚠ Vous avez déjà saisi cet article. Vérifiez qu’il ne s’agit pas d’un doublon."
+    : `⚠ Cet article est déjà dans le tableau (saisi par ${autre.etudiant}). Vérifiez avant d’enregistrer un doublon.`;
+  box.style.display = "block";
+}
+
+const cleBrouillon = () => "lydia_brouillon:" + (me ? me.prenom : "") + ":" + (editing || "new") + (override ? ":o" : "");
+function effacerBrouillon() { clearTimeout(brouillonTimer); try { localStorage.removeItem(cleBrouillon()); } catch (e) { /* ignoré */ } }
+
+function sauverBrouillon() {
+  try {
+    const cur = JSON.stringify(snapshot());
+    if (cur === formBase) localStorage.removeItem(cleBrouillon());
+    else localStorage.setItem(cleBrouillon(), JSON.stringify({ t: Date.now(), v: snapshot() }));
+  } catch (e) { /* stockage indisponible : le brouillon est simplement désactivé */ }
+}
+
+function restaurerBrouillon() {
+  let b = null;
+  try { b = JSON.parse(localStorage.getItem(cleBrouillon()) || "null"); } catch (e) { b = null; }
+  if (!b || !b.v || Date.now() - b.t > 30 * 864e5) return;
+  CHAMPS_FORM.forEach(k => { if ($("f_" + k) && b.v[k] !== undefined) $("f_" + k).value = b.v[k]; });
+  const note = $("draftnote");
+  note.innerHTML = `📝 Brouillon non enregistré restauré (${esc(fmtDT(new Date(b.t).toISOString()))}). <button type="button" class="btn sm sec" id="draftreset">Repartir de zéro</button>`;
+  note.style.display = "block";
+  $("draftreset").onclick = () => { effacerBrouillon(); renderForm(); };
+}
+
+function surSaisie() {
+  majApercu(); majDoublon();
+  clearTimeout(brouillonTimer);
+  brouillonTimer = setTimeout(sauverBrouillon, 600);
 }
 
 async function save() {
-  const g = id => $(id).value.trim();
-  const data = {
-    statut: g("f_statut"), titre: g("f_titre"), parution: g("f_parution"), auteur: g("f_auteur"),
-    qualite: g("f_qualite"), nation: g("f_nation"), type: g("f_type"), mots: g("f_mots"), kw: g("f_kw"),
-    concepts: g("f_concepts"), objet: g("f_objet"), opinion: g("f_opinion"), controverse: g("f_controverse"),
-    libre: g("f_libre"), source: g("f_source"), volume: g("f_volume"), numero: g("f_numero"),
-    pages: g("f_pages"), doi: g("f_doi")
-  };
+  clearTimeout(brouillonTimer);
+  const { data, dateOk } = lireForm();
+  if (!dateOk) { $("ferr").textContent = "Date de parution non reconnue (exemples : 2021, mars 2021, 04/03/2021)"; return; }
   const need = data.statut === "En cours" ? ["titre"] : FIN;
   const miss = need.filter(k => !data[k]);
   if (miss.length) { $("ferr").textContent = "À compléter : " + miss.map(k => LAB[k]).join(", "); return; }
@@ -273,6 +353,7 @@ async function save() {
     const res = await enCours("Enregistrement…", () => editing
       ? api("update", { id: editing, override, data })
       : api("add", { data }));
+    effacerBrouillon();
     editing = null; override = false;
     applyResult(res);
     renderForm();
