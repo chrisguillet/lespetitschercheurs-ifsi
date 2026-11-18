@@ -32,6 +32,7 @@ let me = null, users = [], items = [], comments = [], acces = [], pendingCount =
 let editing = null, override = false, tab = "all", timer = null;
 const drafts = {};          // brouillons de commentaires, par lecture
 let cmId = null, cmFocus = null;   // lecture dont la discussion est ouverte dans la fenêtre « Commentaires »
+let enLigne = [], enLigneSig = "";   // personnes actives en ce moment (fourni par le serveur)
 let lusSet = new Set();     // commentaires déjà lus par la personne connectée (suivi côté serveur)
 const lusEnvoi = new Set(); // lus marqués ici mais pas encore confirmés par le serveur
 const nonLusEnvoi = new Set(); // remis en non lu ici, pas encore confirmés par le serveur
@@ -127,13 +128,15 @@ function reinitialiserEtat() {
   Object.keys(drafts).forEach(k => delete drafts[k]);
   Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute" });
   B.who = ""; B.enCours = false;
+  enLigne = []; enLigneSig = "";
   tab = "all"; vuDepuis = null; renderedAcces = ""; derniereSync = null; usersChanged = false;
-  ["rows", "cards", "mylist", "mysum", "adminbox", "bibtools", "biblist", "synthbox", "cmtsbox", "cmbody", "filters", "stats", "form"].forEach(id => { $(id).innerHTML = ""; });
+  ["rows", "cards", "mylist", "mysum", "adminbox", "bibtools", "biblist", "synthbox", "cmtsbox", "cmbody", "online", "filters", "stats", "form"].forEach(id => { $(id).innerHTML = ""; });
   $("pending").textContent = ""; $("cmtcount").textContent = "";
 }
 
 function logout() {
   marquerVu();
+  if (token) api("bye").catch(() => {});   // disparaît tout de suite de la liste des personnes en ligne
   if (timer) clearInterval(timer);
   reinitialiserEtat();
   try { sessionStorage.removeItem("lydia_token"); } catch (e) { /* ignoré */ }
@@ -174,6 +177,7 @@ function applyData(j) {
   }
   items = j.lectures;
   comments = j.commentaires || [];
+  enLigne = j.enLigne || [];
   lusSet = new Set((j.lus || []).concat([...lusEnvoi]).filter(id => !nonLusEnvoi.has(id)));
   pendingCount = j.enAttente || 0;
 }
@@ -191,6 +195,7 @@ function renderData() {
   renderTable();
   renderPending();
   renderComments();
+  renderOnline();
   majModal();
   if (tab === "biblio") renderBiblio();
   if (tab === "synth") renderSynth();
@@ -239,6 +244,7 @@ async function refresh(manuel) {
     if (!typing) renderTable();
     renderPending();
     renderComments();
+    renderOnline();
     majModal();
     if (tab === "biblio") renderBiblio();
     if (tab === "synth") renderSynth();
@@ -295,6 +301,19 @@ function renderMeAnonyme() {
   $("me").innerHTML = '<button type="button" class="btn sm sec" id="themebtn"></button>';
   $("themebtn").onclick = basculerTheme;
   majLibelleTheme();
+}
+
+// Pastille « N en ligne » avec la liste des prénoms. Reconstruite seulement si la liste change (sinon le menu ouvert se refermerait).
+function renderOnline() {
+  if (!me) return;
+  const sig = JSON.stringify(enLigne);
+  if (sig === enLigneSig && $("online").innerHTML) return;
+  enLigneSig = sig;
+  const role = { formateur: "formateur", lecteur: "lecteur" };
+  const lignes = enLigne.map(u => `<div class="olu"><span class="dot" style="background:${esc(u.couleur)}"></span><b>${esc(u.prenom)}</b>${u.moi ? ' <span class="meta">(vous)</span>' : role[u.role] ? ` <span class="meta">${role[u.role]}</span>` : ""}</div>`).join("");
+  const n = enLigne.length;
+  $("online").innerHTML = `<details class="colmenu"><summary class="btn sm sec" aria-label="${n} personne${n > 1 ? "s" : ""} en ligne"><span class="live" aria-hidden="true"></span> ${n} en ligne</summary>
+    <div class="colpop right pop-online"><div class="meta" style="margin-bottom:6px">Actives ces dernières minutes</div>${lignes || '<div class="meta">Personne pour le moment.</div>'}</div></details>`;
 }
 
 function renderPending() {
@@ -374,6 +393,7 @@ function renderForm() {
     ${field("f_numero", "Numéro", d.numero)}
     ${field("f_pages", "Pages", d.pages, { ph: "ex. 12-25" })}
     ${field("f_doi", "DOI ou URL", d.doi, { ph: "10.xxxx/xxxxx ou https://…" })}
+    ${field("f_lien", "Lien vers la fiche ou l’article", d.lien, { ph: "https://… (cliquable dans le tableau commun)" })}
    </div>
    <div id="apaprev" class="meta" style="margin-top:12px;padding:10px 12px;border:1px dashed var(--bd);border-radius:8px"></div>
   </details>
@@ -458,7 +478,7 @@ async function traduire() {
 /* ---------- Aperçu APA, doublons, brouillon ---------- */
 
 const CHAMPS_FORM = ["statut", "titre", "parution", "auteur", "qualite", "nation", "type", "source", "volume", "numero",
-  "pages", "doi", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre"];
+  "pages", "doi", "lien", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre"];
 let formBase = "", brouillonTimer = null;
 
 const snapshot = () => Object.fromEntries(CHAMPS_FORM.map(k => [k, $("f_" + k) ? $("f_" + k).value : ""]));
@@ -466,6 +486,8 @@ const snapshot = () => Object.fromEntries(CHAMPS_FORM.map(k => [k, $("f_" + k) ?
 function lireForm() {
   const v = snapshot();
   Object.keys(v).forEach(k => { v[k] = v[k].trim(); });
+  // « www.exemple.fr/page » collé sans le début : on ajoute https://
+  if (v.lien && !/^[a-z][a-z0-9+.-]*:/i.test(v.lien) && /^[^\s/]+\.[^\s/]{2,}(\/\S*)?$/.test(v.lien)) v.lien = "https://" + v.lien;
   const norm = LydiaApa.normaliserDate(v.parution);
   return { data: { ...v, parution: norm === null ? v.parution : norm }, dateOk: norm !== null };
 }
@@ -599,6 +621,11 @@ const chips = txt => motsListe(txt).map(k =>
 
 function clampTxt(id, txt) { return `<div class="clamp">${esc(txt)}</div>`; }
 
+// Seuls les liens http(s) sont rendus cliquables (jamais javascript: ni data:), et s'ouvrent dans un nouvel onglet.
+const urlSure = u => /^https?:\/\/[^\s<>"']+$/i.test(String(u || "").trim()) ? String(u).trim() : "";
+const lienHtml = i => urlSure(i.lien)
+  ? `<a class="lien" href="${esc(urlSure(i.lien))}" target="_blank" rel="noopener noreferrer" title="${esc(urlSure(i.lien))}">🔗 Ouvrir le lien</a>` : "";
+
 const anneeDe = i => (/^(\d{4})/.exec(i.parution || "") || [])[1] || "";
 
 function badgeNouveau(i) {
@@ -710,7 +737,7 @@ function cells(i) {
   const c = esc(i.couleur);
   const prog = i.statut === "En cours";
   const main = `<tr data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours" : "✅ Terminée"}</span>${badgeNouveau(i)}${nbComm(i)}
-   <b>${esc(i.titre)}</b>
+   <b>${esc(i.titre)}</b>${lienHtml(i)}
    <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
    <div class="meta full">${infosHtml(i)}</div>
    <div class="rowacts">${actionsHtml(i)}</div></td>
@@ -726,7 +753,7 @@ function cardHtml(i) {
   const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b>${clampTxt(i.id, v)}</div>` : "";
   return `<article class="cardc ${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
    <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeNouveau(i)}</div>
-   <h3><span class="chev" aria-hidden="true"></span>${esc(i.titre)}</h3>
+   <h3><span class="chev" aria-hidden="true"></span>${esc(i.titre)}</h3>${lienHtml(i)}
    <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
    <div class="meta full">${infosHtml(i)}</div>
    ${motsListe(i.mots).length || motsListe(i.kw).length ? `<div class="chipsc">${chips(i.mots)}${chips(i.kw)}</div>` : ""}
@@ -1194,10 +1221,10 @@ $("adminbox").onclick = async e => {
 
 function exportXlsx() {
   if (typeof XLSX === "undefined") { alert("Module Excel non chargé."); return; }
-  const head = ["Étudiant", "Statut", "Titre", "Date de parution", "Auteur", "Qualité de l’auteur", "Nationalité", "Type d’article", "Mots-clés", "Keywords (EN)", "Concepts en sciences infirmières", "Objet / sujet principal", "Opinion de l’auteur", "Controverse", "Libre", "Référence APA", "Date de saisie"];
-  const rows = filtered().map(i => [i.etudiant, i.statut === "En cours" ? "En cours de lecture" : "Terminée", i.titre, fmtD(i.parution), i.auteur, i.qualite, i.nation, i.type, i.mots, i.kw, i.concepts, i.objet, i.opinion, i.controverse, i.libre, LydiaApa.apa(i).text, fmtD(i.ajoute)].map(v => v || ""));
+  const head = ["Étudiant", "Statut", "Titre", "Date de parution", "Auteur", "Qualité de l’auteur", "Nationalité", "Type d’article", "Mots-clés", "Keywords (EN)", "Concepts en sciences infirmières", "Objet / sujet principal", "Opinion de l’auteur", "Controverse", "Libre", "Référence APA", "Date de saisie", "Lien"];
+  const rows = filtered().map(i => [i.etudiant, i.statut === "En cours" ? "En cours de lecture" : "Terminée", i.titre, fmtD(i.parution), i.auteur, i.qualite, i.nation, i.type, i.mots, i.kw, i.concepts, i.objet, i.opinion, i.controverse, i.libre, LydiaApa.apa(i).text, fmtD(i.ajoute), urlSure(i.lien)].map(v => v || ""));
   const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
-  ws["!cols"] = [12, 16, 40, 14, 24, 20, 14, 22, 28, 28, 36, 36, 36, 30, 24, 50, 14].map(w => ({ wch: w }));
+  ws["!cols"] = [12, 16, 40, 14, 24, 20, 14, 22, 28, 28, 36, 36, 36, 30, 24, 50, 14, 40].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Lectures");
   XLSX.writeFile(wb, "lectures-memoire-" + stamp() + ".xlsx");
@@ -1210,7 +1237,7 @@ function exportPdf() {
   doc.setFontSize(8); doc.text("Export du " + fmtD(new Date().toISOString()), 10, 15);
   const l = filtered();
   const body = l.map(i => [i.etudiant + "\n" + (i.statut === "En cours" ? "(en cours)" : "(terminée)"),
-    (i.titre || "") + "\nParution : " + (fmtD(i.parution) || "-") + "\nAuteur : " + (i.auteur || "-") + " (" + (i.qualite || "-") + ")\nNationalité : " + (i.nation || "-") + "\nType : " + (i.type || "-") + "\nSaisi le " + fmtD(i.ajoute),
+    (i.titre || "") + "\nParution : " + (fmtD(i.parution) || "-") + "\nAuteur : " + (i.auteur || "-") + " (" + (i.qualite || "-") + ")\nNationalité : " + (i.nation || "-") + "\nType : " + (i.type || "-") + "\nSaisi le " + fmtD(i.ajoute) + (urlSure(i.lien) ? "\nLien : " + urlSure(i.lien) : ""),
     i.mots || "", i.kw || "", i.concepts || "", i.objet || "", i.opinion || "", i.controverse || "", i.libre || "", LydiaApa.apa(i).text]);
   doc.autoTable({
     startY: 18,
@@ -1236,6 +1263,7 @@ function renderAll() {
   if (canWrite()) renderMine();
   renderPending();
   renderComments();
+  renderOnline();
   renderFilters();
   renderTable();
 }

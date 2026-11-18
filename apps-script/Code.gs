@@ -25,7 +25,7 @@ const FEUILLE_LUS = 'Lus';
 
 const COLONNES = ['id', 'owner', 'statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'ajoute', 'modifie_le', 'modifie_par',
-  'source', 'volume', 'numero', 'pages', 'doi'];
+  'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
 const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion'];
 const COL_COMMENTAIRES = ['id', 'lecture_id', 'auteur_email', 'auteur', 'date', 'texte', 'modifie_le'];
 // Une ligne par personne (id = adresse) : identifiants des commentaires déjà lus, séparés par des virgules.
@@ -33,7 +33,7 @@ const COL_LUS = ['id', 'commentaires'];
 const COL_HISTORIQUE = ['date', 'id', 'modifie_par', 'proprietaire', 'avant'];
 const CHAMPS = ['statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre',
-  'source', 'volume', 'numero', 'pages', 'doi'];
+  'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
 const OBLIGATOIRES_TERMINEE = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type'];
 const LIBELLES = { titre: 'titre', parution: 'date de parution', auteur: 'auteur', qualite: 'qualité',
   nation: 'nationalité', type: 'type d’article' };
@@ -93,6 +93,8 @@ function preparer_(ss, nom, entetes) {
 
 /* ---------- Sauvegarde automatique (copie du Sheet dans Drive) ---------- */
 
+const PRESENCE_S = 150;   // « en ligne » = a fait une requête (actualisation toutes les 45 s) depuis moins de 2 min 30
+
 const DOSSIER_SAUVEGARDES = 'Sauvegardes – lectures IFSI';
 const NB_QUOTIDIENNES = 7;      // une copie par jour, gardées 7 jours
 const NB_HEBDOMADAIRES = 8;     // et celles du lundi, gardées 8 semaines
@@ -146,6 +148,7 @@ function doPost(e) {
     memo_ = {}; memoOn_ = true;
     const req = JSON.parse(e.postData.contents);
     const user = authentifier_(req.token, req.action);
+    signalerPresence_(user, req.action);
     switch (req.action) {
       case 'init':
         majConnexion_(user);
@@ -181,6 +184,8 @@ function doPost(e) {
       case 'comments_unread':
         muter_(function () { marquerNonLus_(user, req.ids); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'bye':
+        return json_({ ok: true });
       case 'translate':
         exigerEtudiant_(user);
         return json_({ ok: true, items: traduireMotsCles_(req.texte) });
@@ -212,12 +217,37 @@ function etudiantsActifs_() {
 function donnees_(user) {
   return {
     utilisateurs: etudiantsActifs_(),
+    enLigne: listerEnLigne_(user),
     lectures: lister_(user),
     commentaires: listerCommentaires_(user),
     lus: listerLus_(user),
     enAttente: peutGerer_(user)
       ? listerUtilisateurs_().filter(function (u) { return u.statut === 'en_attente'; }).length : 0
   };
+}
+
+/* ---------- Présence (qui est en ligne) ---------- */
+
+// Stockée dans le cache du script, pas dans le Sheet : aucune écriture, et ça s'efface tout seul.
+// L'administrateur reste discret : il n'apparaît pas dans la liste.
+function signalerPresence_(user, action) {
+  if (user.role === 'admin') return;
+  const cache = CacheService.getScriptCache();
+  const cle = 'p_' + user.email;
+  if (action === 'bye') cache.remove(cle);
+  else cache.put(cle, String(Date.now()), 600);
+}
+
+function listerEnLigne_(user) {
+  const actifs = listerUtilisateurs_().filter(function (u) { return u.statut === 'actif'; });
+  const vus = CacheService.getScriptCache().getAll(actifs.map(function (u) { return 'p_' + u.email; }));
+  const maintenant = Date.now();
+  return actifs.filter(function (u) {
+    const t = Number(vus['p_' + u.email]);
+    return t && maintenant - t < PRESENCE_S * 1000;
+  }).map(function (u) {
+    return { prenom: u.prenom, couleur: u.couleur, role: u.role, moi: u.email === user.email };
+  });
 }
 
 /* ---------- Authentification et accès ---------- */
@@ -616,6 +646,8 @@ function valider_(d) {
   }
   if (d.type && TYPES.indexOf(d.type) < 0) throw err_('invalid', 'Type d’article invalide');
   if (d.parution && !/^\d{4}(-\d{2}(-\d{2})?)?$/.test(d.parution)) throw err_('invalid', 'Date de parution invalide');
+  // Le lien est cliquable dans l'application : seuls http(s) sont acceptés (jamais javascript:, data:, etc.).
+  if (d.lien && !/^https?:\/\/[^\s<>"']+$/i.test(d.lien)) throw err_('invalid', 'Lien invalide : il doit commencer par http:// ou https://');
 }
 
 /* ---------- Traduction des mots-clés (fr -> en) avec indice de fiabilité ---------- */

@@ -123,7 +123,7 @@ td.nowrapc{white-space:normal}
 .cardc .acts{display:flex;gap:6px;flex-wrap:wrap}
 
 /* ---------- Panneau latéral du formulaire ---------- */
-body.formmode #app,body.formmode #tabs,body.formmode .me{display:none}
+body.formmode #app,body.formmode #tabs,body.formmode .me,body.formmode .rightbar{display:none}
 .drawer{max-width:920px;margin:14px auto;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px 18px 0}
 .drawerhead{display:flex;align-items:center;gap:12px;margin-bottom:10px}
 .drawerhead h2{margin:0;font-size:18px}
@@ -161,7 +161,7 @@ details.sec:not([open])>summary::before{content:"▸ "}
 @media (max-width:700px){main{padding:8px 10px 40px}.tools input,.tools select{min-width:0;flex:1 1 140px}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 @media print{
-  header .tabs,header .me,.noprint,.tools,#status,.drawer,.modal,footer,.btn{display:none!important}
+  header .tabs,header .me,header .rightbar,.noprint,.tools,#status,.drawer,.modal,footer,.btn{display:none!important}
   body{background:#fff;color:#000}
   .card{border:0;padding:0}
   section.hidden{display:none!important}
@@ -195,3 +195,12 @@ tr.open .rowacts{display:block}
 .spinner{display:inline-block;flex:none;width:20px;height:20px;border:3px solid var(--bd);border-top-color:var(--pri);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spinner{animation-duration:2.5s}}
+
+/* Lien de la fiche, présence */
+.lien{display:inline-block;margin-left:8px;font-size:12px;font-weight:500;white-space:nowrap}
+.rightbar{display:flex;align-items:flex-start;gap:8px}
+.live{display:inline-block;width:9px;height:9px;border-radius:50%;background:#22a559;box-shadow:0 0 0 3px rgba(34,165,89,.25)}
+.colpop.pop-online{min-width:200px;gap:4px;flex-direction:column;align-items:stretch}
+.olu{display:flex;align-items:center;gap:8px;font-size:14px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
+@media print{.lien{display:none}}
