@@ -1036,8 +1036,9 @@ function fichiersHtml(i) {
 let fupCible = "";
 async function ouvrirFichier(id) {
   const fen = window.open("", "_blank");          // ouverte tout de suite : sinon le navigateur bloque la fenêtre
+  try { if (fen) { fen.document.title = "Chargement…"; fen.document.body.innerHTML = '<p style="font:16px system-ui,sans-serif;margin:2em;color:#444">⏳ Chargement du fichier…</p>'; } } catch (_) {}
   try {
-    const r = await api("file_get", { id });
+    const r = await enCours("Ouverture du fichier…", () => api("file_get", { id }));
     const bin = atob(r.data), o = new Uint8Array(bin.length);
     for (let n = 0; n < bin.length; n++) o[n] = bin.charCodeAt(n);
     const url = URL.createObjectURL(new Blob([o], { type: r.type }));
