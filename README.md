@@ -11,8 +11,9 @@ Interface : l’accueil est le tableau commun (vue tableau ou cartes, colonnes m
 
 ```
 Navigateur (GitHub Pages)  ──jeton Google──▶  Apps Script (API)  ──▶  Google Sheet (privé)
-   index.html / app.js                         apps-script/Code.gs      Lectures · Utilisateurs
-                                                                         Commentaires · Historique
+   index.html / app.js                         apps-script/Code.gs      Lectures · Utilisateurs · Commentaires
+                                                                         Historique · Lus
+                                                                         Groupes · Membres · Votes
 ```
 
 - **Front** : fichiers statiques à la racine, hébergés sur GitHub Pages.
@@ -33,6 +34,31 @@ Navigateur (GitHub Pages)  ──jeton Google──▶  Apps Script (API)  ─�
 L'**administrateur** est une adresse fixe, définie dans la propriété de script `ADMIN_EMAIL` (voir plus bas). Elle n'apparaît
 ni dans la feuille ni dans le dépôt, et l'application ne permet pas de la modifier. Quand il change l'adresse d'un étudiant,
 ses lectures et ses commentaires suivent automatiquement.
+
+## Établissements, promos et groupes
+
+Tout est organisé en **établissement → promo → groupe** (par exemple *IFSI Saint-Nazaire → Promo 24-27 → Les petits chercheurs*).
+
+- Chaque **fiche** appartient à un groupe : seuls les membres du groupe (et l'administrateur) la voient. Son propriétaire peut cocher
+  **« La partager avec toute la promo »** : les autres groupes de la même promo la lisent et la commentent, sans pouvoir la modifier.
+- Chaque fiche a **deux fils de commentaires indépendants** : celui du **groupe** et celui de la **promo** (si elle est partagée).
+  Rien ne passe de l'un à l'autre. Dans le fil du groupe, les étudiants du groupe peuvent supprimer un commentaire (modération) ; dans le fil
+  de la promo, seuls l'auteur et l'administrateur le peuvent. Retirer le partage cache les commentaires de promo, sans les perdre.
+- Le bandeau sous les onglets choisit le **groupe** (si l'on en a plusieurs, y compris dans d'autres promos) et la **vue** : *Mon groupe* ou *Toute la promo*.
+  Tableau, cartes, bibliographie, synthèse et exports suivent la vue. Le choix est mémorisé.
+- Un **étudiant** n'est que dans **un groupe par promo** ; un **formateur** ou un **lecteur** est rattaché par l'administrateur à un ou plusieurs groupes
+  et ne voit que ceux-là (plus les fiches partagées avec la promo de ces groupes).
+- **L'administrateur** crée, renomme, déplace et supprime les groupes, et gère les membres (onglet Administration, bloc *Groupes*).
+  Supprimer un groupe conserve ses fiches dans le Sheet mais ne les affiche plus.
+- **Un étudiant** peut, depuis **⚙️ Membres et votes**, **ajouter** à son groupe un étudiant qui n'a pas encore de groupe dans la promo.
+  Pour **retirer un membre** ou **renommer le groupe**, il fait une proposition que les étudiants du groupe votent à la **majorité simple**
+  (la personne visée ne vote pas ; la proposition compte pour un « oui » de son auteur). Garde-fous : la proposition expire après **7 jours** ;
+  un retrait refusé ne peut pas être reproposé pendant **14 jours** ; à deux étudiants le retrait ne se vote pas (l'administrateur retire le membre) ;
+  on ne vide jamais un groupe de ses étudiants ; tout est tracé dans l'onglet `Votes`. Les fiches d'un membre retiré restent au groupe.
+- Un étudiant ne voit **pas les adresses e-mail des autres étudiants** (seulement les demandes en attente et les formateurs / lecteurs). Les autres étudiants
+  sont désignés par un identifiant public dérivé de l'adresse.
+- **Reprise de l'existant** : `setup` crée le groupe « Les petits chercheurs » (IFSI Saint-Nazaire, Promo 24-27) avec tous les accès actifs,
+  et lui rattache les fiches et commentaires déjà saisis. Sans risque à relancer.
 
 **Demande d'accès** : une personne dont l'adresse n'est pas connue se connecte avec Google ; une ligne
 `en_attente` est créée dans `Utilisateurs` (50 demandes en attente au maximum) et elle voit « demande envoyée ».
@@ -101,6 +127,8 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
   (une par semaine), soit au plus 15 copies ; les autres vont à la corbeille Drive.
   `sauvegarder` peut aussi se lancer à la main avant une opération risquée. Pour restaurer : ouvrir la copie voulue,
   ou recopier l'onglet concerné dans le Sheet de production.
+- **Passage aux groupes** : coller le nouveau `Code.gs`, lancer `setup` **une fois** (crée `Groupes`, `Membres`, `Votes`, ajoute les colonnes `groupe_id` et `portee`,
+  puis rattache l'existant au groupe « Les petits chercheurs »), puis créer une nouvelle version du déploiement. Entre le collage du code et `setup`, l'application ne montre rien.
 - **Nouvelle colonne `lien`** dans `Lectures` : relancer `setup` après avoir collé le nouveau `Code.gs` (les lectures existantes restent intactes, le lien est facultatif).
 - **Renommer le Sheet** : sans effet sur l'application (le script lui est rattaché par son identifiant).
 - Le tableau se rafraîchit toutes les 45 secondes (et au retour sur l’onglet) (réglable dans `config.js`).
@@ -109,6 +137,6 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 
 - `config.js` ne contient aucun secret : l'ID client et l'URL de l'API sont publics par nature.
 - Le script refuse tout jeton dont l'audience n'est pas votre ID client, ou dont l'adresse n'est pas vérifiée.
-- Les adresses e-mail ne sont renvoyées au navigateur qu'aux étudiants et à l'administrateur, dans l'onglet Administration.
+- Les adresses e-mail ne sont renvoyées au navigateur qu'à l'administrateur (et, pour les demandes en attente et les formateurs / lecteurs, aux étudiants), dans l'onglet Administration.
 - L'adresse de l'administrateur n'est pas dans le dépôt : elle vit dans les propriétés du script.
 - Tant qu'une demande est en attente, ou refusée, aucune lecture ni aucun commentaire n'est renvoyé.

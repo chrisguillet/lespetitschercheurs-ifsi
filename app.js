@@ -29,6 +29,11 @@ const stamp = () => new Date().toISOString().slice(0, 10);
 let token = null;
 try { token = sessionStorage.getItem("lydia_token"); } catch (e) { /* stockage indisponible */ }
 let me = null, users = [], items = [], comments = [], acces = [], pendingCount = 0;
+// items / comments = ce que montre la vue courante ; itemsAll / commentsAll = tout ce que le serveur renvoie à la personne.
+let groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [];
+const ctx = { gid: "", vue: "groupe" };          // groupe choisi, et vue : « groupe » ou « promo » (fiches partagées)
+try { ctx.gid = localStorage.getItem("lydia_groupe") || ""; ctx.vue = localStorage.getItem("lydia_portee") === "promo" ? "promo" : "groupe"; } catch (e) { /* ignoré */ }
+let cmScope = "groupe", studentsSig = "", ctxSig = "";
 let editing = null, override = false, tab = "all", timer = null;
 const drafts = {};          // brouillons de commentaires, par lecture
 let cmId = null, cmFocus = null;   // lecture dont la discussion est ouverte dans la fenêtre « Commentaires »
@@ -123,6 +128,7 @@ function showGate(msg, retry) {
 function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
+  groupes = []; votes = []; itemsAll = []; commentsAll = []; groupesAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
   editing = null; override = false; forceStatut = "";
   openRows.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
@@ -130,8 +136,10 @@ function reinitialiserEtat() {
   B.who = ""; B.enCours = false;
   enLigne = []; enLigneSig = "";
   tab = "all"; vuDepuis = null; renderedAcces = ""; derniereSync = null; usersChanged = false;
-  ["rows", "cards", "mylist", "mysum", "adminbox", "bibtools", "biblist", "synthbox", "cmtsbox", "cmbody", "online", "filters", "stats", "form"].forEach(id => { $(id).innerHTML = ""; });
+  ["rows", "cards", "mylist", "mysum", "adminbox", "bibtools", "biblist", "synthbox", "cmtsbox", "cmbody", "online", "filters", "stats", "form", "ctxbar", "gbody"].forEach(id => { $(id).innerHTML = ""; });
   $("pending").textContent = ""; $("cmtcount").textContent = "";
+  document.body.classList.remove("nogroup");
+  $("sub").textContent = "Outil partagé de suivi des lectures de mémoire";
 }
 
 function logout() {
@@ -165,18 +173,35 @@ function majSync() {
   if (el && derniereSync) el.textContent = "mis à jour à " + derniereSync.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Groupe courant (celui choisi, sinon le premier) et vue (groupe ou promo) : ce que montrent le tableau, les commentaires, la synthèse.
+function groupeCourant() { return groupes.find(g => g.id === ctx.gid) || groupes[0] || null; }
+const memePromo = (a, b) => a.etablissement === b.etablissement && a.promo === b.promo;
+
+function deriver() {
+  const g = groupeCourant();
+  if (!g) { items = []; comments = []; return; }
+  ctx.gid = g.id;
+  items = ctx.vue === "promo" ? itemsAll.filter(i => i.portee === "promo" && memePromo(i, g)) : itemsAll.filter(i => i.groupe_id === g.id);
+  const ids = new Set(items.map(i => i.id));
+  comments = commentsAll.filter(c => ids.has(c.lecture_id) && (ctx.vue === "promo" ? c.portee === "promo" : c.portee !== "promo"));
+}
+
 function applyData(j) {
   derniereSync = new Date();
   majSync();
-  if (j.utilisateurs) {
-    usersChanged = JSON.stringify(j.utilisateurs) !== JSON.stringify(users);
-    users = j.utilisateurs;
-    // Un filtre sur un étudiant qui n'est plus actif n'a plus de sens.
-    if (F.who && !users.some(u => u.prenom === F.who)) F.who = "";
-    if (B.who && !users.some(u => u.prenom === B.who)) B.who = "";
-  }
-  items = j.lectures;
-  comments = j.commentaires || [];
+  if (j.utilisateurs) users = j.utilisateurs;
+  groupes = j.groupes || [];
+  votes = j.votes || [];
+  itemsAll = j.lectures;
+  commentsAll = j.commentaires || [];
+  deriver();
+  // La liste des étudiants (filtres, statistiques) dépend de la vue : on ne reconstruit les filtres que si elle change.
+  const sig = JSON.stringify(students());
+  usersChanged = sig !== studentsSig;
+  studentsSig = sig;
+  // Un filtre sur un étudiant qui n'est plus dans la vue n'a plus de sens.
+  if (F.who && !students().some(u => u.prenom === F.who)) F.who = "";
+  if (B.who && !students().some(u => u.prenom === B.who)) B.who = "";
   enLigne = j.enLigne || [];
   lusSet = new Set((j.lus || []).concat([...lusEnvoi]).filter(id => !nonLusEnvoi.has(id)));
   pendingCount = j.enAttente || 0;
@@ -190,6 +215,8 @@ function applyResult(j) {
 }
 
 function renderData() {
+  renderCtx();
+  majGroupe();
   if (usersChanged && me) renderFilters();
   renderMine();
   renderTable();
@@ -236,6 +263,8 @@ async function refresh(manuel) {
   if (manuel === true) showStatus("⏳ Actualisation…");
   try {
     applyData(await api("list"));
+    renderCtx();
+    majGroupe();
     if (usersChanged) renderFilters();
     // On ne reconstruit pas le tableau pendant qu'un commentaire est en cours de saisie.
     const a = document.activeElement;
@@ -270,7 +299,14 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) refr
 
 /* ---------- Interface générale ---------- */
 
-const students = () => users.filter(u => u.role === "etudiant");
+// Étudiants de la vue : auteurs des fiches affichées, et (vue du groupe) tous les membres étudiants du groupe.
+const students = () => {
+  const m = new Map();
+  const g = groupeCourant();
+  if (g && ctx.vue !== "promo") g.membres.filter(x => x.role === "etudiant").forEach(x => m.set(x.prenom, { prenom: x.prenom, couleur: x.couleur, role: "etudiant" }));
+  items.forEach(i => { if (!m.has(i.etudiant)) m.set(i.etudiant, { prenom: i.etudiant, couleur: i.couleur, role: "etudiant" }); });
+  return [...m.values()].sort((a, b) => a.prenom.localeCompare(b.prenom, "fr"));
+};
 
 const ROLE_NOM = { etudiant: "Étudiant", formateur: "Formateur · lecture et commentaires", lecteur: "Lecteur · lecture seule", admin: "Administrateur" };
 
@@ -363,8 +399,9 @@ function field(id, label, val, opts = {}) {
 
 function renderForm() {
   if (!canWrite()) return;
-  const d = editing ? items.find(i => i.id === editing) || {} : {};
+  const d = editing ? itemsAll.find(i => i.id === editing) || {} : {};
   $("ftitle").textContent = editing ? (override ? `Contribuer à la lecture de ${d.etudiant}` : "Modifier la lecture") : "Ajouter une lecture";
+  const gc = groupeCourant();
   $("fnote").textContent = override
     ? `⚠️ Cette lecture appartient à ${d.etudiant}. Vos modifications seront visibles de tous et l’ancienne version est conservée dans l’historique.`
     : forceStatut
@@ -386,6 +423,11 @@ function renderForm() {
     ${field("f_type", "Type d’article", d.type, { req: 1, sel: TYPES })}
    </div>
    <div id="dup" style="display:none;margin-top:10px;color:#b45309;font-weight:600"></div></details>
+  <details class="sec" open><summary>Partage</summary>
+   <div class="meta" style="margin-bottom:8px">Cette fiche appartient au groupe <b>${esc(editing ? (d.groupe || "") : gc ? gc.nom : "")}</b> : seuls ses membres la voient.</div>
+   <label class="chk"><input type="checkbox" id="f_portee" ${d.portee === "promo" ? "checked" : ""}> 🌐 La partager avec toute la promo</label>
+   <div class="meta" style="margin-top:6px">Les autres groupes pourront la lire et la commenter, sans pouvoir la modifier. Les commentaires du groupe restent réservés au groupe : ils ne sont pas transférés, la promo a sa propre discussion. Décocher la case retire la fiche de la promo.</div>
+  </details>
   <details class="sec" open><summary>Compléments pour la référence APA (facultatifs, mais recommandés pour les articles)</summary>
    <div class="grid">
     ${field("f_source", "Revue / éditeur / établissement", d.source, { ph: "revue de l’article, éditeur du rapport, université de la thèse" })}
@@ -445,7 +487,7 @@ $("drawerclose").onclick = () => closeDrawer();
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const ouvert = document.querySelector("details.colmenu[open]");
-  if (ouvert) ouvert.removeAttribute("open"); else if (cmId) fermerDiscussion(); else closeDrawer();
+  if (ouvert) ouvert.removeAttribute("open"); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
 });
 $("addbtn").onclick = () => { editing = null; override = false; forceStatut = ""; openForm(); };
 
@@ -481,7 +523,8 @@ const CHAMPS_FORM = ["statut", "titre", "parution", "auteur", "qualite", "nation
   "pages", "doi", "lien", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre"];
 let formBase = "", brouillonTimer = null;
 
-const snapshot = () => Object.fromEntries(CHAMPS_FORM.map(k => [k, $("f_" + k) ? $("f_" + k).value : ""]));
+const snapshot = () => ({ ...Object.fromEntries(CHAMPS_FORM.map(k => [k, $("f_" + k) ? $("f_" + k).value : ""])),
+  portee: $("f_portee") && $("f_portee").checked ? "promo" : "groupe" });
 
 function lireForm() {
   const v = snapshot();
@@ -514,7 +557,7 @@ function majDoublon() {
   if (!box) return;
   const { data } = lireForm();
   const t = cleTitre(data.titre), d = cleDoi(data.doi);
-  const autre = (t.length >= 8 || d) ? items.find(i => i.id !== editing && ((d && cleDoi(i.doi) === d) || (t.length >= 8 && cleTitre(i.titre) === t))) : null;
+  const autre = (t.length >= 8 || d) ? itemsAll.find(i => i.id !== editing && ((d && cleDoi(i.doi) === d) || (t.length >= 8 && cleTitre(i.titre) === t))) : null;
   if (!autre) { box.style.display = "none"; return; }
   box.textContent = autre.mine
     ? "⚠ Vous avez déjà saisi cet article. Vérifiez qu’il ne s’agit pas d’un doublon."
@@ -540,6 +583,7 @@ function restaurerBrouillon() {
   try { b = JSON.parse(localStorage.getItem(cleBrouillon()) || "null"); } catch (e) { b = null; }
   if (!b || !b.v || Date.now() - b.t > 30 * 864e5) return;
   CHAMPS_FORM.forEach(k => { if ($("f_" + k) && b.v[k] !== undefined) $("f_" + k).value = b.v[k]; });
+  if ($("f_portee") && b.v.portee) $("f_portee").checked = b.v.portee === "promo";
   const note = $("draftnote");
   note.innerHTML = `📝 Brouillon non enregistré restauré (${esc(fmtDT(new Date(b.t).toISOString()))}). <button type="button" class="btn sm sec" id="draftreset">Repartir de zéro</button>`;
   note.style.display = "block";
@@ -563,7 +607,7 @@ async function save() {
   try {
     const res = await enCours("Enregistrement…", () => editing
       ? api("update", { id: editing, override, data })
-      : api("add", { data }));
+      : api("add", { data: { ...data, groupe_id: (groupeCourant() || {}).id } }));
     effacerBrouillon();
     closeDrawer(true);
     applyResult(res);
@@ -581,7 +625,7 @@ async function del(id) {
 }
 
 function startEdit(id, ov, statut) {
-  const it = items.find(i => i.id === id);
+  const it = itemsAll.find(i => i.id === id);
   if (!it) return;
   if (ov && !confirm(`Cette lecture appartient à ${it.etudiant}.\n\nVoulez-vous vraiment la modifier ? L’ancienne version sera conservée dans l’historique.`)) return;
   editing = id; override = ov; forceStatut = statut || "";
@@ -590,18 +634,20 @@ function startEdit(id, ov, statut) {
 
 // « Terminée » en un clic quand tous les champs obligatoires sont déjà remplis ; sinon on ouvre le formulaire.
 async function marquerTerminee(id) {
-  const it = items.find(x => x.id === id);
+  const it = itemsAll.find(x => x.id === id);
   if (!it) return;
   if (FIN.some(k => !String(it[k] || "").trim())) { startEdit(id, false, "Terminée"); return; }
   const data = Object.fromEntries(CHAMPS_FORM.map(k => [k, String(it[k] || "")]));
   data.statut = "Terminée";
+  data.portee = it.portee;
   try { applyResult(await enCours("Enregistrement…", () => api("update", { id, override: false, data }))); }
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Enregistrement impossible : " + e.message); }
 }
 
 function renderMine() {
   if (!canWrite()) return;
-  const mine = items.filter(i => i.mine).sort((a, b) =>
+  const g = groupeCourant();
+  const mine = itemsAll.filter(i => i.mine && g && i.groupe_id === g.id).sort((a, b) =>
     (a.statut === "En cours" ? 0 : 1) - (b.statut === "En cours" ? 0 : 1) || String(b.ajoute).localeCompare(a.ajoute));
   const enc = mine.filter(i => i.statut === "En cours").length;
   $("mysum").textContent = mine.length ? `${mine.length} lecture${mine.length > 1 ? "s" : ""} · ${enc} en cours · ${mine.length - enc} terminée${mine.length - enc > 1 ? "s" : ""}` : "";
@@ -626,6 +672,11 @@ const urlSure = u => /^https?:\/\/[^\s<>"']+$/i.test(String(u || "").trim()) ? S
 const lienHtml = i => urlSure(i.lien)
   ? `<a class="lien" href="${esc(urlSure(i.lien))}" target="_blank" rel="noopener noreferrer" title="${esc(urlSure(i.lien))}">🔗 Ouvrir le lien</a>` : "";
 
+// Dans la vue promo on indique le groupe d'origine ; dans la vue du groupe, une fiche partagée porte une pastille.
+const badgeGroupe = i => ctx.vue === "promo"
+  ? `<span class="badge grp" title="Groupe de ${esc(i.etudiant)}">👥 ${esc(i.groupe)}</span>`
+  : i.portee === "promo" ? '<span class="badge share" title="Cette fiche est aussi visible de toute la promo">🌐 Partagée</span>' : "";
+
 const anneeDe = i => (/^(\d{4})/.exec(i.parution || "") || [])[1] || "";
 
 function badgeNouveau(i) {
@@ -645,7 +696,7 @@ async function marquerLus(ids, tous) {
   aMarquer.forEach(id => { lusSet.add(id); lusEnvoi.add(id); nonLusEnvoi.delete(id); });
   renderComments();
   try {
-    const j = await api("comments_read", tous ? { tous: true } : { ids: aMarquer });
+    const j = await api("comments_read", { ids: aMarquer });
     aMarquer.forEach(id => lusEnvoi.delete(id));
     applyResult(j);
   } catch (e) {
@@ -672,11 +723,13 @@ async function marquerNonLus(ids) {
 }
 
 // Discussion d'une lecture : fenêtre au-dessus de la page (tableau, cartes ou onglet Commentaires).
-function ouvrirDiscussion(id) {
-  if (!items.some(i => i.id === id)) return;
+function ouvrirDiscussion(id, scope) {
+  const it = items.find(i => i.id === id);
+  if (!it) return;
   cmFocus = document.activeElement;
   cmId = id;
-  const nv = comments.filter(c => c.lecture_id === id && nonLu(c)).map(c => c.id);
+  cmScope = scope || (ctx.vue === "promo" ? "promo" : "groupe");
+  const nv = fil(id, cmScope).filter(nonLu).map(c => c.id);
   nv.forEach(x => frais.add(x));      // surlignés tant que la fenêtre reste ouverte
   marquerLus(nv);
   renderModal();
@@ -685,7 +738,7 @@ function ouvrirDiscussion(id) {
 }
 
 function fermerDiscussion(silencieux) {
-  if (cmId) comments.filter(c => c.lecture_id === cmId).forEach(c => frais.delete(c.id));
+  if (cmId) commentsAll.filter(c => c.lecture_id === cmId).forEach(c => frais.delete(c.id));
   cmId = null;
   $("cmodal").classList.add("hidden");
   document.body.classList.remove("modalopen");
@@ -696,12 +749,21 @@ function fermerDiscussion(silencieux) {
   cmFocus = null;
 }
 
+// Deux fils par fiche : celui du groupe (réservé à ses membres) et celui de la promo (si la fiche est partagée).
+const fil = (id, scope) => commentsAll.filter(c => c.lecture_id === id && (scope === "promo" ? c.portee === "promo" : c.portee !== "promo"));
+const monGroupe = i => groupes.some(g => g.id === i.groupe_id);
+const filsDe = i => (monGroupe(i) ? ["groupe"] : []).concat(i.portee === "promo" ? ["promo"] : []);
+
 function renderModal() {
-  const it = cmId && items.find(i => i.id === cmId);
+  const it = cmId && (items.find(i => i.id === cmId) || itemsAll.find(i => i.id === cmId));
   if (!it) { if (cmId) fermerDiscussion(); return; }   // lecture supprimée entre-temps
+  const fils = filsDe(it);
+  if (!fils.includes(cmScope)) cmScope = fils[0] || "groupe";   // fiche retirée de la promo, ou groupe quitté
   $("cmtitle").textContent = it.titre;
-  $("cmsub").textContent = [it.etudiant, it.auteur, anneeDe(it)].filter(Boolean).join(" · ");
-  $("cmbody").innerHTML = commentsBox(it);
+  $("cmsub").textContent = [it.groupe, it.etudiant, it.auteur, anneeDe(it)].filter(Boolean).join(" · ");
+  $("cmbody").innerHTML = (fils.length > 1 ? `<div class="seg" role="tablist"><button type="button" class="btn sm sec ${cmScope === "groupe" ? "on" : ""}" data-sc="groupe" role="tab" aria-selected="${cmScope === "groupe"}">👥 Mon groupe (${fil(it.id, "groupe").length})</button><button type="button" class="btn sm sec ${cmScope === "promo" ? "on" : ""}" data-sc="promo" role="tab" aria-selected="${cmScope === "promo"}">🌐 Toute la promo (${fil(it.id, "promo").length})</button></div>` : "")
+    + `<div class="meta">${cmScope === "promo" ? "Discussion ouverte à toute la promo." : "Discussion réservée aux membres du groupe."}</div>`
+    + commentsBox(it, cmScope);
   $("cmodal").classList.remove("hidden");
   document.body.classList.add("modalopen");
 }
@@ -722,7 +784,7 @@ $("cmodal").addEventListener("mousedown", e => { if (e.target === $("cmodal")) f
 const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).length; const u = nbNonLus(i.id); return n ? `<span class="cn" title="${n} commentaire${n > 1 ? "s" : ""}${u ? ", " + u + " non lu" + (u > 1 ? "s" : "") : ""}">💬 ${n}</span>${u ? `<span class="new">${u} non lu${u > 1 ? "s" : ""}</span>` : ""}` : ""; };
 
 function actionsHtml(i) {
-  const edit = !canWrite() ? "" : i.mine
+  const edit = !canWrite() || !i.modifiable ? "" : i.mine
     ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> `
     : `<button class="btn sm sec" data-o="${esc(i.id)}">Contribuer</button> `;
   const n = comments.filter(x => x.lecture_id === i.id).length, u = nbNonLus(i.id);
@@ -736,7 +798,7 @@ function infosHtml(i) {
 function cells(i) {
   const c = esc(i.couleur);
   const prog = i.statut === "En cours";
-  const main = `<tr data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours" : "✅ Terminée"}</span>${badgeNouveau(i)}${nbComm(i)}
+  const main = `<tr data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
    <b>${esc(i.titre)}</b>${lienHtml(i)}
    <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
    <div class="meta full">${infosHtml(i)}</div>
@@ -752,7 +814,7 @@ function cardHtml(i) {
   const prog = i.statut === "En cours";
   const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b>${clampTxt(i.id, v)}</div>` : "";
   return `<article class="cardc ${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
-   <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeNouveau(i)}</div>
+   <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeNouveau(i)}</div>
    <h3><span class="chev" aria-hidden="true"></span>${esc(i.titre)}</h3>${lienHtml(i)}
    <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
    <div class="meta full">${infosHtml(i)}</div>
@@ -790,21 +852,22 @@ function copierApa(id) {
   copier(r.html, r.text, "📋 Référence copiée");
 }
 
-function commentsBox(i) {
-  const l = comments.filter(c => c.lecture_id === i.id).sort((a, b) => String(a.date).localeCompare(b.date));
+function commentsBox(i, scope) {
+  const cle = i.id + "|" + scope;
+  const l = fil(i.id, scope).sort((a, b) => String(a.date).localeCompare(b.date));
   const list = l.length ? l.map(c => {
     const own = c.mine && canComment();
     const nl = `<button class="btn sm sec" data-cu="${esc(c.id)}" title="Le retrouver parmi les non lus">Marquer comme non lu</button>`;
     const acts = (own
       ? `<button class="btn sm sec" data-ce="${esc(c.id)}">Modifier</button> <button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>`
-      : (!c.mine && lusSet.has(c.id) ? nl + " " : "") + (canAdmin() ? `<button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>` : ""));
+      : (!c.mine && lusSet.has(c.id) ? nl + " " : "") + (canAdmin() && (scope !== "promo" || isSuper()) ? `<button class="btn sm sec del" data-cd="${esc(c.id)}">Supprimer</button>` : ""));
     const nouveau = frais.has(c.id) || nonLu(c);
-    return `<div class="cm ${nouveau ? "fresh" : ""}"><b>${esc(c.auteur)}</b>${nouveau ? ' <span class="new">Nouveau</span>' : ""} <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>
+    return `<div class="cm ${nouveau ? "fresh" : ""}"><b>${esc(c.auteur)}</b>${scope === "promo" && c.groupe ? ` <span class="meta">(${esc(c.groupe)})</span>` : ""}${nouveau ? ' <span class="new">Nouveau</span>' : ""} <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>
       <div class="cmtxt">${esc(c.texte)}</div>${acts}</div>`;
   }).join("") : '<div class="meta">Aucun commentaire.</div>';
   const form = canComment()
-    ? `<div><textarea data-cm="${esc(i.id)}" maxlength="2000" placeholder="Ajouter un commentaire…" aria-label="Nouveau commentaire">${esc(drafts[i.id] || "")}</textarea>
-       <button class="btn sm" data-ca="${esc(i.id)}" style="margin-top:6px">Publier</button></div>` : "";
+    ? `<div><textarea data-cm="${esc(cle)}" maxlength="2000" placeholder="${scope === "promo" ? "Écrire à toute la promo…" : "Écrire au groupe…"}" aria-label="Nouveau commentaire">${esc(drafts[cle] || "")}</textarea>
+       <button class="btn sm" data-ca="${esc(cle)}" style="margin-top:6px">Publier</button></div>` : "";
   return list + form;
 }
 
@@ -825,7 +888,7 @@ function renderComments() {
     const it = parId.get(c.lecture_id), nvC = nonLu(c);
     return `<article class="cmcard ${nvC ? "fresh" : ""}" data-cid="${esc(c.id)}">
       <div class="cmhead"><b>${esc(c.auteur)}</b> <span class="meta">${esc(fmtDT(c.date))}${c.modifie_le ? " · modifié" : ""}</span>${nvC ? ' <span class="new">Nouveau</span>' : ""}</div>
-      <div class="meta">sur <b>${esc(it.titre)}</b> · lecture de ${esc(it.etudiant)}</div>
+      <div class="meta">sur <b>${esc(it.titre)}</b> · lecture de ${esc(it.etudiant)}${ctx.vue === "promo" ? " · " + esc(it.groupe) : ""}</div>
       <div class="cmtxt">${esc(c.texte)}</div>
       <div class="cmacts"><button class="btn sm" data-cgo="${esc(it.id)}">${canComment() ? "Voir et répondre" : "Voir la discussion"}</button>${nvC ? ` <button class="btn sm sec" data-cr="${esc(c.id)}">Marquer comme lu</button>` : !c.mine ? ` <button class="btn sm sec" data-cu="${esc(c.id)}">Marquer comme non lu</button>` : ""}</div>
     </article>`;
@@ -1004,18 +1067,20 @@ const onAction = e => {
   else if (d.cu) marquerNonLus([d.cu]);
   else if (d.kw !== undefined) filtrerMotCle(d.kw);
   else if (d.c) ouvrirDiscussion(d.c);
+  else if (d.sc) { cmScope = d.sc; renderModal(); const z = $("cmbody").querySelector("textarea"); if (z) z.focus(); }
   else if (d.ca) {
     const t = (drafts[d.ca] || "").trim();
     if (!t) return;
+    const [lid, portee] = d.ca.split("|");
     b.disabled = true;
-    commentAction(async () => { const j = await api("comment_add", { lecture_id: d.ca, texte: t }); drafts[d.ca] = ""; return j; }, "Commentaire impossible")
+    commentAction(async () => { const j = await api("comment_add", { lecture_id: lid, texte: t, portee }); drafts[d.ca] = ""; return j; }, "Commentaire impossible")
       .then(() => {
         renderModal();                    // la saisie est terminée : on affiche le nouveau commentaire même si la zone avait le focus
         $("cmbody").scrollTop = $("cmbody").scrollHeight;
         const z = $("cmbody").querySelector("textarea"); if (z) z.focus();
       });
   } else if (d.ce) {
-    const c = comments.find(x => x.id === d.ce);
+    const c = commentsAll.find(x => x.id === d.ce);
     const t = c && prompt("Modifier le commentaire :", c.texte);
     if (t && t.trim()) commentAction(() => api("comment_update", { id: d.ce, texte: t }), "Modification impossible");
   } else if (d.cd) {
@@ -1132,7 +1197,9 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) marqu
 
 async function loadAdmin() {
   try {
-    const next = (await api("admin_list")).acces;
+    const r = await api("admin_list");
+    const next = r.acces;
+    groupesAdmin = r.groupesAdmin || [];
     // Pas de reconstruction si rien n'a changé ou si une saisie est en cours (sinon elle serait perdue).
     const a = document.activeElement;
     const typing = a && a.closest && a.closest("#adminbox") && (a.tagName === "INPUT" || a.tagName === "SELECT");
@@ -1163,7 +1230,7 @@ function accesRow(a) {
 
 let renderedAcces = "";
 // Le rendu dépend du rôle (étudiant ou administrateur) autant que de la liste : les deux entrent dans la signature.
-const signatureAcces = l => (me ? me.role : "") + "|" + JSON.stringify(l);
+const signatureAcces = l => (me ? me.role : "") + "|" + JSON.stringify([l, groupesAdmin]);
 function renderAdmin() {
   renderedAcces = signatureAcces(acces);
   const head = `<tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th>${isSuper() ? "<th>Couleur</th>" : ""}<th>Rôle</th><th>Actions</th></tr>`;
@@ -1173,7 +1240,8 @@ function renderAdmin() {
   $("adminbox").innerHTML =
     bloc("⏳ Demandes en attente", acces.filter(a => a.statut === "en_attente"), "Aucune demande en attente.") +
     bloc("✅ Accès actifs", acces.filter(a => a.statut === "actif"), "Aucun accès actif.") +
-    bloc("⛔ Accès refusés", acces.filter(a => a.statut === "refuse"), "Aucun accès refusé.");
+    bloc("⛔ Accès refusés", acces.filter(a => a.statut === "refuse"), "Aucun accès refusé.") +
+    (isSuper() ? blocGroupes() : "");
 }
 
 async function supprimerUtilisateur(b) {
@@ -1196,6 +1264,8 @@ async function supprimerUtilisateur(b) {
 }
 
 $("adminbox").onclick = async e => {
+  const gb = e.target.closest("button[data-g]");
+  if (gb) return actionGroupeAdmin(gb);
   const del = e.target.closest("button[data-del]");
   if (del) return supprimerUtilisateur(del);
   const b = e.target.closest("button[data-as]");
@@ -1221,10 +1291,10 @@ $("adminbox").onclick = async e => {
 
 function exportXlsx() {
   if (typeof XLSX === "undefined") { alert("Module Excel non chargé."); return; }
-  const head = ["Étudiant", "Statut", "Titre", "Date de parution", "Auteur", "Qualité de l’auteur", "Nationalité", "Type d’article", "Mots-clés", "Keywords (EN)", "Concepts en sciences infirmières", "Objet / sujet principal", "Opinion de l’auteur", "Controverse", "Libre", "Référence APA", "Date de saisie", "Lien"];
-  const rows = filtered().map(i => [i.etudiant, i.statut === "En cours" ? "En cours de lecture" : "Terminée", i.titre, fmtD(i.parution), i.auteur, i.qualite, i.nation, i.type, i.mots, i.kw, i.concepts, i.objet, i.opinion, i.controverse, i.libre, LydiaApa.apa(i).text, fmtD(i.ajoute), urlSure(i.lien)].map(v => v || ""));
+  const head = ["Groupe", "Étudiant", "Statut", "Titre", "Date de parution", "Auteur", "Qualité de l’auteur", "Nationalité", "Type d’article", "Mots-clés", "Keywords (EN)", "Concepts en sciences infirmières", "Objet / sujet principal", "Opinion de l’auteur", "Controverse", "Libre", "Référence APA", "Date de saisie", "Lien"];
+  const rows = filtered().map(i => [i.groupe, i.etudiant, i.statut === "En cours" ? "En cours de lecture" : "Terminée", i.titre, fmtD(i.parution), i.auteur, i.qualite, i.nation, i.type, i.mots, i.kw, i.concepts, i.objet, i.opinion, i.controverse, i.libre, LydiaApa.apa(i).text, fmtD(i.ajoute), urlSure(i.lien)].map(v => v || ""));
   const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
-  ws["!cols"] = [12, 16, 40, 14, 24, 20, 14, 22, 28, 28, 36, 36, 36, 30, 24, 50, 14, 40].map(w => ({ wch: w }));
+  ws["!cols"] = [18, 12, 16, 40, 14, 24, 20, 14, 22, 28, 28, 36, 36, 36, 30, 24, 50, 14, 40].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Lectures");
   XLSX.writeFile(wb, "lectures-memoire-" + stamp() + ".xlsx");
@@ -1251,10 +1321,244 @@ function exportPdf() {
   doc.save("lectures-memoire-" + stamp() + ".pdf");
 }
 
+/* ---------- Groupes : sélecteur de contexte, fenêtre du groupe, votes ---------- */
+
+// Commentaires non lus d'un groupe (fil du groupe) ou de sa promo (fil de la promo).
+function nonLusDe(g, vue) {
+  const par = new Map(itemsAll.map(i => [i.id, i]));
+  return commentsAll.filter(c => {
+    const i = par.get(c.lecture_id);
+    if (!i || !nonLu(c)) return false;
+    return vue === "promo" ? c.portee === "promo" && memePromo(i, g) : c.portee !== "promo" && i.groupe_id === g.id;
+  }).length;
+}
+
+const votesAFaire = g => votes.filter(v => v.groupe_id === g.id && v.peut_voter && v.mon_vote === null).length;
+
+// Bandeau sous les onglets : groupe, vue (groupe ou promo) et accès à la fenêtre du groupe. Reconstruit seulement s'il change.
+function renderCtx() {
+  const bar = $("ctxbar");
+  const g = me ? groupeCourant() : null;
+  document.body.classList.toggle("nogroup", !!me && !g);
+  const msg = $("nogroup");
+  if (me && !g) {
+    msg.textContent = isSuper() ? "Aucun groupe n’existe encore : créez-en un dans l’onglet « Administration »."
+      : canWrite() ? "Vous ne faites pas encore partie d’un groupe. L’administrateur, ou un membre de votre groupe, peut vous y ajouter."
+        : "Aucun groupe ne vous est affecté pour le moment : contactez l’administrateur.";
+  }
+  msg.classList.toggle("hidden", !(me && !g));
+  $("sub").textContent = !g ? "Outil partagé de suivi des lectures de mémoire"
+    : ctx.vue === "promo" ? `${g.etablissement} · ${g.promo} — fiches partagées par tous les groupes`
+      : `${g.etablissement} · ${g.promo} · ${g.nom} — ${g.membres.filter(m => m.role === "etudiant").map(m => m.prenom).join(", ") || "aucun étudiant"}`;
+  if (!g) { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
+  bar.classList.remove("hidden");
+  const sig = JSON.stringify([ctx.gid, ctx.vue, groupes.map(x => [x.id, x.nom, x.promo, x.etablissement, nonLusDe(x, "groupe")]), nonLusDe(g, "promo"), votesAFaire(g), votes.filter(v => v.groupe_id === g.id).length]);
+  if (sig === ctxSig && bar.innerHTML) return;
+  ctxSig = sig;
+  const nvG = nonLusDe(g, "groupe"), nvP = nonLusDe(g, "promo"), vf = votesAFaire(g);
+  const pastille = n => n ? ` <span class="count">${n}</span>` : "";
+  const choix = groupes.length > 1
+    ? `<label class="meta" for="ctxg" style="margin:0">Groupe</label><select id="ctxg" aria-label="Choisir le groupe">${groupes.map(x => { const n = nonLusDe(x, "groupe"); return `<option value="${esc(x.id)}" ${x.id === g.id ? "selected" : ""}>${esc(x.etablissement)} · ${esc(x.promo)} — ${esc(x.nom)}${n ? " (" + n + " non lu" + (n > 1 ? "s" : "") + ")" : ""}</option>`; }).join("")}</select>`
+    : `<span class="meta">${esc(g.nom)}</span>`;
+  bar.innerHTML = `${choix}
+    <span class="seg"><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "" : "on"}" id="vg" aria-pressed="${ctx.vue !== "promo"}">👥 Mon groupe${ctx.vue === "promo" ? pastille(nvG) : ""}</button><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "on" : ""}" id="vp" aria-pressed="${ctx.vue === "promo"}">🌐 Toute la promo${ctx.vue === "promo" ? "" : pastille(nvP)}</button></span>
+    <button type="button" class="btn sm sec" id="gbtn">⚙️ Membres et votes${pastille(vf)}</button>`;
+  if ($("ctxg")) $("ctxg").onchange = e => changerContexte({ gid: e.target.value });
+  $("vg").onclick = () => changerContexte({ vue: "groupe" });
+  $("vp").onclick = () => changerContexte({ vue: "promo" });
+  $("gbtn").onclick = ouvrirGroupe;
+}
+
+function changerContexte(c) {
+  if (c.gid !== undefined) ctx.gid = c.gid;
+  if (c.vue !== undefined) ctx.vue = c.vue;
+  try { localStorage.setItem("lydia_groupe", ctx.gid); localStorage.setItem("lydia_portee", ctx.vue); } catch (e) { /* ignoré */ }
+  fermerDiscussion(true); fermerGroupe(true);
+  closeDrawer(true);
+  openRows.clear();
+  Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "" });
+  B.who = "";
+  deriver();
+  studentsSig = JSON.stringify(students());
+  renderCtx();
+  renderFilters();
+  renderMine(); renderTable(); renderComments();
+  if (tab === "biblio") { renderBiblioTools(); renderBiblio(); }
+  if (tab === "synth") renderSynth();
+}
+
+/* ----- Fenêtre « Membres et votes » ----- */
+
+const GM = { ouvert: false, cand: null };
+
+function ouvrirGroupe() {
+  if (!groupeCourant()) return;
+  GM.ouvert = true; GM.cand = null; GM.focus = document.activeElement;
+  renderGroupe();
+  $("gclose").focus();
+}
+
+function fermerGroupe(silencieux) {
+  GM.ouvert = false;
+  $("gmodal").classList.add("hidden");
+  if (!cmId) document.body.classList.remove("modalopen");
+  $("gbody").innerHTML = "";
+  if (!silencieux && GM.focus && GM.focus.isConnected && GM.focus.focus) { try { GM.focus.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
+}
+
+// Pas de reconstruction pendant une saisie dans la fenêtre (actualisation automatique).
+function majGroupe() {
+  if (!GM.ouvert) return;
+  const a = document.activeElement;
+  if (a && $("gbody").contains(a) && (a.tagName === "INPUT" || a.tagName === "SELECT")) return;
+  renderGroupe();
+}
+
+const dateCourte = iso => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }); };
+
+function voteHtml(v) {
+  const q = v.type === "retrait" ? `Retirer <b>${esc(v.cible)}</b> du groupe ?` : `Renommer le groupe en <b>« ${esc(v.valeur)} »</b> ?`;
+  const etat = `${v.oui} oui · ${v.non} non — ${v.besoin} oui nécessaires sur ${v.n} votant${v.n > 1 ? "s" : ""}`;
+  let actions = "";
+  if (!canWrite()) actions = "";
+  else if (!v.peut_voter) actions = '<div class="meta">Vous êtes concerné(e) par cette proposition : vous ne votez pas.</div>';
+  else actions = `<div class="votes"><button type="button" class="btn sm ${v.mon_vote === 1 ? "" : "sec"}" data-vote="${esc(v.id)}" data-oui="1" aria-pressed="${v.mon_vote === 1}">👍 Oui</button><button type="button" class="btn sm ${v.mon_vote === 0 ? "" : "sec"}" data-vote="${esc(v.id)}" data-oui="0" aria-pressed="${v.mon_vote === 0}">👎 Non</button>${v.proposant ? `<button type="button" class="btn sm sec del" data-vcancel="${esc(v.id)}">Annuler ma proposition</button>` : ""}</div>`;
+  return `<div class="vote ${v.peut_voter && v.mon_vote === null ? "attente" : ""}"><div>${q}</div><div class="meta">Proposé par ${esc(v.propose_par)} · ${etat} · jusqu’au ${esc(dateCourte(v.expire_le))}</div>${actions}</div>`;
+}
+
+function renderGroupe() {
+  const g = groupeCourant();
+  if (!g) { fermerGroupe(true); return; }
+  const mesVotes = votes.filter(x => x.groupe_id === g.id);
+  const nbEtu = g.membres.filter(m => m.role === "etudiant").length;
+  const membres = g.membres.map(m => {
+    const retrait = canWrite() && m.role === "etudiant" && !m.moi
+      ? ` <button type="button" class="btn sm sec del" data-vr="${esc(m.pid)}" data-nom="${esc(m.prenom)}">Proposer le retrait</button>` : "";
+    return `<div class="gmembre"><span class="dot" style="background:${esc(m.couleur)}"></span><b>${esc(m.prenom)}</b>${m.moi ? ' <span class="meta">(vous)</span>' : ""}${m.role !== "etudiant" ? ` <span class="meta">${esc(m.role)}</span>` : ""}${retrait}</div>`;
+  }).join("");
+  const ajout = !canWrite() ? "" : GM.cand === null
+    ? '<button type="button" class="btn sm sec" id="gcand">＋ Ajouter un membre</button>'
+    : GM.cand.length
+      ? `<div class="grow"><select id="gcsel" aria-label="Étudiant à ajouter">${GM.cand.map(c => `<option value="${esc(c.pid)}">${esc(c.prenom)}</option>`).join("")}</select><button type="button" class="btn sm" id="gadd">Ajouter au groupe</button><button type="button" class="btn sm sec" id="gcancel">Annuler</button></div>`
+      : '<div class="meta">Aucun étudiant sans groupe dans cette promo. <button type="button" class="btn sm sec" id="gcancel">Fermer</button></div>';
+  $("gtitle").textContent = "👥 " + g.nom;
+  $("gsub").textContent = `${g.etablissement} · ${g.promo}`;
+  $("gbody").innerHTML = `
+    <div class="gsec" style="border-top:0;padding-top:0"><h3>Votes en cours (${mesVotes.length})</h3>
+      <div class="cmbox">${mesVotes.length ? mesVotes.map(voteHtml).join("") : '<div class="meta">Aucune proposition en cours.</div>'}</div></div>
+    <div class="gsec"><h3>Membres (${g.membres.length})</h3>${membres}
+      <div style="margin-top:8px">${ajout}</div>
+      ${canWrite() ? `<div class="meta" style="margin-top:6px">Un membre peut en ajouter un autre tout de suite. Pour retirer quelqu’un, les autres étudiants du groupe votent : la majorité simple suffit (la proposition expire après 7 jours${nbEtu < 3 ? " ; à deux étudiants, le retrait passe par l’administrateur" : ""}).</div>` : ""}</div>
+    ${canWrite() ? `<div class="gsec"><h3>Nom du groupe</h3>
+      <div class="grow"><input id="gnom" maxlength="60" placeholder="Nouveau nom du groupe" aria-label="Nouveau nom du groupe"><button type="button" class="btn sm" id="gnomok">${nbEtu > 1 ? "Proposer ce nom" : "Renommer"}</button></div>
+      <div class="meta" style="margin-top:6px">${nbEtu > 1 ? "Le changement de nom est soumis au vote des étudiants du groupe (majorité simple)." : "Vous êtes seul(e) étudiant(e) dans le groupe : le changement est immédiat."}</div></div>` : ""}`;
+  $("gmodal").classList.remove("hidden");
+  document.body.classList.add("modalopen");
+}
+
+async function actionGroupe(fn, errLabel) {
+  try { applyResult(await enCours("Enregistrement…", fn)); }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else alert(errLabel + " : " + e.message); }
+  if (GM.ouvert) renderGroupe();
+}
+
+$("gclose").onclick = () => fermerGroupe();
+$("gmodal").addEventListener("mousedown", e => { if (e.target === $("gmodal")) fermerGroupe(); });
+$("gbody").onclick = async e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  const g = groupeCourant();
+  const d = b.dataset;
+  if (d.vote) return actionGroupe(() => api("vote_answer", { id: d.vote, oui: d.oui === "1" }), "Vote impossible");
+  if (d.vcancel) return actionGroupe(() => api("vote_cancel", { id: d.vcancel }), "Annulation impossible");
+  if (d.vr) {
+    if (!confirm(`Proposer le retrait de ${d.nom} du groupe ?\n\nLes autres étudiants du groupe (hors ${d.nom}) voteront ; la majorité simple suffit.`)) return;
+    return actionGroupe(() => api("vote_propose", { groupe_id: g.id, type: "retrait", pid: d.vr }), "Proposition impossible");
+  }
+  if (b.id === "gcand") {
+    try { GM.cand = (await api("member_candidates", { groupe_id: g.id })).candidats; renderGroupe(); }
+    catch (err) { if (err.code === "unauthorized") sessionError(err); else alert("Liste indisponible : " + err.message); }
+  } else if (b.id === "gcancel") { GM.cand = null; renderGroupe(); }
+  else if (b.id === "gadd") {
+    const pid = $("gcsel").value;
+    GM.cand = null;
+    actionGroupe(() => api("member_add", { groupe_id: g.id, pid }), "Ajout impossible");
+  } else if (b.id === "gnomok") {
+    const nom = $("gnom").value.trim();
+    if (!nom) return;
+    actionGroupe(() => api("vote_propose", { groupe_id: g.id, type: "nom", nom }), "Changement de nom impossible");
+  }
+};
+
+/* ----- Administration des groupes (administrateur) ----- */
+
+function blocGroupes() {
+  const etudiants = acces.filter(a => a.statut === "actif" && a.role === "etudiant");
+  const optsEtab = [...new Set(groupesAdmin.map(x => x.etablissement))], optsPromo = [...new Set(groupesAdmin.map(x => x.promo))];
+  const parPromo = new Map();
+  groupesAdmin.forEach(x => { const k = x.etablissement + " · " + x.promo; parPromo.set(k, (parPromo.get(k) || []).concat(x)); });
+  const carte = x => {
+    const dispo = acces.filter(a => a.statut === "actif" && !x.membres.some(m => m.email === a.email));
+    return `<div class="admgrp" data-gid="${esc(x.id)}">
+      <div class="grow"><input data-gf="nom" maxlength="60" value="${esc(x.nom)}" aria-label="Nom du groupe"><input data-gf="etablissement" maxlength="60" value="${esc(x.etablissement)}" aria-label="Établissement"><input data-gf="promo" maxlength="60" value="${esc(x.promo)}" aria-label="Promo">
+        <button type="button" class="btn sm" data-g="save">Enregistrer</button><button type="button" class="btn sm sec del" data-g="del">🗑 Supprimer le groupe</button></div>
+      <div>${x.membres.length ? x.membres.map(m => `<span class="chip">${esc(m.prenom)} <span class="meta">${esc(m.role)}</span> <button type="button" class="btn sm sec del" style="padding:0 6px" data-g="rm" data-email="${esc(m.email)}" aria-label="Retirer ${esc(m.prenom)} du groupe">✕</button></span>`).join("") : '<span class="meta">Aucun membre.</span>'}</div>
+      <div class="grow"><select data-gadd aria-label="Ajouter au groupe"><option value="">— ajouter une personne —</option>${dispo.map(a => `<option value="${esc(a.email)}">${esc(a.prenom || a.email)} (${esc(a.role)}) — ${esc(a.email)}</option>`).join("")}</select><button type="button" class="btn sm" data-g="add">Ajouter</button></div>
+    </div>`;
+  };
+  return `<h3>👥 Groupes (${groupesAdmin.length})</h3>
+    <div class="note">Établissement → promo → groupe. Un étudiant n’est que dans un groupe par promo ; un formateur ou un lecteur peut être rattaché à plusieurs groupes (il ne voit que ceux-là). Supprimer un groupe conserve ses fiches dans le Google Sheet mais ne les affiche plus.</div>
+    <div class="admgrp" id="gnew"><b>Nouveau groupe</b>
+      <div class="grow"><input id="gn_etab" list="dl_etab" maxlength="60" placeholder="Établissement" value="${esc(optsEtab[0] || "")}"><input id="gn_promo" list="dl_promo" maxlength="60" placeholder="Promo (ex. Promo 24-27)" value="${esc(optsPromo[0] || "")}"><input id="gn_nom" maxlength="60" placeholder="Nom du groupe">
+      <datalist id="dl_etab">${optsEtab.map(o => `<option value="${esc(o)}">`).join("")}</datalist><datalist id="dl_promo">${optsPromo.map(o => `<option value="${esc(o)}">`).join("")}</datalist></div>
+      <label for="gn_membres" class="meta" style="margin:0">Étudiants du groupe (Ctrl/Cmd + clic pour en choisir plusieurs)</label>
+      <select id="gn_membres" multiple size="6">${etudiants.map(a => `<option value="${esc(a.email)}">${esc(a.prenom || a.email)} — ${esc(a.email)}</option>`).join("")}</select>
+      <div><button type="button" class="btn sm" data-g="create">Créer le groupe</button></div></div>
+    ${[...parPromo.entries()].map(([k, l]) => `<h4 style="margin:12px 0 0">${esc(k)} (${l.length} groupe${l.length > 1 ? "s" : ""})</h4>${l.map(carte).join("")}`).join("")}`;
+}
+
+async function actionGroupeAdmin(b) {
+  const a = b.dataset.g;
+  const carte = b.closest(".admgrp");
+  const gid = carte && carte.dataset.gid;
+  const val = (sel) => { const el = carte.querySelector(sel); return el ? el.value : ""; };
+  let appel;
+  if (a === "create") {
+    const sel = $("gn_membres");
+    const data = { etablissement: $("gn_etab").value, promo: $("gn_promo").value, nom: $("gn_nom").value, membres: [...sel.selectedOptions].map(o => o.value) };
+    appel = () => api("group_create", { data });
+  } else if (a === "save") {
+    const data = { id: gid, nom: val('[data-gf="nom"]'), etablissement: val('[data-gf="etablissement"]'), promo: val('[data-gf="promo"]') };
+    appel = () => api("group_update", { data });
+  } else if (a === "del") {
+    const g = groupesAdmin.find(x => x.id === gid);
+    if (!g || !confirm(`Supprimer le groupe « ${g.nom} » ?\n\nSes membres sont détachés. Ses fiches et commentaires restent dans le Google Sheet mais ne sont plus affichés.`)) return;
+    appel = () => api("group_delete", { id: gid });
+  } else if (a === "add") {
+    const email = val("[data-gadd]");
+    if (!email) return;
+    appel = () => api("member_add", { groupe_id: gid, email });
+  } else if (a === "rm") {
+    appel = () => api("member_remove", { groupe_id: gid, email: b.dataset.email });
+  } else return;
+  b.disabled = true;
+  try {
+    const res = await enCours("Enregistrement…", appel);
+    if (res.acces) acces = res.acces;
+    if (res.groupesAdmin) groupesAdmin = res.groupesAdmin;
+    renderAdmin();
+    applyResult(res);
+  } catch (err) {
+    b.disabled = false;
+    if (err.code === "unauthorized") sessionError(err); else alert("Action impossible : " + err.message);
+  }
+}
+
 /* ---------- Démarrage ---------- */
 
 function renderAll() {
   renderMe();
+  renderCtx();
   $("tabs").classList.remove("hidden");
   document.querySelector('.tab[data-t="mine"]').classList.toggle("hidden", !canWrite());
   document.querySelector('.tab[data-t="admin"]').classList.toggle("hidden", !canAdmin());

@@ -15,7 +15,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
 <header>
   <div class="toprow">
     <div><h1>📚 Lectures du mémoire – IFSI</h1>
-    <div class="sub">Outil partagé du groupe : Wacim, Ange-Marie, Hélène et Lydia</div></div>
+    <div class="sub" id="sub">Outil partagé de suivi des lectures de mémoire</div></div>
     <div class="rightbar"><div id="online"></div><div class="me" id="me"></div></div>
   </div>
   <div class="tabs hidden" id="tabs" role="tablist">
@@ -26,6 +26,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
     <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
     <button class="tab hidden" data-t="admin" role="tab" aria-selected="false">👥 Administration <span id="pending" class="count hidden"></span></button>
   </div>
+  <div class="ctxbar hidden" id="ctxbar"></div>
 </header>
 <main>
   <div id="status" class="note hidden" role="status" aria-live="polite"></div>
@@ -38,6 +39,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
   </section>
 
   <div id="app" class="hidden">
+    <div id="nogroup" class="note hidden"></div>
     <section id="mine" class="hidden">
       <div class="tools" style="justify-content:space-between;margin:14px 0 4px">
         <h2 style="font-size:16px;margin:0">Mes lectures</h2>
@@ -90,6 +92,15 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
         <button class="btn sm sec" id="cmclose" type="button" aria-label="Fermer la discussion">✕ Fermer</button>
       </div>
       <div id="cmbody" class="cmbox"></div>
+    </div>
+  </div>
+  <div id="gmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="gtitle">
+    <div class="modalbox">
+      <div class="modalhead">
+        <div><h2 id="gtitle"></h2><div class="meta" id="gsub"></div></div>
+        <button class="btn sm sec" id="gclose" type="button" aria-label="Fermer la fenêtre du groupe">✕ Fermer</button>
+      </div>
+      <div id="gbody" class="cmbox"></div>
     </div>
   </div>
   <aside id="drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="ftitle">
