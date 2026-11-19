@@ -30,7 +30,7 @@ let token = null;
 try { token = sessionStorage.getItem("lydia_token"); } catch (e) { /* stockage indisponible */ }
 let me = null, users = [], items = [], comments = [], acces = [], pendingCount = 0;
 // items / comments = ce que montre la vue courante ; itemsAll / commentsAll = tout ce que le serveur renvoie à la personne.
-let structureAdmin = [], adminFerme = new Set(), reunionsAll = [], jalonsAll = [], groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [], promosMoi = [], fichiers = [], stockage = null;
+let structureAdmin = [], adminFerme = new Set(), reunionsAll = [], jalonsAll = [], groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [], promosMoi = [], fichiers = [], stockage = null, feedbacksAdmin = [];
 const ctx = { gid: "", vue: "groupe" };          // groupe choisi, et vue : « groupe » ou « promo » (fiches partagées)
 try { ctx.gid = localStorage.getItem("lydia_groupe") || ""; ctx.vue = localStorage.getItem("lydia_portee") === "groupe" ? "groupe" : "promo"; } catch (e) { /* ignoré */ }
 let cmScope = "groupe", studentsSig = "", ctxSig = "";
@@ -129,7 +129,7 @@ function showGate(msg, retry) {
 function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
-  groupes = []; votes = []; promosMoi = []; fichiers = []; stockage = null; dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
+  groupes = []; votes = []; promosMoi = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); $("fbopen").classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
@@ -244,6 +244,8 @@ function renderData() {
   if (tab === "synth") renderSynth();
   if (tab === "suivi") renderSuivi();
   document.querySelector('.tab[data-t="suivi"]').classList.toggle("hidden", !groupeCourant());
+  majAlertes();
+  $("fbopen").classList.toggle("hidden", !me);
 }
 
 // Affiche l'attente le temps d'une écriture (l'API peut mettre quelques secondes à répondre).
@@ -395,6 +397,7 @@ function setTab(t) {
   if (t === "admin" && canAdmin()) loadAdmin();
   if (t === "cmts") renderComments();
   if (t === "suivi") renderSuivi();
+  majAlertes();
   if (t === "biblio") { renderBiblioTools(); renderBiblio(); }
   if (t === "synth") renderSynth();
 }
@@ -409,12 +412,74 @@ const aujourdhui = () => { const d = new Date(); return new Date(d.getFullYear()
 const jourDe = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ""); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
 const ecartJours = iso => { const d = jourDe(iso); return d ? Math.round((d - aujourdhui()) / 864e5) : null; };
 
+const debutJalon = j => j.debut || j.echeance;
+const estPlage = j => !!j.debut && j.debut !== j.echeance;
+const fmtDatesJalon = j => estPlage(j) ? `du ${fmtD(j.debut)} au ${fmtD(j.echeance)}` : fmtD(j.echeance);
+const pad2 = n => String(n).padStart(2, "0");
+const isoJour = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
 function delaiJalon(j) {
   if (j.statut === "fait") return "";
-  const e = ecartJours(j.echeance);
-  if (e === null) return "";
-  if (e < 0) return `<span class="late">⚠ en retard de ${-e} j</span>`;
-  return e === 0 ? "<b>aujourd’hui</b>" : `J-${e}`;
+  const fin = ecartJours(j.echeance);
+  if (fin === null) return "";
+  if (fin < 0) return `<span class="late">⚠ en retard de ${-fin} j</span>`;
+  if (estPlage(j)) {
+    const d = ecartJours(j.debut);
+    if (d > 0) return `débute dans ${d} j`;
+    return fin === 0 ? "<b>dernier jour</b>" : `en cours · fin dans ${fin} j`;
+  }
+  return fin === 0 ? "<b>aujourd’hui</b>" : `J-${fin}`;
+}
+
+// Alerte facultative : « retard » une fois la fin dépassée, « proche » à partir de N jours avant la première date.
+function alerteJalon(j) {
+  if (j.statut === "fait" || j.alerte_jours === "" || j.alerte_jours == null) return "";
+  const fin = ecartJours(j.echeance), deb = ecartJours(debutJalon(j));
+  if (fin === null || deb === null) return "";
+  if (fin < 0) return "retard";
+  return deb <= +j.alerte_jours ? "proche" : "";
+}
+const alertesJalons = () => jalonsAll.filter(alerteJalon).sort((a, b) => debutJalon(a).localeCompare(debutJalon(b)));
+let alertesMasquees = false;   // le temps de la session
+function majAlertes() {
+  const l = alertesJalons(), zone = $("alertes");
+  const nb = $("alertnb"); nb.textContent = l.length; nb.classList.toggle("hidden", !l.length);
+  const montrer = l.length && !alertesMasquees && tab !== "suivi" && !!me;
+  zone.classList.toggle("hidden", !montrer);
+  if (!montrer) { zone.innerHTML = ""; return; }
+  const nomG = j => groupes.length > 1 ? ` <span class="meta">(${esc((groupes.find(g => g.id === j.groupe_id) || {}).nom || "")})</span>` : "";
+  zone.innerHTML = `<b>⏰ Rétroplanning</b> · ${l.slice(0, 3).map(j => `<span class="${alerteJalon(j) === "retard" ? "late" : ""}"><b>${esc(j.titre)}</b>${nomG(j)} ${esc(fmtDatesJalon(j))} ${delaiJalon(j)}</span>`).join(" · ")}${l.length > 3 ? ` · +${l.length - 3} autre${l.length > 4 ? "s" : ""}` : ""}
+    <button type="button" class="btn sm" data-alerte="voir">Voir le calendrier</button> <button type="button" class="btn sm sec" data-alerte="masquer">Masquer</button>`;
+}
+$("alertes").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.alerte === "masquer") { alertesMasquees = true; majAlertes(); } else setTab("suivi");
+});
+
+// Calendrier mensuel : jalons (date fixe ou plage sur plusieurs jours) et réunions du groupe.
+let calMois = null;
+function calendrier(jal, reu) {
+  const t = aujourdhui();
+  if (!calMois) calMois = { a: t.getFullYear(), m: t.getMonth() };
+  const decal = (new Date(calMois.a, calMois.m, 1).getDay() + 6) % 7;          // semaine commençant le lundi
+  const nbSem = Math.ceil((decal + new Date(calMois.a, calMois.m + 1, 0).getDate()) / 7), auj = isoJour(t);
+  const titre = new Date(calMois.a, calMois.m, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+  let cases = "";
+  for (let n = 0; n < nbSem * 7; n++) {
+    const jour = new Date(calMois.a, calMois.m, 1 - decal + n), cle = isoJour(jour);
+    const elems = jal.filter(j => debutJalon(j) <= cle && cle <= j.echeance).map(j => {
+      const pos = !estPlage(j) ? "" : cle === debutJalon(j) ? "deb" : cle === j.echeance ? "fin" : "mid";
+      const txt = !estPlage(j) || pos === "deb" || n % 7 === 0 ? esc(j.titre) : "&nbsp;";
+      const cl = `calj ${esc(j.statut)} ${pos} ${j.statut !== "fait" && ecartJours(j.echeance) < 0 ? "retard" : ""} ${alerteJalon(j) ? "alerte" : ""}`;
+      const tip = `${j.titre} · ${fmtDatesJalon(j)} · ${STATUT_JALON[j.statut] || j.statut}`;
+      return j.modifiable ? `<button type="button" class="${cl}" data-jed="${esc(j.id)}" title="${esc(tip)}">${txt}</button>` : `<span class="${cl}" title="${esc(tip)}">${txt}</span>`;
+    }).concat(reu.filter(r => r.date === cle).map(r => `<span class="calj reu" title="${esc("Réunion · " + (r.titre || ""))}">💬 ${esc(r.titre || "Réunion")}</span>`));
+    cases += `<div class="calc ${jour.getMonth() !== calMois.m ? "hors" : ""} ${cle === auj ? "auj" : ""}"><div class="calnum">${jour.getDate()}</div>${elems.slice(0, 3).join("")}${elems.length > 3 ? `<span class="meta" title="${elems.length} éléments ce jour-là">+${elems.length - 3}</span>` : ""}</div>`;
+  }
+  return `<div class="calendrier"><div class="tools" style="justify-content:space-between;margin:8px 0"><b style="text-transform:capitalize">${esc(titre)}</b>
+    <div><button type="button" class="btn sm sec" data-cal="-1" aria-label="Mois précédent">◀</button> <button type="button" class="btn sm sec" data-cal="0">Aujourd’hui</button> <button type="button" class="btn sm sec" data-cal="1" aria-label="Mois suivant">▶</button></div></div>
+    <div class="calgrille" role="grid" aria-label="Calendrier des échéances">${["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map(x => `<div class="calh">${x}</div>`).join("")}${cases}</div>
+    <div class="meta" style="margin-top:4px">Date fixe ou plage · rouge : échéance dépassée · contour orange : alerte · 💬 réunion du groupe</div></div>`;
 }
 
 function frise(l) {
@@ -425,7 +490,7 @@ function frise(l) {
   const pos = t => `${(5 + 90 * (t - min) / span).toFixed(1)}%`;
   return `<div class="frise" role="img" aria-label="Frise des jalons"><div class="fligne"></div>
    <div class="faujourdhui" style="left:${pos(t0)}" title="Aujourd’hui"><span>aujourd’hui</span></div>
-   ${l.map(j => `<div class="fjalon ${esc(j.statut)} ${j.statut !== "fait" && ecartJours(j.echeance) < 0 ? "retard" : ""}" style="left:${pos(jourDe(j.echeance).getTime())}" title="${esc(j.titre)} · ${esc(fmtD(j.echeance))}"><span>${esc(j.titre)}<br>${esc(fmtD(j.echeance))}</span></div>`).join("")}</div>`;
+   ${l.map(j => `<div class="fjalon ${esc(j.statut)} ${j.statut !== "fait" && ecartJours(j.echeance) < 0 ? "retard" : ""}" style="left:${pos(jourDe(j.echeance).getTime())}" title="${esc(j.titre)} · ${esc(fmtDatesJalon(j))}"><span>${esc(j.titre)}<br>${esc(fmtD(j.echeance))}</span></div>`).join("")}</div>`;
 }
 
 function renderSuivi() {
@@ -434,13 +499,13 @@ function renderSuivi() {
   const ecrit = canWrite() && groupes.some(x => x.id === g.id);
   $("addjalon").classList.toggle("hidden", !ecrit);
   $("addreunion").classList.toggle("hidden", !ecrit);
-  const jal = jalonsAll.filter(j => j.groupe_id === g.id).sort((a, b) => a.echeance.localeCompare(b.echeance));
+  const jal = jalonsAll.filter(j => j.groupe_id === g.id).sort((a, b) => debutJalon(a).localeCompare(debutJalon(b)) || a.echeance.localeCompare(b.echeance));
   const fait = jal.filter(j => j.statut === "fait").length;
   $("retro").innerHTML = jal.length
     ? `<div class="meta" style="margin:8px 0">Groupe <b>${esc(g.nom)}</b> · ${fait} jalon${fait > 1 ? "s" : ""} fait${fait > 1 ? "s" : ""} sur ${jal.length}</div>
-       <div class="barre" aria-hidden="true"><i style="width:${Math.round(100 * fait / jal.length)}%"></i></div>${frise(jal)}
-       <div class="jalons">${jal.map(j => `<div class="jalon ${esc(j.statut)}"><div><span class="badge ${j.statut === "fait" ? "" : "prog"}">${esc(STATUT_JALON[j.statut] || j.statut)}</span> <b>${esc(j.titre)}</b>
-         <span class="meta">· ${esc(fmtD(j.echeance))} ${delaiJalon(j)}</span>${j.note ? `<div class="meta">${esc(j.note)}</div>` : ""}</div>
+       <div class="barre" aria-hidden="true"><i style="width:${Math.round(100 * fait / jal.length)}%"></i></div>${calendrier(jal, reunionsAll.filter(x => x.groupe_id === g.id))}${frise(jal)}
+       <div class="jalons">${jal.map(j => `<div class="jalon ${esc(j.statut)} ${alerteJalon(j)}"><div><span class="badge ${j.statut === "fait" ? "" : "prog"}">${esc(STATUT_JALON[j.statut] || j.statut)}</span> <b>${esc(j.titre)}</b>
+         <span class="meta">· ${esc(fmtDatesJalon(j))} ${delaiJalon(j)}${j.alerte_jours !== "" && j.alerte_jours != null && j.statut !== "fait" ? ` · <span title="Alerte dans l’outil">🔔 ${+j.alerte_jours ? j.alerte_jours + " j avant" : "le jour même"}</span>` : ""}</span>${j.note ? `<div class="meta">${esc(j.note)}</div>` : ""}</div>
          ${j.modifiable ? `<div><button type="button" class="btn sm sec" data-jed="${esc(j.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-jdel="${esc(j.id)}">Supprimer</button></div>` : ""}</div>`).join("")}</div>`
     : `<div class="empty">Aucun jalon pour l’instant.${ecrit ? " Ajoutez les grandes étapes (plan, première version, dépôt…) avec leur échéance." : ""}</div>`;
   const reu = reunionsAll.filter(x => x.groupe_id === g.id).sort((a, b) => b.date.localeCompare(a.date));
@@ -457,13 +522,26 @@ function ouvrirSuiviForm(type, id) {
   const g = groupeCourant();
   if (type === "jalon") {
     const j = jalonsAll.find(x => x.id === id) || { statut: "a_faire" };
+    const plage = estPlage(j), al = j.alerte_jours == null ? "" : String(j.alerte_jours);
+    const ALERTES = [["", "Aucune"], ["0", "Le jour même"], ["1", "1 jour avant"], ["3", "3 jours avant"], ["7", "1 semaine avant"], ["14", "2 semaines avant"], ["30", "1 mois avant"]];
+    if (!ALERTES.some(a => a[0] === al)) ALERTES.push([al, al + " jours avant"]);
     $("jalonform").innerHTML = `<div class="sec" style="margin:10px 0"><div class="grid">
       <div><label for="j_titre">Jalon</label><input id="j_titre" maxlength="200" value="${esc(j.titre)}" placeholder="ex. Plan détaillé validé"></div>
-      <div><label for="j_echeance">Échéance</label><input id="j_echeance" type="date" value="${esc(j.echeance)}"></div>
+      <div><label for="j_mode">Type de date</label><select id="j_mode"><option value="fixe" ${plage ? "" : "selected"}>Date fixe</option><option value="plage" ${plage ? "selected" : ""}>Plage de dates</option></select></div>
+      <div id="j_debutw" class="${plage ? "" : "hidden"}"><label for="j_debut">Du</label><input id="j_debut" type="date" value="${esc(plage ? j.debut : "")}"></div>
+      <div><label for="j_echeance" id="j_echlab">${plage ? "Au" : "Date"}</label><input id="j_echeance" type="date" value="${esc(j.echeance)}"></div>
+      <div><label for="j_alerte">Alerte dans l’outil (facultative)</label><select id="j_alerte">${ALERTES.map(a => `<option value="${esc(a[0])}" ${a[0] === al ? "selected" : ""}>${esc(a[1])}</option>`).join("")}</select></div>
       <div><label for="j_statut">Statut</label><select id="j_statut">${Object.keys(STATUT_JALON).map(k => `<option value="${k}" ${j.statut === k ? "selected" : ""}>${esc(STATUT_JALON[k])}</option>`).join("")}</select></div>
       <div><label for="j_note">Note</label><input id="j_note" maxlength="500" value="${esc(j.note)}"></div></div>
+      <div class="meta">L’alerte s’affiche à tous les membres du groupe, à partir du nombre de jours choisi avant la première date (le début, pour une plage), tant que le jalon n’est pas « Fait ».</div>
       <div class="savebar"><div id="jerr" class="err" role="alert"></div><button class="btn" id="jsave" type="button">Enregistrer le jalon</button> <button class="btn sec" id="jcancel" type="button">Annuler</button></div></div>`;
-    $("jsave").onclick = () => enregistrerSuivi("jalon", g.id, id, { titre: $("j_titre").value, echeance: $("j_echeance").value, statut: $("j_statut").value, note: $("j_note").value }, "jerr");
+    $("j_mode").onchange = () => { const p = $("j_mode").value === "plage"; $("j_debutw").classList.toggle("hidden", !p); $("j_echlab").textContent = p ? "Au" : "Date"; };
+    $("jsave").onclick = () => {
+      const p = $("j_mode").value === "plage";
+      if (p && !$("j_debut").value) { $("jerr").textContent = "Indiquez la date de début de la plage."; return; }
+      if (p && $("j_echeance").value && $("j_debut").value > $("j_echeance").value) { $("jerr").textContent = "La date de début doit précéder la date de fin."; return; }
+      enregistrerSuivi("jalon", g.id, id, { titre: $("j_titre").value, echeance: $("j_echeance").value, debut: p ? $("j_debut").value : "", alerte_jours: $("j_alerte").value, statut: $("j_statut").value, note: $("j_note").value }, "jerr");
+    };
     $("jcancel").onclick = () => fermerSuiviForm();
     $("j_titre").focus();
   } else {
@@ -506,7 +584,8 @@ $("suivi").addEventListener("click", e => {
   const b = e.target.closest("button");
   if (!b) return;
   const d = b.dataset;
-  if (d.jed) { fermerSuiviForm(); ouvrirSuiviForm("jalon", d.jed); }
+  if (d.cal !== undefined) { const t = aujourdhui(); if (d.cal === "0") calMois = { a: t.getFullYear(), m: t.getMonth() }; else { const n = new Date(calMois.a, calMois.m + +d.cal, 1); calMois = { a: n.getFullYear(), m: n.getMonth() }; } renderSuivi(); }
+  else if (d.jed) { fermerSuiviForm(); ouvrirSuiviForm("jalon", d.jed); }
   else if (d.red) { fermerSuiviForm(); ouvrirSuiviForm("reunion", d.red); }
   else if (d.jdel) supprimerSuivi("jalon", d.jdel);
   else if (d.rdel) supprimerSuivi("reunion", d.rdel);
@@ -634,7 +713,7 @@ $("drawerclose").onclick = () => closeDrawer();
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const ouvert = document.querySelector("details.colmenu[open]");
-  if (ouvert) ouvert.removeAttribute("open"); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
+  if (ouvert) ouvert.removeAttribute("open"); else if (FB.ouvert) fermerFeedback(); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
 });
 $("addbtn").onclick = () => { editing = null; artCible = ""; modeArticle = false; forceStatut = ""; openForm(); };
 
@@ -1037,6 +1116,80 @@ async function voterProp(id, oui) {
 async function annulerProp(id) {
   try { applyResult(await enCours("Annulation…", () => api("article_cancel", { id }))); }
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Annulation impossible : " + e.message); }
+}
+
+/* ---------- Retours sur l'outil (bugs, idées) ---------- */
+
+const TYPES_FB = { bug: "🐞 Bug", idee: "💡 Idée d’amélioration", autre: "💬 Autre" };
+const FB = { ouvert: false, liste: [], restant: 2, par: 2, edition: "", focus: null };
+
+function ouvrirFeedback() {
+  FB.ouvert = true; FB.edition = ""; FB.focus = document.activeElement;
+  $("fbmodal").classList.remove("hidden"); document.body.classList.add("modalopen");
+  renderFeedback();
+  api("feedback_list").then(r => { majEtatFeedback(r); if (FB.ouvert) renderFeedback(); })
+    .catch(e => { if (e.code === "unauthorized") sessionError(e); else $("fberr").textContent = "Chargement impossible : " + e.message; });
+  $("fbtexte").focus();
+}
+function fermerFeedback(silencieux) {
+  FB.ouvert = false; FB.edition = "";
+  $("fbmodal").classList.add("hidden");
+  if (!cmId && !GM.ouvert) document.body.classList.remove("modalopen");
+  $("fbbody").innerHTML = "";
+  if (!silencieux && FB.focus && FB.focus.isConnected && FB.focus.focus) { try { FB.focus.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
+}
+function majEtatFeedback(r) { FB.liste = r.feedbacks || []; FB.restant = r.feedbackRestant ?? 0; FB.par = r.feedbackParJour || 2; }
+
+function renderFeedback() {
+  const ed = FB.liste.find(x => x.id === FB.edition), peut = !!ed || FB.restant > 0;
+  const quand = iso => new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  $("fbbody").innerHTML = `<div class="meta" style="margin-bottom:10px">Un bug, une idée, une remarque ? Ça aide à améliorer l’outil. Vos retours sont lus par l’administrateur.
+    ${FB.par} au maximum par jour, modifiables jusqu’à minuit.</div>
+   <div class="grid"><div><label for="fbtype">Type</label><select id="fbtype" ${peut ? "" : "disabled"}>${Object.keys(TYPES_FB).map(k => `<option value="${k}" ${ed && ed.type === k ? "selected" : ""}>${esc(TYPES_FB[k])}</option>`).join("")}</select></div></div>
+   <label for="fbtexte" style="margin-top:8px">Votre retour</label>
+   <textarea id="fbtexte" maxlength="2000" rows="5" ${peut ? "" : "disabled"} placeholder="${peut ? "Que s’est-il passé ? Qu’aimeriez-vous voir ?" : "Vous avez envoyé vos retours du jour."}">${esc(ed ? ed.texte : "")}</textarea>
+   <div class="meta">${ed ? "Modification d’un retour envoyé aujourd’hui" : peut ? `Il vous reste ${FB.restant} retour${FB.restant > 1 ? "s" : ""} aujourd’hui` : `Limite de ${FB.par} retours par jour atteinte : modifiez-en un ci-dessous ou revenez demain`}
+     · l’onglet et le navigateur utilisés sont joints pour aider à comprendre un bug.</div>
+   <div class="savebar"><div id="fberr" class="err" role="alert"></div>
+     <button class="btn" id="fbsend" type="button" ${peut ? "" : "disabled"}>${ed ? "Enregistrer la modification" : "Envoyer"}</button>
+     ${ed ? '<button class="btn sec" id="fbannuler" type="button">Annuler la modification</button>' : ""}</div>
+   ${FB.liste.length ? `<h3 style="font-size:14px;margin:14px 0 6px">Vos retours d’aujourd’hui</h3>` + FB.liste.map(x => `<div class="cardc" style="margin:6px 0"><div class="tools" style="justify-content:space-between"><span><b>${esc(TYPES_FB[x.type] || x.type)}</b> <span class="meta">· ${esc(quand(x.cree_le))}${x.modifie_le ? " · modifié" : ""}</span></span>
+      <button type="button" class="btn sm sec" data-fbe="${esc(x.id)}">Modifier</button></div><div style="white-space:pre-wrap">${esc(x.texte)}</div></div>`).join("") : ""}`;
+}
+
+async function envoyerFeedback() {
+  const texte = $("fbtexte").value.trim();
+  if (!texte) { $("fberr").textContent = "Écrivez votre retour."; return; }
+  $("fbsend").disabled = true;
+  const data = { type: $("fbtype").value, texte };
+  if (!FB.edition) data.contexte = `onglet « ${tab} » · ${window.innerWidth}×${window.innerHeight} · ${(navigator.userAgent || "").slice(0, 150)}`;
+  try {
+    const r = await api("feedback_save", { id: FB.edition || undefined, data });
+    majEtatFeedback(r); FB.edition = ""; renderFeedback();
+    $("fberr").textContent = ""; $("fbbody").insertAdjacentHTML("afterbegin", '<div class="note" role="status">Merci, votre retour est enregistré ✅</div>');
+  } catch (e) {
+    if (e.code === "unauthorized") return sessionError(e);
+    $("fberr").textContent = e.message; $("fbsend").disabled = false;
+  }
+}
+$("fbopen").onclick = ouvrirFeedback;
+$("fbclose").onclick = () => fermerFeedback();
+$("fbmodal").addEventListener("click", e => {
+  if (e.target === $("fbmodal")) return fermerFeedback();
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.id === "fbsend") envoyerFeedback();
+  else if (b.id === "fbannuler") { FB.edition = ""; renderFeedback(); }
+  else if (b.dataset.fbe) { FB.edition = b.dataset.fbe; renderFeedback(); $("fbtexte").focus(); }
+});
+
+const sigFeedbacks = () => feedbacksAdmin.length + ":" + (feedbacksAdmin[0] ? feedbacksAdmin[0].id : "");
+function blocFeedbacks() {
+  const l = feedbacksAdmin;
+  return `<h3>💡 Retours sur l’outil (${l.length})</h3>` + (l.length
+    ? `<div class="meta">Les plus récents d’abord. Le suivi (colonne « statut ») se change directement dans l’onglet « Feedback » du Sheet.</div>
+      <div class="wrap"><table class="adm"><thead><tr><th>Date</th><th>De</th><th>Type</th><th>Retour</th><th>Statut</th></tr></thead><tbody>${l.map(f => `<tr><td>${esc(fmtDT(f.cree_le))}</td><td>${esc(f.par)}<div class="meta">${esc(f.email)}</div></td><td>${esc(TYPES_FB[f.type] || f.type)}</td>
+        <td><div style="white-space:pre-wrap">${esc(f.texte)}</div>${f.contexte ? `<div class="meta">${esc(f.contexte)}</div>` : ""}</td><td>${esc(f.statut)}</td></tr>`).join("")}</tbody></table></div>`
+    : `<div class="meta">Aucun retour pour l’instant.</div>`);
 }
 
 // Fichiers joints (PDF, images) à un document : partage interne à but pédagogique.
@@ -1565,11 +1718,12 @@ async function loadAdmin() {
     groupesAdmin = r.groupesAdmin || [];
     structureAdmin = r.structure || [];
     stockage = r.stockage || null;
+    feedbacksAdmin = r.feedbacks || feedbacksAdmin;
     // Pas de reconstruction si rien n'a changé ou si une saisie est en cours (sinon elle serait perdue).
     const a = document.activeElement;
     const typing = a && a.closest && a.closest("#adminbox") && (a.tagName === "INPUT" || a.tagName === "SELECT");
     acces = next;
-    if (signatureAcces(next) !== renderedAcces && !typing) renderAdmin();
+    if (signatureAcces(next) + sigFeedbacks() !== renderedAcces && !typing) renderAdmin();
   } catch (e) { if (e.code === "unauthorized") sessionError(e); else showStatus("Administration indisponible : " + e.message); }
 }
 
@@ -1600,7 +1754,7 @@ let renderedAcces = "";
 // Le rendu dépend du rôle (étudiant ou administrateur) autant que de la liste : les deux entrent dans la signature.
 const signatureAcces = l => (me ? me.role : "") + "|" + JSON.stringify([l, groupesAdmin, structureAdmin]);
 function renderAdmin() {
-  renderedAcces = signatureAcces(acces);
+  renderedAcces = signatureAcces(acces) + sigFeedbacks();
   const head = `<tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th>${isSuper() ? "<th>Couleur</th>" : ""}<th>Rôle</th><th>Actions</th></tr>`;
   const bloc = (titre, list, vide) => `<h3>${titre} (${list.length})</h3>` + (list.length
     ? `<div class="wrap"><table class="adm"><thead>${head}</thead><tbody>${list.map(accesRow).join("")}</tbody></table></div>`
@@ -1609,7 +1763,7 @@ function renderAdmin() {
     bloc("⏳ Demandes en attente", acces.filter(a => a.statut === "en_attente"), "Aucune demande en attente.") +
     bloc("✅ Accès actifs", acces.filter(a => a.statut === "actif"), "Aucun accès actif.") +
     bloc("⛔ Accès refusés", acces.filter(a => a.statut === "refuse"), "Aucun accès refusé.") +
-    (isSuper() ? blocGroupes() : "");
+    (isSuper() ? blocGroupes() + blocFeedbacks() : "");
 }
 
 async function supprimerUtilisateur(b) {

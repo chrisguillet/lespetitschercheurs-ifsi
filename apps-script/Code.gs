@@ -57,7 +57,9 @@ const PROP_DUREE_MS = 14 * 24 * 3600 * 1000;
 // rattachés et de l'administrateur ; modifiables par les étudiants du groupe).
 const COL_REUNIONS = ['id', 'groupe_id', 'date', 'titre', 'participants', 'vu', 'attendu', 'suite',
   'cree_par', 'cree_le', 'modifie_le', 'modifie_par'];
-const COL_JALONS = ['id', 'groupe_id', 'titre', 'echeance', 'statut', 'note', 'cree_par', 'cree_le', 'modifie_le', 'modifie_par'];
+// echeance = date fixe, ou date de fin d'une plage (debut renseigné) ; alerte_jours = nombre de jours avant la première date où
+// l'interface signale le jalon (vide = pas d'alerte). Colonnes ajoutées en fin de feuille pour ne pas décaler les anciennes données.
+const COL_JALONS = ['id', 'groupe_id', 'titre', 'echeance', 'statut', 'note', 'cree_par', 'cree_le', 'modifie_le', 'modifie_par', 'debut', 'alerte_jours'];
 const STATUTS_JALON = ['a_faire', 'en_cours', 'fait'];
 const OBJECTIFS = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type', 'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
 const ANALYSES = ['statut', 'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre'];
@@ -71,6 +73,13 @@ const COL_ETABLISSEMENTS = ['id', 'nom', 'cree_le'];
 const COL_PROMOS = ['id', 'etablissement_id', 'nom', 'cree_le', 'code', 'code_expire', 'code_max', 'code_usages'];
 // Étudiants inscrits à une promo (par code ou par validation) avant d'avoir un groupe.
 // Documents (PDF, images) déposés sur un article ; le contenu est dans le Drive du propriétaire du script, jamais public.
+// Retours sur l'outil (bugs, idées, autres) : ouverts à toute personne dont l'accès est validé. Deux par jour et par personne,
+// modifiables le jour même ; le statut (nouveau / traité…) se change à la main dans le Sheet.
+const FEUILLE_FEEDBACK = 'Feedback';
+const COL_FEEDBACK = ['id', 'auteur_email', 'type', 'texte', 'contexte', 'jour', 'cree_le', 'modifie_le', 'statut'];
+const TYPES_FEEDBACK = ['bug', 'idee', 'autre'];
+const FEEDBACK_PAR_JOUR = 2;
+const FEEDBACK_MAX = 2000;
 const COL_FICHIERS = ['id', 'article_id', 'drive_id', 'nom', 'type', 'taille', 'cree_par', 'cree_le'];
 const FICHIER_MAX = 5 * 1024 * 1024;     // 5 Mo par fichier
 const FICHIERS_PAR_ARTICLE = 1;
@@ -137,6 +146,7 @@ function setup() {
   preparer_(ss, FEUILLE_PROMOS, COL_PROMOS);
   preparer_(ss, FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS);
   preparer_(ss, FEUILLE_FICHIERS, COL_FICHIERS);
+  preparer_(ss, FEUILLE_FEEDBACK, COL_FEEDBACK);
   preparer_(ss, FEUILLE_JALONS, COL_JALONS);
   const u = preparer_(ss, FEUILLE_UTILISATEURS, COL_UTILISATEURS);
   if (u.getLastRow() < 2) {
@@ -354,6 +364,11 @@ function doPost(e) {
       case 'file_delete':
         muter_(function () { supprimerFichier_(user, req.id); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'feedback_list':
+        return json_(Object.assign({ ok: true }, feedbackPourClient_(user)));
+      case 'feedback_save':
+        muter_(function () { enregistrerFeedback_(user, req.id, req.data); });
+        return json_(Object.assign({ ok: true }, feedbackPourClient_(user)));
       case 'reunion_save':
         muter_(function () { enregistrerSuivi_(user, 'reunion', req.groupe_id, req.id, req.data); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
@@ -451,7 +466,7 @@ function doPost(e) {
       case 'admin_list':
         exigerGestion_(user);
         return json_(Object.assign({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user), structure: listerStructureAdmin_(user) },
-          user.role === 'admin' ? { stockage: stockageFichiers_() } : {}));
+          user.role === 'admin' ? { stockage: stockageFichiers_(), feedbacks: feedbackPourAdmin_() } : {}));
       case 'admin_set':
         muter_(function () { administrer_(user, req.data); });
         return json_(Object.assign({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user) }, donnees_(user)));
@@ -502,6 +517,57 @@ function accesSiAdmin_(user) {
 }
 
 // Espace occupé par les fichiers déposés (affiché à l'administrateur).
+/* ---------- Retours sur l'outil ---------- */
+
+function jourFeedback_() {
+  return String(Utilities.formatDate(new Date(), 'Europe/Paris', 'yyyy-MM-dd')).slice(0, 10);
+}
+
+function feedbackPourClient_(user) {
+  const jour = jourFeedback_();
+  const miens = table_(FEUILLE_FEEDBACK, COL_FEEDBACK).filter(function (r) { return r.auteur_email === user.email && r.jour === jour; })
+    .sort(function (a, b) { return String(a.cree_le).localeCompare(String(b.cree_le)); });
+  return { feedbacks: miens.map(function (r) { return { id: r.id, type: r.type, texte: r.texte, cree_le: r.cree_le, modifie_le: r.modifie_le }; }),
+    feedbackRestant: Math.max(0, FEEDBACK_PAR_JOUR - miens.length), feedbackParJour: FEEDBACK_PAR_JOUR };
+}
+
+function enregistrerFeedback_(user, id, data) {
+  if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
+  const type = String(data.type || '');
+  const texte = String(data.texte === undefined || data.texte === null ? '' : data.texte).trim();
+  if (TYPES_FEEDBACK.indexOf(type) < 0) throw err_('invalid', 'Type de retour invalide');
+  if (!texte) throw err_('invalid', 'Écrivez votre retour');
+  if (texte.length > FEEDBACK_MAX) throw err_('invalid', 'Retour trop long (' + FEEDBACK_MAX + ' caractères maximum)');
+  const sh = feuilleDe_(FEUILLE_FEEDBACK, COL_FEEDBACK);
+  const toutes = lireTable_(sh, COL_FEEDBACK);
+  const jour = jourFeedback_();
+  const maintenant = new Date().toISOString();
+  if (id) {
+    const r = toutes.filter(function (x) { return x.id === id && x.auteur_email === user.email; })[0];
+    if (!r) throw err_('not_found', 'Retour introuvable');
+    if (r.jour !== jour) throw err_('forbidden', 'Un retour ne peut être modifié que le jour où il a été envoyé');
+    sh.getRange(r._row, COL_FEEDBACK.indexOf('type') + 1, 1, 2).setValues([[type, texte]]);
+    sh.getRange(r._row, COL_FEEDBACK.indexOf('modifie_le') + 1, 1, 1).setValues([[maintenant]]);
+    return;
+  }
+  const deja = toutes.filter(function (x) { return x.auteur_email === user.email && x.jour === jour; }).length;
+  if (deja >= FEEDBACK_PAR_JOUR) throw err_('limit', 'Vous avez déjà envoyé ' + FEEDBACK_PAR_JOUR + ' retours aujourd’hui : modifiez-en un ou revenez demain');
+  const ctx = String(data.contexte === undefined || data.contexte === null ? '' : data.contexte).replace(/[\r\n]+/g, ' ').slice(0, 300);
+  const f = { id: Utilities.getUuid(), auteur_email: user.email, type: type, texte: texte, contexte: ctx, jour: jour, cree_le: maintenant, modifie_le: '', statut: 'nouveau' };
+  sh.appendRow(COL_FEEDBACK.map(function (k) { return f[k]; }));
+}
+
+// Administrateur seulement : tous les retours, les plus récents d'abord.
+function feedbackPourAdmin_() {
+  const parEmail = {};
+  listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
+  return table_(FEUILLE_FEEDBACK, COL_FEEDBACK).sort(function (a, b) { return String(b.cree_le).localeCompare(String(a.cree_le)); })
+    .slice(0, 300).map(function (r) {
+      return { id: r.id, par: parEmail[r.auteur_email] ? parEmail[r.auteur_email].prenom : 'Utilisateur supprimé', email: r.auteur_email, type: r.type,
+        texte: r.texte, contexte: r.contexte, cree_le: r.cree_le, modifie_le: r.modifie_le, statut: r.statut || 'nouveau' };
+    });
+}
+
 function stockageFichiers_() {
   const f = table_(FEUILLE_FICHIERS, COL_FICHIERS);
   return { nb: f.length, octets: f.reduce(function (n, x) { return n + (Number(x.taille) || 0); }, 0) };
@@ -700,7 +766,7 @@ function administrer_(user, data) {
 function migrerEmail_(ancien, nouveau) {
   const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleArticles_(), COL_ARTICLES, 'cree_par'], [feuillePropositions_(), COL_PROPOSITIONS, 'propose_par'], [feuilleSuivi_('reunion'), COL_REUNIONS, 'cree_par'], [feuilleSuivi_('jalon'), COL_JALONS, 'cree_par'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
   if (feuilleLus_(false)) tables.push([feuilleLus_(false), COL_LUS, 'id']);
-  [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, 'email'], [FEUILLE_FICHIERS, COL_FICHIERS, 'cree_par'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
+  [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, 'email'], [FEUILLE_FICHIERS, COL_FICHIERS, 'cree_par'], [FEUILLE_FEEDBACK, COL_FEEDBACK, 'auteur_email'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
     .forEach(function (t) {
       const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(t[0]);
       if (sh) tables.push([sh, t[1], t[2]]);
@@ -1043,7 +1109,8 @@ function propositionsPourClient_(user, c) {
   }).map(function (p) {
     const v = votesProp_(p);
     let pour = 0, contre = 0;
-    Object.keys(v).forEach(function (e) { if (!parEmail[e]) return; if (v[e]) pour++; else contre++; });
+    // Seuls les étudiants actifs comptent (comme au moment du vote) : jamais un formateur.
+    Object.keys(v).forEach(function (e) { if (!parEmail[e] || parEmail[e].role !== 'etudiant' || parEmail[e].statut !== 'actif') return; if (v[e]) pour++; else contre++; });
     return { id: p.id, article_id: p.article_id, par: parEmail[p.propose_par].prenom, cree_le: p.cree_le,
       valeurs: JSON.parse(p.valeurs), pour: pour, contre: contre, seuil: PROP_SEUIL,
       mine: p.propose_par === user.email, monVote: user.email in v ? (v[user.email] ? 1 : 0) : -1 };
@@ -1750,7 +1817,7 @@ function supprimerGroupe_(user, id) {
 
 const SUIVI = {
   reunion: { feuille: FEUILLE_REUNIONS, colonnes: COL_REUNIONS, champs: ['date', 'titre', 'participants', 'vu', 'attendu', 'suite'] },
-  jalon: { feuille: FEUILLE_JALONS, colonnes: COL_JALONS, champs: ['titre', 'echeance', 'statut', 'note'] }
+  jalon: { feuille: FEUILLE_JALONS, colonnes: COL_JALONS, champs: ['titre', 'echeance', 'statut', 'note', 'debut', 'alerte_jours'] }
 };
 
 function feuilleSuivi_(type) {
@@ -1774,6 +1841,12 @@ function validerSuivi_(type, d) {
     if (!d.titre) throw err_('invalid', 'Le jalon doit avoir un titre');
     if (!dateValide_(d.echeance)) throw err_('invalid', 'Échéance invalide');
     if (STATUTS_JALON.indexOf(d.statut) < 0) throw err_('invalid', 'Statut invalide');
+    if (d.debut) {
+      if (!dateValide_(d.debut)) throw err_('invalid', 'Date de début invalide');
+      if (d.debut > d.echeance) throw err_('invalid', 'La date de début doit précéder la date de fin');
+      if (d.debut === d.echeance) d.debut = '';   // une plage d'un jour est une date fixe
+    }
+    if (d.alerte_jours !== '' && (!/^\d{1,3}$/.test(d.alerte_jours) || +d.alerte_jours > 365)) throw err_('invalid', 'Alerte : nombre de jours entre 0 et 365');
   }
 }
 

@@ -278,3 +278,22 @@ details.admetab>.grow,details.admpromo>.grow{margin:8px 0}
 .fichiers { margin-top: 8px; }
 .fichier { display: inline-flex; align-items: center; gap: 6px; margin: 2px 6px 2px 0; }
 .lnk { background: none; border: 0; padding: 0; color: var(--pri); cursor: pointer; font: inherit; text-decoration: underline; }
+
+/* Rétroplanning : alertes et calendrier mensuel */
+.alertes{margin:0 0 12px;padding:10px 14px;border:1px solid #f59e0b;border-left:5px solid #f59e0b;border-radius:8px;background:#fffbeb;color:#222}
+.alertnb{background:#f59e0b;color:#fff}
+.jalon.proche{border-left-color:#f59e0b;background:#fffbeb} .jalon.retard{border-left-color:#d33}
+.calgrille{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--bd);border-left:1px solid var(--bd)}
+.calh{padding:4px;font-size:12px;text-align:center;color:var(--mut);border-right:1px solid var(--bd);border-bottom:1px solid var(--bd);background:rgba(127,127,127,.08)}
+.calc{min-height:78px;padding:2px 0 2px;border-right:1px solid var(--bd);border-bottom:1px solid var(--bd);overflow:hidden}
+.calc.hors{opacity:.45} .calc.auj{background:rgba(37,99,235,.08)} .calc.auj .calnum{color:#fff;background:var(--pri);border-radius:999px;display:inline-block;min-width:20px;text-align:center}
+.calnum{font-size:12px;padding:0 4px;margin:0 0 2px 2px}
+.calj{display:block;width:100%;box-sizing:border-box;margin:1px 0;padding:1px 4px;font:inherit;font-size:11px;line-height:1.3;text-align:left;border:0;border-left:3px solid var(--pri);background:rgba(37,99,235,.14);color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+button.calj{cursor:pointer}
+.calj.en_cours{border-left-color:#f59e0b;background:rgba(245,158,11,.18)}
+.calj.fait{border-left-color:#16a34a;background:rgba(22,163,74,.15);text-decoration:line-through}
+.calj.retard{border-left-color:#d33;background:rgba(221,51,51,.18)}
+.calj.alerte{outline:2px solid #f59e0b;outline-offset:-2px}
+.calj.deb{margin-right:-1px;border-radius:4px 0 0 4px} .calj.mid{border-left-width:0;border-radius:0} .calj.fin{border-left-width:0;border-radius:0 4px 4px 0}
+.calj.reu{border-left-color:#7c3aed;background:rgba(124,58,237,.12)}
+@media (max-width:640px){.calc{min-height:56px}.calj{font-size:10px;padding:0 2px}}

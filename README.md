@@ -167,10 +167,14 @@ Relancez `setup` après avoir collé le nouveau `Code.gs` : il crée les feuille
 Propre à chaque groupe (celui choisi dans le bandeau), visible **de son groupe seulement** : ses étudiants, ses formateurs rattachés et l'administrateur. Rien n'est partagé avec le reste de la promo (contrairement aux fiches de lecture terminées).
 
 - **Réunions** : un compte rendu par réunion (date, titre, participants, **ce qui a été vu**, **ce qui est attendu**, **étapes pour la suite**), les plus récentes en premier.
-- **Rétroplanning** : des **jalons** avec échéance et statut (à faire, en cours, fait), triés par date, avec une frise (la ligne rouge est aujourd'hui),
-  le décompte « J-12 » ou « en retard de 3 j » et une barre d'avancement.
+- **Rétroplanning** : des **jalons** avec statut (à faire, en cours, fait), à **date fixe** ou sur une **plage de dates** (du … au …), avec une barre d'avancement,
+  une frise (la ligne rouge est aujourd'hui) et le décompte « J-12 », « en cours · fin dans 4 j » ou « en retard de 3 j ».
+- **Calendrier mensuel** : les jalons (une plage s'étale sur ses jours) et les réunions du groupe, navigation mois par mois ; un clic sur un jalon l'ouvre pour le modifier.
+- **Alertes facultatives** : par jalon, « le jour même » ou 1 j / 3 j / 1 semaine / 2 semaines / 1 mois avant la première date (le début pour une plage). Tant que le jalon n'est pas « Fait »,
+  une pastille s'affiche sur l'onglet, un bandeau sur les autres onglets (masquable le temps de la session), et le jalon est contouré dans le calendrier ; passé la date de fin, il apparaît en retard.
+  Ce sont des alertes dans l'outil (pas d'e-mail).
 - Les **étudiants du groupe** ajoutent, modifient et suppriment ; les formateurs rattachés lisent seulement ; l'administrateur peut supprimer.
-- Nouvelles feuilles `Reunions` et `Jalons` (créées par `setup`, ou automatiquement au premier usage). Rien à migrer.
+- Feuilles `Reunions` et `Jalons` (créées par `setup`, ou automatiquement au premier usage). Les colonnes `debut` et `alerte_jours` sont ajoutées en fin de feuille `Jalons` : relancer `setup` pour afficher leurs en-têtes ; les anciens jalons restent valides (date fixe, sans alerte).
 
 ## Première connexion, codes d'invitation et groupes
 
@@ -211,3 +215,12 @@ Dans le formulaire de **sa propre fiche de lecture** (section « Document joint 
 - **Visibilité** : celle du document (promo) ; le tableau commun ne fait que consulter (📄 cliquable). Ajout uniquement par un étudiant qui a une fiche sur ce document (contrôlé côté serveur), suppression par celui qui l'a déposé ou l'administrateur ; supprimer un document supprime ses fichiers.
 - **Droit d'auteur** : un avertissement (partage interne, but pédagogique) est affiché sous les fichiers et demandé à chaque ajout ; mentionné dans `privacy.html`.
 - **Mise en route** : coller le nouveau `Code.gs`, lancer `setup` (crée la feuille `Fichiers`), **accepter la nouvelle autorisation Drive**, puis déployer une nouvelle version.
+
+## Retours sur l'outil
+
+Lien discret « 💡 Un retour sur l'outil ? » en bas de page, pour **toute personne dont l'accès est validé** (étudiants, formateurs, administrateur) : type (🐞 bug, 💡 idée d'amélioration, 💬 autre) et texte (2 000 caractères maximum).
+
+- **Limite** : 2 retours par jour et par personne (jour calendaire, fuseau Europe/Paris). Un retour reste **modifiable le jour même** par son auteur ; modifier ne libère pas de place, et les retours des jours précédents ne sont plus modifiables.
+- **Contexte joint automatiquement** à l'envoi : onglet affiché, taille de fenêtre, navigateur (utile pour reproduire un bug). Mentionné dans `privacy.html`.
+- **Lecture** : l'administrateur les voit dans l'onglet Administration (plus récents d'abord, avec l'auteur). Chacun ne voit que ses retours du jour. Pour les exploiter plus tard : feuille `Feedback` du Sheet, avec une colonne `statut` (`nouveau` par défaut) à changer à la main (traité, refusé…).
+- Mise en route : relancer `setup` (crée la feuille `Feedback`) et redéployer.
