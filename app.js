@@ -260,9 +260,15 @@ function renderData() {
     if (tab === "synth") renderSynth();
     if (tab === "suivi") renderSuivi();
   });
-  etape("onglets", () => document.querySelector('.tab[data-t="suivi"]').classList.toggle("hidden", !groupeCourant()));
+  etape("barres", majBarres);
+}
+
+// Onglet de suivi (selon le groupe), alertes du rétroplanning, lien de retour : à rafraîchir après CHAQUE affichage
+// (première connexion, actualisation automatique, action), pas seulement après une action.
+function majBarres() {
+  document.querySelector('.tab[data-t="suivi"]').classList.toggle("hidden", !groupeCourant());
   etape("alertes", majAlertes);
-  etape("retours", () => $("fbopen")?.classList.toggle("hidden", !me));
+  $("fbopen")?.classList.toggle("hidden", !me);
 }
 
 // Affiche l'attente le temps d'une écriture (l'API peut mettre quelques secondes à répondre).
@@ -301,7 +307,7 @@ async function refresh(manuel) {
   try {
     const change = applyData(await api("list"));
     if (!change && manuel !== true) {   // rien de neuf : on met seulement à jour ce qui bouge sans les données (en ligne, compteurs)
-      renderCtx(); renderPending(); renderOnline(); majSync();
+      renderCtx(); renderPending(); renderOnline(); majSync(); majBarres();
       if (tab === "admin" && canAdmin()) await loadAdmin();
       clearStatus();
       return;
@@ -320,6 +326,8 @@ async function refresh(manuel) {
     majModal();
     if (tab === "biblio") renderBiblio();
     if (tab === "synth") renderSynth();
+    if (tab === "suivi") renderSuivi();
+    majBarres();
     if (tab === "admin" && canAdmin()) await loadAdmin();
     clearStatus();
   } catch (e) {
@@ -2286,6 +2294,7 @@ function renderAll() {
   renderOnline();
   renderFilters();
   renderTable();
+  majBarres();
 }
 
 renderMeAnonyme();
