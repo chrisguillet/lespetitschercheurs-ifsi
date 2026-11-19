@@ -37,6 +37,8 @@ const FEUILLE_REUNIONS = 'Reunions';
 const FEUILLE_ETABLISSEMENTS = 'Etablissements';
 const FEUILLE_PROMOS = 'Promos';
 const FEUILLE_INSCRIPTIONS = 'Inscriptions';
+const FEUILLE_FICHIERS = 'Fichiers';
+const DOSSIER_FICHIERS = 'Fichiers – lectures IFSI';
 const FEUILLE_JALONS = 'Jalons';
 
 const COLONNES = ['id', 'owner', 'statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
@@ -68,6 +70,10 @@ const COL_ETABLISSEMENTS = ['id', 'nom', 'cree_le'];
 // Code d'invitation : donne accès à la promo comme étudiant, sans validation (expire, nombre d'usages limité).
 const COL_PROMOS = ['id', 'etablissement_id', 'nom', 'cree_le', 'code', 'code_expire', 'code_max', 'code_usages'];
 // Étudiants inscrits à une promo (par code ou par validation) avant d'avoir un groupe.
+// Documents (PDF, images) déposés sur un article ; le contenu est dans le Drive du propriétaire du script, jamais public.
+const COL_FICHIERS = ['id', 'article_id', 'drive_id', 'nom', 'type', 'taille', 'cree_par', 'cree_le'];
+const FICHIER_MAX = 5 * 1024 * 1024;     // 5 Mo par fichier
+const FICHIERS_PAR_ARTICLE = 10;
 const COL_INSCRIPTIONS = ['id', 'email', 'promo_id', 'ajoute_le', 'via'];
 const COL_GROUPES = ['id', 'etablissement', 'promo', 'nom', 'cree_le', 'cree_par'];
 const COL_MEMBRES = ['id', 'groupe_id', 'email', 'ajoute_le'];
@@ -130,6 +136,7 @@ function setup() {
   preparer_(ss, FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS);
   preparer_(ss, FEUILLE_PROMOS, COL_PROMOS);
   preparer_(ss, FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS);
+  preparer_(ss, FEUILLE_FICHIERS, COL_FICHIERS);
   preparer_(ss, FEUILLE_JALONS, COL_JALONS);
   const u = preparer_(ss, FEUILLE_UTILISATEURS, COL_UTILISATEURS);
   if (u.getLastRow() < 2) {
@@ -339,6 +346,14 @@ function doPost(e) {
       case 'article_update':
         muter_(function () { modifierArticle_(user, req.article_id, req.data); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'file_add':
+        muter_(function () { ajouterFichier_(user, req.article_id, req.nom, req.data); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'file_get':
+        return json_(Object.assign({ ok: true }, lireFichier_(user, req.id)));
+      case 'file_delete':
+        muter_(function () { supprimerFichier_(user, req.id); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'reunion_save':
         muter_(function () { enregistrerSuivi_(user, 'reunion', req.groupe_id, req.id, req.data); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
@@ -435,7 +450,8 @@ function doPost(e) {
         return json_({ ok: true, items: traduireMotsCles_(req.texte) });
       case 'admin_list':
         exigerGestion_(user);
-        return json_({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user), structure: listerStructureAdmin_(user) });
+        return json_(Object.assign({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user), structure: listerStructureAdmin_(user) },
+          user.role === 'admin' ? { stockage: stockageFichiers_() } : {}));
       case 'admin_set':
         muter_(function () { administrer_(user, req.data); });
         return json_(Object.assign({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user) }, donnees_(user)));
@@ -469,6 +485,7 @@ function donnees_(user) {
     votes: votesPourClient_(user, c),
     propositions: propositionsPourClient_(user, c),
     promosMoi: promosMoiPourClient_(user, c),
+    fichiers: fichiersPourClient_(user, c),
     reunions: suiviPourClient_(user, c, 'reunion'),
     jalons: suiviPourClient_(user, c, 'jalon'),
     lectures: lister_(user),
@@ -480,7 +497,14 @@ function donnees_(user) {
 }
 
 function accesSiAdmin_(user) {
-  return user.role === 'admin' ? { acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user), structure: listerStructureAdmin_(user) } : {};
+  if (user.role !== 'admin') return {};
+  return { acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user), structure: listerStructureAdmin_(user), stockage: stockageFichiers_() };
+}
+
+// Espace occupé par les fichiers déposés (affiché à l'administrateur).
+function stockageFichiers_() {
+  const f = table_(FEUILLE_FICHIERS, COL_FICHIERS);
+  return { nb: f.length, octets: f.reduce(function (n, x) { return n + (Number(x.taille) || 0); }, 0) };
 }
 
 /* ---------- Présence (qui est en ligne) ---------- */
@@ -676,7 +700,7 @@ function administrer_(user, data) {
 function migrerEmail_(ancien, nouveau) {
   const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleArticles_(), COL_ARTICLES, 'cree_par'], [feuillePropositions_(), COL_PROPOSITIONS, 'propose_par'], [feuilleSuivi_('reunion'), COL_REUNIONS, 'cree_par'], [feuilleSuivi_('jalon'), COL_JALONS, 'cree_par'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
   if (feuilleLus_(false)) tables.push([feuilleLus_(false), COL_LUS, 'id']);
-  [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, 'email'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
+  [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, 'email'], [FEUILLE_FICHIERS, COL_FICHIERS, 'cree_par'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
     .forEach(function (t) {
       const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(t[0]);
       if (sh) tables.push([sh, t[1], t[2]]);
@@ -1042,6 +1066,7 @@ function supprimer_(user, id) {
   if (r.article_id && !lireTable_(sh, COLONNES).some(function (x) { return x.article_id === r.article_id; })) {
     const a = articlesParId_()[r.article_id];
     if (a) feuilleArticles_().deleteRow(a._row);
+    retirerFichiersArticle_(r.article_id);
   }
 }
 
@@ -1212,7 +1237,7 @@ function table_(nom, colonnes) {
 }
 
 const CACHE_TABLES_S = 600;
-const TABLES_EN_CACHE = { 'Etablissements': true, 'Promos': true, 'Inscriptions': true };
+const TABLES_EN_CACHE = { 'Etablissements': true, 'Promos': true, 'Inscriptions': true, 'Fichiers': true };
 function viderCacheTables_() {
   const cache = CacheService.getScriptCache();
   Object.keys(TABLES_EN_CACHE).forEach(function (n) { cache.remove('tc_' + n); });
@@ -2209,6 +2234,103 @@ function promosMoiPourClient_(user, c) {
     return { id: p.id, nom: p.nom, etablissement: p.etablissement, mon_groupe_id: mien ? mien.id : '', groupes: liste };
   });
 }
+
+/* ---------- Fichiers déposés sur un article (PDF, images) ---------- */
+
+// Fichiers des articles que la personne peut voir (mêmes règles que les fiches de lecture).
+function fichiersPourClient_(user, c) {
+  const fichiers = table_(FEUILLE_FICHIERS, COL_FICHIERS);
+  if (!fichiers.length) return [];
+  const visibles = {};
+  lireTable_(feuilleLectures_(), COLONNES).forEach(function (r) { if (r.article_id && lectureVisible_(c, r)) visibles[r.article_id] = true; });
+  const parEmail = {};
+  listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
+  return fichiers.filter(function (f) { return visibles[f.article_id]; }).map(function (f) {
+    const u = parEmail[f.cree_par];
+    return { id: f.id, article_id: f.article_id, nom: f.nom, type: f.type, taille: Number(f.taille) || 0,
+      par: u ? u.prenom : 'Utilisateur supprimé', cree_le: f.cree_le,
+      supprimable: f.cree_par === user.email || user.role === 'admin' };
+  });
+}
+
+function dossierFichiers_() {
+  const d = DriveApp.getFoldersByName(DOSSIER_FICHIERS);
+  return d.hasNext() ? d.next() : DriveApp.createFolder(DOSSIER_FICHIERS);
+}
+
+// Le type est déduit du contenu (début du fichier), jamais de ce que déclare le navigateur.
+function typeDeFichier_(o) {
+  const b = function (i) { return (o[i] || 0) & 255; };
+  if (b(0) === 0x25 && b(1) === 0x50 && b(2) === 0x44 && b(3) === 0x46) return { type: 'application/pdf', ext: '.pdf' };
+  if (b(0) === 0x89 && b(1) === 0x50 && b(2) === 0x4e && b(3) === 0x47) return { type: 'image/png', ext: '.png' };
+  if (b(0) === 0xff && b(1) === 0xd8 && b(2) === 0xff) return { type: 'image/jpeg', ext: '.jpg' };
+  return null;
+}
+
+function nomDeFichier_(nom, ext) {
+  let n = String(nom || '').split(/[\\/]/).pop().replace(/[\u0000-\u001f<>:"|?*]/g, ' ').replace(/\s+/g, ' ').replace(/^[.\s]+/, '').trim();
+  n = n.replace(/\.(pdf|png|jpe?g)$/i, '').slice(0, 100).trim() || 'document';
+  return n + ext;
+}
+
+function ajouterFichier_(user, articleId, nom, base64) {
+  if (user.role !== 'etudiant' && user.role !== 'admin') throw err_('forbidden', 'Accès en lecture seule');
+  const c = contexte_(user);
+  const art = articleVisible_(user, String(articleId || ''));
+  if (user.role === 'etudiant' && !articleModifiable_(user, c, art)) throw err_('forbidden', 'Réservé aux étudiants de la promo');
+  const b64 = String(base64 || '');
+  if (!b64) throw err_('invalid', 'Fichier vide');
+  if (b64.length > Math.ceil(FICHIER_MAX * 4 / 3) + 8) throw err_('invalid', 'Fichier trop volumineux (5 Mo maximum)');
+  const octets = Utilities.base64Decode(b64);
+  if (!octets.length) throw err_('invalid', 'Fichier vide');
+  if (octets.length > FICHIER_MAX) throw err_('invalid', 'Fichier trop volumineux (5 Mo maximum)');
+  const t = typeDeFichier_(octets);
+  if (!t) throw err_('invalid', 'Format non accepté : PDF, PNG ou JPEG uniquement');
+  if (table_(FEUILLE_FICHIERS, COL_FICHIERS).filter(function (f) { return f.article_id === art.id; }).length >= FICHIERS_PAR_ARTICLE) {
+    throw err_('invalid', 'Au plus ' + FICHIERS_PAR_ARTICLE + ' fichiers par article');
+  }
+  const id = Utilities.getUuid();
+  const nomFinal = nomDeFichier_(nom, t.ext);
+  const fichier = dossierFichiers_().createFile(Utilities.newBlob(octets, t.type, id + ' - ' + nomFinal));
+  const f = { id: id, article_id: art.id, drive_id: fichier.getId(), nom: nomFinal, type: t.type, taille: octets.length,
+    cree_par: user.email, cree_le: new Date().toISOString() };
+  feuilleDe_(FEUILLE_FICHIERS, COL_FICHIERS).appendRow(COL_FICHIERS.map(function (k) { return f[k]; }));
+}
+
+function fichierVisible_(user, id) {
+  const f = table_(FEUILLE_FICHIERS, COL_FICHIERS).filter(function (x) { return x.id === String(id || ''); })[0];
+  if (!f) throw err_('not_found', 'Fichier introuvable');
+  articleVisible_(user, f.article_id);          // mêmes droits que l'article
+  return f;
+}
+
+// Le contenu passe par le script : un fichier n'a jamais de lien public.
+function lireFichier_(user, id) {
+  const f = fichierVisible_(user, id);
+  let octets;
+  try { octets = DriveApp.getFileById(f.drive_id).getBlob().getBytes(); }
+  catch (e) { throw err_('not_found', 'Fichier introuvable dans le Drive'); }
+  return { nom: f.nom, type: f.type, data: Utilities.base64Encode(octets) };
+}
+
+function supprimerFichier_(user, id) {
+  const f = fichierVisible_(user, id);
+  if (f.cree_par !== user.email && user.role !== 'admin') throw err_('forbidden', 'Seul celui qui a déposé le fichier (ou l’administrateur) peut le supprimer');
+  try { DriveApp.getFileById(f.drive_id).setTrashed(true); } catch (e) { /* déjà absent du Drive */ }
+  feuilleDe_(FEUILLE_FICHIERS, COL_FICHIERS).deleteRow(f._row);
+}
+
+// Un article qui disparaît emporte ses fichiers (corbeille Drive).
+function retirerFichiersArticle_(articleId) {
+  const sh = feuilleDe_(FEUILLE_FICHIERS, COL_FICHIERS);
+  lireTable_(sh, COL_FICHIERS).filter(function (f) { return f.article_id === articleId; })
+    .sort(function (a, b) { return b._row - a._row; })
+    .forEach(function (f) {
+      try { DriveApp.getFileById(f.drive_id).setTrashed(true); } catch (e) { /* déjà absent */ }
+      sh.deleteRow(f._row);
+    });
+}
+
 
 function err_(code, message) {
   const e = new Error(message);

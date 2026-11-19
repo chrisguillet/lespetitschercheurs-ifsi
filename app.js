@@ -30,7 +30,7 @@ let token = null;
 try { token = sessionStorage.getItem("lydia_token"); } catch (e) { /* stockage indisponible */ }
 let me = null, users = [], items = [], comments = [], acces = [], pendingCount = 0;
 // items / comments = ce que montre la vue courante ; itemsAll / commentsAll = tout ce que le serveur renvoie à la personne.
-let structureAdmin = [], adminFerme = new Set(), reunionsAll = [], jalonsAll = [], groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [], promosMoi = [];
+let structureAdmin = [], adminFerme = new Set(), reunionsAll = [], jalonsAll = [], groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [], promosMoi = [], fichiers = [], stockage = null;
 const ctx = { gid: "", vue: "groupe" };          // groupe choisi, et vue : « groupe » ou « promo » (fiches partagées)
 try { ctx.gid = localStorage.getItem("lydia_groupe") || ""; ctx.vue = localStorage.getItem("lydia_portee") === "groupe" ? "groupe" : "promo"; } catch (e) { /* ignoré */ }
 let cmScope = "groupe", studentsSig = "", ctxSig = "";
@@ -129,7 +129,7 @@ function showGate(msg, retry) {
 function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
-  groupes = []; votes = []; promosMoi = []; dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
+  groupes = []; votes = []; promosMoi = []; fichiers = []; stockage = null; dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
@@ -191,7 +191,7 @@ function deriver() {
 // Signature des données utiles (hors « en ligne ») : une actualisation qui ne change rien ne reconstruit pas le tableau.
 let dataSig = "";
 function applyData(j) {
-  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.reunions, j.jalons, j.lectures, j.commentaires, j.lus, j.enAttente]);
+  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.fichiers, j.reunions, j.jalons, j.lectures, j.commentaires, j.lus, j.enAttente]);
   const change = sig !== dataSig;
   dataSig = sig;
   applyDataBrut(j);
@@ -204,6 +204,7 @@ function applyDataBrut(j) {
   groupes = j.groupes || [];
   votes = j.votes || [];
   promosMoi = j.promosMoi || [];
+  fichiers = j.fichiers || [];
   itemsAll = j.lectures;
   props = j.propositions || [];
   reunionsAll = j.reunions || [];
@@ -993,7 +994,8 @@ function resumeFiches(g) {
 function badgesArticle(g) {
   const nc = g.reduce((n, x) => n + comments.filter(c => c.lecture_id === x.id).length, 0);
   const nl = g.reduce((n, x) => n + nbNonLus(x.id), 0);
-  return `<span class="badge" title="Fiches de lecture de ce document">📚 ${libFiches(g.length)}</span>${nc ? `<span class="cn" title="${nc} commentaire${nc > 1 ? "s" : ""}">💬 ${nc}</span>` : ""}${nl ? `<span class="new">${nl} non lu${nl > 1 ? "s" : ""}</span>` : ""}`;
+  const nf = fichiersDe(cleArt(g[0])).length;
+  return `<span class="badge" title="Fiches de lecture de ce document">📚 ${libFiches(g.length)}</span>${nf ? `<span class="badge" title="Fichiers joints">📎 ${nf}</span>` : ""}${nc ? `<span class="cn" title="${nc} commentaire${nc > 1 ? "s" : ""}">💬 ${nc}</span>` : ""}${nl ? `<span class="new">${nl} non lu${nl > 1 ? "s" : ""}</span>` : ""}`;
 }
 
 const CHAMP_LIB = { titre: "titre", parution: "parution", auteur: "auteur", qualite: "qualité", nation: "nationalité", type: "type",
@@ -1018,13 +1020,62 @@ async function annulerProp(id) {
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Annulation impossible : " + e.message); }
 }
 
+// Fichiers joints (PDF, images) à un document : partage interne à but pédagogique.
+const FICHIER_MAX = 5 * 1024 * 1024;
+const AVERT_DROIT = "Droit d’auteur : ces fichiers restent un partage INTERNE, à but PÉDAGOGIQUE, réservé aux personnes de l’outil. Ne déposez que des documents que vous avez le droit de partager dans ce cadre, et ne les diffusez pas en dehors.";
+const fichiersDe = k => fichiers.filter(f => f.article_id === k);
+const fmtTaille = o => o < 1048576 ? Math.max(1, Math.round(o / 1024)) + " Ko" : (o / 1048576).toFixed(1).replace(".", ",") + " Mo";
+function fichiersHtml(i) {
+  const k = cleArt(i), l = fichiersDe(k), peut = canWrite() && i.article_modifiable;
+  if (!l.length && !peut) return "";
+  const liste = l.map(f => `<span class="chip fichier"><button type="button" class="lnk" data-fo="${esc(f.id)}" title="Ouvrir dans un nouvel onglet">${f.type === "application/pdf" ? "📄" : "🖼️"} ${esc(f.nom)}</button> <span class="meta">${esc(fmtTaille(f.taille))} · ${esc(f.par)}</span>${f.supprimable ? ` <button type="button" class="btn sm sec del" style="padding:0 6px" data-fx="${esc(f.id)}" aria-label="Supprimer ${esc(f.nom)}">✕</button>` : ""}</span>`).join(" ");
+  return `<div class="fichiers">${liste}${peut ? ` <button type="button" class="btn sm sec" data-fu="${esc(k)}">📎 Ajouter un fichier</button>` : ""}
+    <div class="meta">PDF, PNG ou JPEG, 5 Mo maximum. Partage interne à but pédagogique (droit d’auteur).</div></div>`;
+}
+
+let fupCible = "";
+async function ouvrirFichier(id) {
+  const fen = window.open("", "_blank");          // ouverte tout de suite : sinon le navigateur bloque la fenêtre
+  try {
+    const r = await api("file_get", { id });
+    const bin = atob(r.data), o = new Uint8Array(bin.length);
+    for (let n = 0; n < bin.length; n++) o[n] = bin.charCodeAt(n);
+    const url = URL.createObjectURL(new Blob([o], { type: r.type }));
+    if (fen) fen.location.href = url; else window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  } catch (e) {
+    if (fen) fen.close();
+    if (e.code === "unauthorized") sessionError(e); else alert("Ouverture impossible : " + e.message);
+  }
+}
+function choisirFichier(k) {
+  if (!confirm(AVERT_DROIT + "\n\nContinuer ?")) return;
+  fupCible = k; $("fup").value = ""; $("fup").click();
+}
+async function envoyerFichier(file) {
+  if (!file) return;
+  const type = (file.type || "").toLowerCase(), nom = file.name || "";
+  if (!/^(application\/pdf|image\/png|image\/jpeg)$/.test(type) && !/\.(pdf|png|jpe?g)$/i.test(nom)) return alert("Format non accepté : PDF, PNG ou JPEG uniquement.");
+  if (file.size > FICHIER_MAX) return alert(`Fichier trop volumineux (${fmtTaille(file.size)}) : 5 Mo maximum.`);
+  const data = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => ko(new Error("Lecture du fichier impossible")); r.readAsDataURL(file); }).catch(e => { alert(e.message); return ""; });
+  if (!data) return;
+  try { applyResult(await enCours("Envoi du fichier…", () => api("file_add", { article_id: fupCible, nom, data }))); }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Envoi impossible : " + e.message); }
+}
+async function supprimerFichierCli(id) {
+  const f = fichiers.find(x => x.id === id);
+  if (!f || !confirm(`Supprimer le fichier « ${f.nom} » ?`)) return;
+  try { applyResult(await enCours("Suppression…", () => api("file_delete", { id }))); }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Suppression impossible : " + e.message); }
+}
+
 // Ligne du document : titre, références, qui l'a lu ; les fiches de lecture sont dessous.
 function artRow(g) {
   const i = g[0], k = cleArt(i), open = artOuvert(k);
   return `<tr class="art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}"><td class="first"><span class="chev" aria-hidden="true"></span>${badgesArticle(g)}
    <b>${esc(i.titre)}</b>${lienHtml(i)}
    <div class="meta">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
-   ${propHtml(i)}<div class="artacts">${actionsArticle(i)}</div></td>
+   ${propHtml(i)}<div class="artacts">${actionsArticle(i)}</div>${fichiersHtml(i)}</td>
    <td class="artres" colspan="7"><div class="meta" style="margin-bottom:4px"><span class="hint-c">Cliquez pour déplier les fiches de lecture</span><span class="hint-o">Fiches de lecture ci-dessous</span></div>${resumeFiches(g)}</td>
    <td class="apa c9">${apaCell(i)}</td></tr>`;
 }
@@ -1049,7 +1100,7 @@ function artCard(g) {
    <div class="meta">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
    <div class="chipsc" style="max-height:none">${resumeFiches(g)}</div>
    <div class="sect"><b>Référence APA</b>${apaCell(i)}</div>
-   ${propHtml(i)}<div class="acts">${actionsArticle(i)}</div>
+   ${propHtml(i)}<div class="acts">${actionsArticle(i)}</div>${fichiersHtml(i)}
   </article>`;
 }
 
@@ -1330,6 +1381,9 @@ const onAction = e => {
   }
   const d = b.dataset;
   if (d.e) startEdit(d.e, false);
+  else if (d.fu) choisirFichier(d.fu);
+  else if (d.fo) ouvrirFichier(d.fo);
+  else if (d.fx) supprimerFichierCli(d.fx);
   else if (d.an) startAnalyse(d.an);
   else if (d.ea) startCorrection(d.ea);
   else if (d.pv) voterProp(d.pv, d.pvo === "1");
@@ -1359,6 +1413,7 @@ const onAction = e => {
   }
 };
 const onDraft = e => { if (e.target.dataset.cm) drafts[e.target.dataset.cm] = e.target.value; };
+$("fup").onchange = e => envoyerFichier(e.target.files && e.target.files[0]);
 $("rows").onclick = $("cards").onclick = $("cmbody").onclick = onAction;
 $("rows").oninput = $("cards").oninput = $("cmbody").oninput = onDraft;
 $("rows").onkeydown = $("cards").onkeydown = e => {
@@ -1476,6 +1531,7 @@ async function loadAdmin() {
     const next = r.acces;
     groupesAdmin = r.groupesAdmin || [];
     structureAdmin = r.structure || [];
+    stockage = r.stockage || null;
     // Pas de reconstruction si rien n'a changé ou si une saisie est en cours (sinon elle serait perdue).
     const a = document.activeElement;
     const typing = a && a.closest && a.closest("#adminbox") && (a.tagName === "INPUT" || a.tagName === "SELECT");
@@ -1933,6 +1989,7 @@ function blocGroupes() {
       ${e.promos.map(p => promoBloc(e, p)).join("") || '<div class="meta">Aucune promo : ajoutez-en une ci-dessus.</div>'}
     </details>`;
   return `<h3>🏫 Établissements, promos et groupes</h3>
+    ${stockage ? `<div class="meta">📎 Fichiers déposés : ${stockage.nb} (${esc(fmtTaille(stockage.octets))}) dans le Drive du propriétaire du script.</div>` : ""}
     <div class="note">Établissement → promo → groupe. Un étudiant n’est que dans un groupe par promo ; un formateur peut être rattaché à plusieurs groupes (il ne voit que ceux-là, et les fiches de lecture terminées de leur promo). Renommer un établissement ou une promo met à jour tous ses groupes. On ne supprime un établissement qu’une fois ses promos supprimées, une promo qu’une fois ses groupes supprimés. Supprimer un groupe conserve ses fiches dans le Google Sheet mais ne les affiche plus.</div>
     <div class="grow" style="margin:8px 0"><input id="ne_nom" maxlength="60" placeholder="Nouvel établissement (ex. IFSI Saint-Nazaire)"><button type="button" class="btn sm" data-s="etab_create">＋ Ajouter l’établissement</button></div>
     ${structureAdmin.map(etabBloc).join("") || '<div class="meta">Aucun établissement pour l’instant.</div>'}`;
@@ -1975,6 +2032,7 @@ async function lancerAdmin(b, appel) {
     if (res.acces) acces = res.acces;
     if (res.groupesAdmin) groupesAdmin = res.groupesAdmin;
     if (res.structure) structureAdmin = res.structure;
+    if (res.stockage) stockage = res.stockage;
     renderAdmin();
     applyResult(res);
   } catch (err) {

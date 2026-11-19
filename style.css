@@ -273,3 +273,8 @@ details.admetab>.grow,details.admpromo>.grow{margin:8px 0}
 #nogroup .chip { display: inline-flex; align-items: center; gap: 4px; }
 .admcode { align-items: center; margin: 6px 0; }
 .admcode .code { font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: .08em; font-size: 15px; }
+
+/* Fichiers joints aux documents */
+.fichiers { margin-top: 8px; }
+.fichier { display: inline-flex; align-items: center; gap: 6px; margin: 2px 6px 2px 0; }
+.lnk { background: none; border: 0; padding: 0; color: var(--pri); cursor: pointer; font: inherit; text-decoration: underline; }
