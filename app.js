@@ -240,22 +240,29 @@ function applyResult(j) {
   renderData();
 }
 
+// Chaque étape est isolée : une erreur d'affichage sur un bloc (données inattendues) ne doit pas empêcher d'afficher les onglets
+// et le reste de la page. L'erreur est signalée en haut de page avec le nom de l'étape.
+function etape(nom, fn) {
+  try { fn(); } catch (e) { console.error(nom, e); signalerErreur(nom + " : " + (e && e.message || e)); }
+}
 function renderData() {
-  renderCtx();
-  majGroupe();
-  if (usersChanged && me) renderFilters();
-  renderMine();
-  renderTable();
-  renderPending();
-  renderComments();
-  renderOnline();
-  majModal();
-  if (tab === "biblio") renderBiblio();
-  if (tab === "synth") renderSynth();
-  if (tab === "suivi") renderSuivi();
-  document.querySelector('.tab[data-t="suivi"]').classList.toggle("hidden", !groupeCourant());
-  majAlertes();
-  $("fbopen")?.classList.toggle("hidden", !me);
+  etape("contexte", renderCtx);
+  etape("groupe", majGroupe);
+  etape("filtres", () => { if (usersChanged && me) renderFilters(); });
+  etape("mes lectures", renderMine);
+  etape("tableau", renderTable);
+  etape("propositions", renderPending);
+  etape("commentaires", renderComments);
+  etape("en ligne", renderOnline);
+  etape("discussion", majModal);
+  etape("onglet", () => {
+    if (tab === "biblio") renderBiblio();
+    if (tab === "synth") renderSynth();
+    if (tab === "suivi") renderSuivi();
+  });
+  etape("onglets", () => document.querySelector('.tab[data-t="suivi"]').classList.toggle("hidden", !groupeCourant()));
+  etape("alertes", majAlertes);
+  etape("retours", () => $("fbopen")?.classList.toggle("hidden", !me));
 }
 
 // Affiche l'attente le temps d'une écriture (l'API peut mettre quelques secondes à répondre).
