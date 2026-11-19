@@ -36,6 +36,7 @@ const FEUILLE_PROPOSITIONS = 'Propositions';
 const FEUILLE_REUNIONS = 'Reunions';
 const FEUILLE_ETABLISSEMENTS = 'Etablissements';
 const FEUILLE_PROMOS = 'Promos';
+const FEUILLE_INSCRIPTIONS = 'Inscriptions';
 const FEUILLE_JALONS = 'Jalons';
 
 const COLONNES = ['id', 'owner', 'statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
@@ -58,13 +59,17 @@ const COL_JALONS = ['id', 'groupe_id', 'titre', 'echeance', 'statut', 'note', 'c
 const STATUTS_JALON = ['a_faire', 'en_cours', 'fait'];
 const OBJECTIFS = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type', 'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
 const ANALYSES = ['statut', 'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre'];
-const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion'];
+// promo_demandee / role_demande : ce que la personne a indiqué à sa première connexion (informatif pour qui valide).
+const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion', 'promo_demandee', 'role_demande'];
 // portee : « groupe » ou « promo » ; groupe_id : groupe de l'auteur au moment du commentaire.
 const COL_COMMENTAIRES = ['id', 'lecture_id', 'auteur_email', 'auteur', 'date', 'texte', 'modifie_le', 'portee', 'groupe_id'];
 // Structure : établissement > promo > groupe. Les groupes gardent les noms (clé de promo), ces feuilles listent aussi les promos vides.
 const COL_ETABLISSEMENTS = ['id', 'nom', 'cree_le'];
-const COL_PROMOS = ['id', 'etablissement_id', 'nom', 'cree_le'];
-const COL_GROUPES = ['id', 'etablissement', 'promo', 'nom', 'cree_le'];
+// Code d'invitation : donne accès à la promo comme étudiant, sans validation (expire, nombre d'usages limité).
+const COL_PROMOS = ['id', 'etablissement_id', 'nom', 'cree_le', 'code', 'code_expire', 'code_max', 'code_usages'];
+// Étudiants inscrits à une promo (par code ou par validation) avant d'avoir un groupe.
+const COL_INSCRIPTIONS = ['id', 'email', 'promo_id', 'ajoute_le', 'via'];
+const COL_GROUPES = ['id', 'etablissement', 'promo', 'nom', 'cree_le', 'cree_par'];
 const COL_MEMBRES = ['id', 'groupe_id', 'email', 'ajoute_le'];
 // type : « retrait » (cible = adresse du membre) ou « nom » (valeur = nouveau nom) ; votes = JSON {adresse: 1|0}.
 const COL_VOTES = ['id', 'groupe_id', 'type', 'cible', 'valeur', 'propose_par', 'cree_le', 'votes', 'statut', 'clos_le'];
@@ -124,6 +129,7 @@ function setup() {
   preparer_(ss, FEUILLE_REUNIONS, COL_REUNIONS);
   preparer_(ss, FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS);
   preparer_(ss, FEUILLE_PROMOS, COL_PROMOS);
+  preparer_(ss, FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS);
   preparer_(ss, FEUILLE_JALONS, COL_JALONS);
   const u = preparer_(ss, FEUILLE_UTILISATEURS, COL_UTILISATEURS);
   if (u.getLastRow() < 2) {
@@ -152,7 +158,7 @@ function migrerVersGroupes_() {
       const maintenant = new Date().toISOString();
       if (!groupes.length) {
         const g = { id: Utilities.getUuid(), etablissement: 'IFSI Saint-Nazaire', promo: 'Promo 24-27',
-          nom: 'Les petits chercheurs', cree_le: maintenant };
+          nom: 'Les petits chercheurs', cree_le: maintenant, cree_par: '' };
         shG.appendRow(COL_GROUPES.map(function (c) { return g[c]; }));
         const shM = ss.getSheetByName(FEUILLE_MEMBRES);
         lireUtilisateurs_().filter(function (u) { return u.statut === 'actif'; }).forEach(function (u) {
@@ -385,6 +391,26 @@ function doPost(e) {
       case 'vote_cancel':
         muter_(function () { annulerVote_(user, req.id); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'onboarding':
+        return json_(Object.assign({ ok: true }, accueil_(user)));
+      case 'onboarding_demande':
+        muter_(function () { demanderPromo_(user, req.data); });
+        return json_(Object.assign({ ok: true }, accueil_(user)));
+      case 'join_code':
+        muter_(function () { joindreAvecCode_(user, req.data); });
+        return json_({ ok: true });
+      case 'group_create_self':
+        muter_(function () { creerGroupeSoi_(user, req.promo_id, req.nom); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'join_request':
+        muter_(function () { demanderAdhesion_(user, req.groupe_id); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'promo_code':
+        muter_(function () { genererCodePromo_(user, req.data); });
+        return json_(Object.assign({ ok: true }, donnees_(user), accesSiAdmin_(user)));
+      case 'promo_code_revoke':
+        muter_(function () { revoquerCodePromo_(user, req.id); });
+        return json_(Object.assign({ ok: true }, donnees_(user), accesSiAdmin_(user)));
       case 'etab_create': case 'etab_rename': case 'etab_delete': case 'promo_create': case 'promo_rename': case 'promo_delete':
         muter_(function () {
           ({ etab_create: creerEtablissement_, etab_rename: renommerEtablissement_, etab_delete: function (u) { supprimerEtablissement_(u, req.id); },
@@ -441,6 +467,7 @@ function donnees_(user) {
     groupes: groupesPourClient_(user, c),
     votes: votesPourClient_(user, c),
     propositions: propositionsPourClient_(user, c),
+    promosMoi: promosMoiPourClient_(user, c),
     reunions: suiviPourClient_(user, c, 'reunion'),
     jalons: suiviPourClient_(user, c, 'jalon'),
     lectures: lister_(user),
@@ -484,6 +511,8 @@ function listerEnLigne_(user) {
 
 /* ---------- Authentification et accès ---------- */
 
+const ACTIONS_ACCUEIL = ['onboarding', 'onboarding_demande', 'join_code'];
+
 function authentifier_(token, action) {
   if (!token || typeof token !== 'string') throw err_('unauthorized', 'Connexion requise');
   const cache = CacheService.getScriptCache();
@@ -508,6 +537,12 @@ function authentifier_(token, action) {
       statut: 'actif', demande_le: '', derniere_connexion: '' };
   }
   const user = listerUtilisateurs_().filter(function (u) { return u.email === email; })[0];
+  // Première connexion : une personne inconnue ou en attente peut choisir sa promo ou entrer un code d'invitation.
+  if (ACTIONS_ACCUEIL.indexOf(action) >= 0 && (!user || user.statut === 'en_attente')) {
+    return user ? Object.assign({ accueil: true }, user)
+      : { _row: 0, email: email, prenom: '', role: 'formateur', couleur: COULEUR_DEFAUT, statut: 'en_attente', accueil: true,
+        demande_le: '', derniere_connexion: '', promo_demandee: '', role_demande: '' };
+  }
   if (!user) {
     // Adresse inconnue : une demande est enregistrée à l'ouverture de l'application seulement.
     if (action === 'init') avecVerrou_(function () { enregistrerDemande_(email); });
@@ -542,7 +577,9 @@ function lireUtilisateurs_() {
       // Ligne ancienne sans statut : considérée comme active.
       statut: statut === 'en_attente' || statut === 'refuse' ? statut : 'actif',
       demande_le: String(r[5] || ''),
-      derniere_connexion: String(r[6] || '')
+      derniere_connexion: String(r[6] || ''),
+      promo_demandee: String(r[7] || ''),
+      role_demande: String(r[8] || '')
     };
   }).filter(function (u) { return u.email; });
 }
@@ -577,7 +614,7 @@ function listerAcces_(user) {
   lireTable_(feuilleCommentaires_(), COL_COMMENTAIRES).forEach(function (r) { nbC[r.auteur_email] = (nbC[r.auteur_email] || 0) + 1; });
   return listerUtilisateurs_().filter(function (u) { return admin || u.role !== 'etudiant'; }).map(function (u) {
     return { email: u.email, prenom: u.prenom, role: u.role, statut: u.statut, couleur: u.couleur,
-      demande_le: u.demande_le, derniere_connexion: u.derniere_connexion, protege: u.role === 'etudiant',
+      demande_le: u.demande_le, derniere_connexion: u.derniere_connexion, demande: demandeLibelle_(u), protege: u.role === 'etudiant',
       nb_lectures: nbL[u.email] || 0, nb_commentaires: nbC[u.email] || 0 };
   });
 }
@@ -631,12 +668,14 @@ function administrer_(user, data) {
   feuilleUtilisateurs_().getRange(cible._row, 1, 1, 5).setValues([[nouvelEmail, prenom, role, couleur, statut]]);
   // Les lectures et commentaires sont rattachés à l'adresse : on les suit.
   if (nouvelEmail !== email) migrerEmail_(email, nouvelEmail);
+  // Un étudiant validé qui avait demandé une promo y est inscrit.
+  if (admin && statut === 'actif' && role === 'etudiant' && cible.promo_demandee) inscrire_(nouvelEmail, cible.promo_demandee, 'admin');
 }
 
 function migrerEmail_(ancien, nouveau) {
   const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleArticles_(), COL_ARTICLES, 'cree_par'], [feuillePropositions_(), COL_PROPOSITIONS, 'propose_par'], [feuilleSuivi_('reunion'), COL_REUNIONS, 'cree_par'], [feuilleSuivi_('jalon'), COL_JALONS, 'cree_par'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
   if (feuilleLus_(false)) tables.push([feuilleLus_(false), COL_LUS, 'id']);
-  [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
+  [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, 'email'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
     .forEach(function (t) {
       const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(t[0]);
       if (sh) tables.push([sh, t[1], t[2]]);
@@ -1184,6 +1223,12 @@ function contexte_(user) {
     const mesGroupes = groupes.filter(function (g) { return admin || miens[g.id]; });
     const promos = {};
     mesGroupes.forEach(function (g) { promos[clePromo_(g)] = true; });
+    // Les promos où l'on est inscrit (code d'invitation, validation) comptent aussi, même sans groupe.
+    const insc = table_(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS).filter(function (i) { return i.email === user.email; });
+    if (insc.length) {
+      const pp = promosParId_();
+      insc.forEach(function (i) { if (pp[i.promo_id]) promos[pp[i.promo_id].cle] = true; });
+    }
     const coequipiers = {};
     membres.forEach(function (m) { if (miens[m.groupe_id]) coequipiers[m.email] = true; });
     return { admin: admin, groupesParId: parId, membres: membres, miens: miens, mesGroupes: mesGroupes,
@@ -1254,7 +1299,7 @@ function votesPourClient_(user, c) {
     const votes = lireVotesDe_(v);
     const proposant = parEmail[v.propose_par];
     return { id: v.id, groupe_id: v.groupe_id, type: v.type,
-      cible_pid: retrait ? pid_(v.cible) : '', cible: retrait ? parEmail[v.cible].prenom : '', valeur: v.valeur,
+      cible_pid: retrait ? pid_(v.cible) : '', cible: (retrait || v.type === 'adhesion') && parEmail[v.cible] ? parEmail[v.cible].prenom : '', valeur: v.valeur,
       propose_par: proposant ? proposant.prenom : 'Utilisateur supprimé',
       expire_le: new Date(Date.parse(v.cree_le) + VOTE_DUREE_MS).toISOString(),
       oui: etat.oui, non: etat.non, n: etat.n, besoin: etat.besoin,
@@ -1434,7 +1479,11 @@ function evaluerVote_(v) {
   let statut = etat.adopte ? 'adopte' : 'refuse';
   if (etat.adopte) {
     try {
-      if (retrait) {
+      if (v.type === 'adhesion') {
+        const cand = utilisateurActif_(function (x) { return x.email === v.cible; });
+        if (!cand) throw err_('invalid', 'candidat introuvable');
+        ajouterMembre_(groupeParId_(v.groupe_id), cand);
+      } else if (retrait) {
         // Garde-fou : on ne vide jamais un groupe de ses étudiants.
         if (electeursGroupe_(v.groupe_id).length < 2) throw err_('invalid', 'dernier étudiant');
         retirerMembre_(v.groupe_id, v.cible);
@@ -1497,7 +1546,7 @@ function assurerStructure_(etab, promo) {
   let p = lireTable_(shP, COL_PROMOS).filter(function (x) { return x.etablissement_id === e.id && normaliserTerme_(x.nom) === normaliserTerme_(promo); })[0];
   if (!p) {
     p = { id: Utilities.getUuid(), etablissement_id: e.id, nom: promo, cree_le: maintenant };
-    shP.appendRow(COL_PROMOS.map(function (c) { return p[c]; }));
+    shP.appendRow(COL_PROMOS.map(function (c) { return p[c] === undefined ? '' : p[c]; }));
   }
   return { etablissement: e.nom, promo: p.nom };
 }
@@ -1507,7 +1556,11 @@ function listerStructureAdmin_(user) {
   const promos = table_(FEUILLE_PROMOS, COL_PROMOS);
   return table_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).map(function (e) {
     return { id: e.id, nom: e.nom, promos: promos.filter(function (p) { return p.etablissement_id === e.id; })
-      .map(function (p) { return { id: p.id, nom: p.nom }; }) };
+      .map(function (p) {
+        const actif = !!p.code && Date.parse(p.code_expire) > Date.now();
+        return { id: p.id, nom: p.nom, code: p.code || '', code_expire: p.code_expire || '', code_max: Number(p.code_max) || 0,
+          code_usages: Number(p.code_usages) || 0, code_actif: actif };
+      }) };
   });
 }
 
@@ -1560,7 +1613,7 @@ function creerPromo_(user, data) {
   if (table_(FEUILLE_PROMOS, COL_PROMOS).some(function (p) { return p.etablissement_id === e.id && normaliserTerme_(p.nom) === normaliserTerme_(nom); })) {
     throw err_('invalid', 'Cette promo existe déjà dans cet établissement');
   }
-  feuilleDe_(FEUILLE_PROMOS, COL_PROMOS).appendRow([Utilities.getUuid(), e.id, nom, new Date().toISOString()]);
+  feuilleDe_(FEUILLE_PROMOS, COL_PROMOS).appendRow([Utilities.getUuid(), e.id, nom, new Date().toISOString(), '', '', '', '']);
 }
 
 function renommerPromo_(user, data) {
@@ -1585,6 +1638,9 @@ function supprimerPromo_(user, id) {
     throw err_('invalid', 'Supprimez d’abord les groupes de cette promo');
   }
   feuilleDe_(FEUILLE_PROMOS, COL_PROMOS).deleteRow(p._row);
+  const shI = feuilleDe_(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS);
+  lireTable_(shI, COL_INSCRIPTIONS).filter(function (i) { return i.promo_id === p.id; })
+    .sort(function (a, b) { return b._row - a._row; }).forEach(function (i) { shI.deleteRow(i._row); });
 }
 
 function creerGroupe_(user, data) {
@@ -1592,7 +1648,7 @@ function creerGroupe_(user, data) {
   if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
   const st = structureDe_(data, null);
   const g = { id: Utilities.getUuid(), etablissement: st.etablissement,
-    promo: st.promo, nom: nomValide_(data.nom, 'Nom'), cree_le: new Date().toISOString() };
+    promo: st.promo, nom: nomValide_(data.nom, 'Nom'), cree_le: new Date().toISOString(), cree_par: '' };
   const cle = clePromo_(g);
   verifierNomLibre_(cle, g.nom, '');
   const vus = {};
@@ -1877,6 +1933,255 @@ function avecVerrou_(fn) {
   const verrou = LockService.getScriptLock();
   verrou.waitLock(10000);
   try { return fn(); } finally { verrou.releaseLock(); }
+}
+
+/* ---------- Accueil : promo, code d'invitation, groupes en autonomie ---------- */
+
+const PALETTE_ETUDIANTS = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42a5a5', '#d4a017', '#f032e6', '#9a6324', '#008080'];
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const CODE_ESSAIS_MAX = 5;
+const CODE_ESSAIS_S = 900;
+
+// Promos indexées par identifiant, avec la clé (établissement|promo) qui relie aux groupes.
+function promosParId_() {
+  const etabs = {};
+  table_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).forEach(function (e) { etabs[e.id] = e; });
+  const out = {};
+  table_(FEUILLE_PROMOS, COL_PROMOS).forEach(function (p) {
+    const e = etabs[p.etablissement_id];
+    if (e) out[p.id] = { id: p.id, nom: p.nom, etablissement: e.nom, cle: clePromo_({ etablissement: e.nom, promo: p.nom }) };
+  });
+  return out;
+}
+
+function inscritPromo_(email, cle) {
+  const pp = promosParId_();
+  return table_(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS).some(function (i) { return i.email === email && pp[i.promo_id] && pp[i.promo_id].cle === cle; });
+}
+
+// Inscrit une personne à une promo ; renvoie false si elle l'était déjà (ou si la promo n'existe plus).
+function inscrire_(email, promoId, via) {
+  if (!promosParId_()[promoId]) return false;
+  if (table_(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS).some(function (i) { return i.email === email && i.promo_id === promoId; })) return false;
+  feuilleDe_(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS).appendRow([Utilities.getUuid(), email, promoId, new Date().toISOString(), via]);
+  return true;
+}
+
+function demandeLibelle_(u) {
+  const p = u.promo_demandee ? promosParId_()[u.promo_demandee] : null;
+  return { promo_id: p ? p.id : '', promo: p ? p.etablissement + ' · ' + p.nom : '', role: u.role_demande || '' };
+}
+
+// Ce que voit une personne à sa première connexion : la liste des promos (noms seulement) et sa demande en cours.
+function accueil_(user) {
+  const u = listerUtilisateurs_().filter(function (x) { return x.email === user.email; })[0] || user;
+  const promos = table_(FEUILLE_PROMOS, COL_PROMOS);
+  return {
+    structure: table_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).map(function (e) {
+      return { id: e.id, nom: e.nom, promos: promos.filter(function (p) { return p.etablissement_id === e.id; })
+        .map(function (p) { return { id: p.id, nom: p.nom }; }) };
+    }),
+    demande: Object.assign({ prenom: u.prenom || '' }, demandeLibelle_(u)),
+    statut: u.statut
+  };
+}
+
+function exigerAccueil_(user) {
+  if (user.role === 'admin') throw err_('invalid', 'L’administrateur n’a pas besoin de demande');
+  if (user.statut === 'actif' && user.role !== 'etudiant') throw err_('forbidden', 'Réservé aux étudiants');
+}
+
+function prenomValide_(v) {
+  const p = String(v === undefined || v === null ? '' : v).trim().replace(/\s+/g, ' ');
+  if (!p) throw err_('invalid', 'Prénom requis');
+  if (p.length > PRENOM_MAX) throw err_('invalid', 'Prénom trop long');
+  return p;
+}
+
+// Première connexion sans code : la demande reste en attente, validée comme avant, avec la promo et le rôle souhaités.
+function demanderPromo_(user, data) {
+  if (user.role === 'admin' || user.statut === 'actif') throw err_('invalid', 'Votre accès est déjà actif');
+  if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
+  const role = String(data.role || '');
+  if (['etudiant', 'formateur'].indexOf(role) < 0) throw err_('invalid', 'Rôle invalide');
+  const prenom = prenomValide_(data.prenom);
+  // Une seule promo ouverte : elle est choisie d'office (pas de choix à faire).
+  const toutes = Object.keys(promosParId_());
+  const promoId = String(data.promo_id || (toutes.length === 1 ? toutes[0] : ''));
+  if (role === 'etudiant' && !promosParId_()[promoId]) throw err_('invalid', 'Choisissez votre promo');
+  if (promoId && !promosParId_()[promoId]) throw err_('invalid', 'Promo introuvable');
+  let cible = listerUtilisateurs_().filter(function (u) { return u.email === user.email; })[0];
+  if (!cible) {
+    enregistrerDemande_(user.email);
+    cible = listerUtilisateurs_().filter(function (u) { return u.email === user.email; })[0];
+  }
+  const sh = feuilleUtilisateurs_();
+  sh.getRange(cible._row, 2, 1, 1).setValues([[prenom]]);
+  sh.getRange(cible._row, 8, 1, 2).setValues([[promoId, role]]);
+}
+
+function couleurPeuUtilisee_() {
+  const n = {};
+  PALETTE_ETUDIANTS.forEach(function (c) { n[c] = 0; });
+  listerUtilisateurs_().forEach(function (u) { if (u.role === 'etudiant' && n[u.couleur] !== undefined) n[u.couleur]++; });
+  return PALETTE_ETUDIANTS.slice().sort(function (a, b) { return n[a] - n[b]; })[0];
+}
+
+function normaliserCode_(v) {
+  return String(v === undefined || v === null ? '' : v).toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+// Un code valide ouvre l'accès comme étudiant de la promo, sans validation. Les essais ratés sont limités.
+function joindreAvecCode_(user, data) {
+  exigerAccueil_(user);
+  if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
+  const cache = CacheService.getScriptCache();
+  const cleEssais = 'codefail_' + user.email;
+  const essais = Number(cache.get(cleEssais) || 0);
+  if (essais >= CODE_ESSAIS_MAX) throw err_('forbidden', 'Trop d’essais : réessayez dans quelques minutes');
+  const code = normaliserCode_(data.code);
+  const echec = function (msg) {
+    cache.put(cleEssais, String(essais + 1), CODE_ESSAIS_S);
+    throw err_('invalid', msg || 'Code invalide ou expiré');
+  };
+  if (code.length < 6) echec();
+  const p = table_(FEUILLE_PROMOS, COL_PROMOS).filter(function (x) { return x.code && normaliserCode_(x.code) === code; })[0];
+  if (!p || !(Date.parse(p.code_expire) > Date.now())) echec();
+  const dejaInscrit = table_(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS).some(function (i) { return i.email === user.email && i.promo_id === p.id; });
+  if (!dejaInscrit && Number(p.code_usages || 0) >= Number(p.code_max || 0)) echec('Ce code a atteint son nombre maximal d’utilisations');
+  const existant = listerUtilisateurs_().filter(function (u) { return u.email === user.email; })[0];
+  if (!existant || existant.statut === 'en_attente') {
+    const prenom = prenomValide_(data.prenom || (existant && existant.prenom));
+    const maintenant = new Date().toISOString();
+    if (!existant) {
+      feuilleUtilisateurs_().appendRow([user.email, prenom, 'etudiant', couleurPeuUtilisee_(), 'actif', maintenant, maintenant, p.id, 'etudiant']);
+    } else {
+      const sh = feuilleUtilisateurs_();
+      sh.getRange(existant._row, 2, 1, 4).setValues([[prenom, 'etudiant', couleurPeuUtilisee_(), 'actif']]);
+      sh.getRange(existant._row, 8, 1, 2).setValues([[p.id, 'etudiant']]);
+    }
+  }
+  if (inscrire_(user.email, p.id, 'code')) {
+    feuilleDe_(FEUILLE_PROMOS, COL_PROMOS).getRange(p._row, COL_PROMOS.indexOf('code_usages') + 1, 1, 1)
+      .setValues([[Number(p.code_usages || 0) + 1]]);
+  }
+  cache.remove(cleEssais);
+}
+
+function genererCodePromo_(user, data) {
+  exigerAdmin_(user);
+  const p = promoParId_(data && data.id);
+  const borne = function (v, defaut, min, max) {
+    const n = Math.floor(Number(v));
+    return isFinite(n) && n >= min ? Math.min(n, max) : defaut;
+  };
+  const jours = borne(data.jours, 30, 1, 365), max = borne(data.max, 150, 1, 1000);
+  const pris = {};
+  table_(FEUILLE_PROMOS, COL_PROMOS).forEach(function (x) { if (x.code) pris[normaliserCode_(x.code)] = true; });
+  let code = '';
+  do {
+    const hex = Utilities.getUuid().replace(/-/g, '');
+    code = '';
+    for (let i = 0; i < 8; i++) code += CODE_ALPHABET.charAt(parseInt(hex.substr(i * 2, 2), 16) % CODE_ALPHABET.length);
+  } while (pris[code]);
+  const expire = new Date(Date.now() + jours * 86400000).toISOString();
+  feuilleDe_(FEUILLE_PROMOS, COL_PROMOS).getRange(p._row, COL_PROMOS.indexOf('code') + 1, 1, 4).setValues([[code, expire, max, 0]]);
+}
+
+function revoquerCodePromo_(user, id) {
+  exigerAdmin_(user);
+  const p = promoParId_(id);
+  feuilleDe_(FEUILLE_PROMOS, COL_PROMOS).getRange(p._row, COL_PROMOS.indexOf('code') + 1, 1, 4).setValues([['', '', '', '']]);
+}
+
+// Un étudiant inscrit à une promo mais sans groupe peut créer le sien (un seul membre suffit).
+function creerGroupeSoi_(user, promoId, nom) {
+  exigerEtudiant_(user);
+  cloreExpires_();
+  const p = promosParId_()[String(promoId || '')];
+  if (!p) throw err_('not_found', 'Promo introuvable');
+  if (!inscritPromo_(user.email, p.cle)) throw err_('forbidden', 'Vous n’êtes pas inscrit à cette promo');
+  if (dejaDansPromo_(user.email, p.cle, '')) throw err_('invalid', 'Vous êtes déjà dans un groupe de cette promo');
+  const g = { id: Utilities.getUuid(), etablissement: p.etablissement, promo: p.nom, nom: nomValide_(nom, 'Nom'),
+    cree_le: new Date().toISOString(), cree_par: user.email };
+  verifierNomLibre_(p.cle, g.nom, '');
+  feuilleDe_(FEUILLE_GROUPES, COL_GROUPES).appendRow(COL_GROUPES.map(function (c) { return g[c]; }));
+  ajouterMembre_(g, user);
+  annulerAdhesionsOuvertes_(user.email, p.cle);
+}
+
+function annulerAdhesionsOuvertes_(email, cle) {
+  const sh = feuilleDe_(FEUILLE_VOTES, COL_VOTES);
+  const parId = {};
+  table_(FEUILLE_GROUPES, COL_GROUPES).forEach(function (g) { parId[g.id] = g; });
+  lireTable_(sh, COL_VOTES).filter(function (v) {
+    return v.type === 'adhesion' && v.statut === 'ouvert' && v.cible === email && parId[v.groupe_id] && clePromo_(parId[v.groupe_id]) === cle;
+  }).forEach(function (v) {
+    sh.getRange(v._row, COL_VOTES.indexOf('statut') + 1, 1, 2).setValues([['annule', new Date().toISOString()]]);
+  });
+}
+
+// Demande à rejoindre un groupe de sa promo : les étudiants du groupe votent à la majorité simple.
+function demanderAdhesion_(user, gid) {
+  exigerEtudiant_(user);
+  cloreExpires_();
+  const g = groupeParId_(String(gid || ''));
+  const cle = clePromo_(g);
+  if (!inscritPromo_(user.email, cle)) throw err_('forbidden', 'Vous n’êtes pas inscrit à cette promo');
+  if (dejaDansPromo_(user.email, cle, '')) throw err_('invalid', 'Vous êtes déjà dans un groupe de cette promo');
+  if (!electeursGroupe_(g.id).length) throw err_('invalid', 'Ce groupe n’a aucun membre étudiant');
+  const maintenant = Date.now();
+  const parId = {};
+  table_(FEUILLE_GROUPES, COL_GROUPES).forEach(function (x) { parId[x.id] = x; });
+  const miens = table_(FEUILLE_VOTES, COL_VOTES).filter(function (v) {
+    return v.type === 'adhesion' && v.cible === user.email && parId[v.groupe_id] && clePromo_(parId[v.groupe_id]) === cle;
+  });
+  if (miens.some(function (v) { return v.statut === 'ouvert'; })) throw err_('invalid', 'Vous avez déjà une demande en cours dans cette promo : annulez-la d’abord');
+  if (miens.some(function (v) { return v.groupe_id === g.id && v.statut === 'refuse' && maintenant - Date.parse(v.clos_le) < VOTE_BLOCAGE_MS; })) {
+    throw err_('invalid', 'Ce groupe a refusé votre demande récemment : réessayez dans quelques jours');
+  }
+  const sh = feuilleDe_(FEUILLE_VOTES, COL_VOTES);
+  const id = Utilities.getUuid();
+  const v = { id: id, groupe_id: g.id, type: 'adhesion', cible: user.email, valeur: '', propose_par: user.email,
+    cree_le: new Date().toISOString(), votes: '{}', statut: 'ouvert', clos_le: '' };
+  sh.appendRow(COL_VOTES.map(function (c) { return v[c]; }));
+}
+
+// Pour chaque promo où l'étudiant est inscrit : ses groupes possibles (tant qu'il n'en a pas) et l'état de sa demande.
+function promosMoiPourClient_(user, c) {
+  if (user.role !== 'etudiant') return [];
+  const pp = promosParId_();
+  const parCle = {};
+  Object.keys(pp).forEach(function (id) { parCle[pp[id].cle] = pp[id]; });
+  const cles = {};
+  table_(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS).forEach(function (i) {
+    if (i.email === user.email && pp[i.promo_id]) cles[pp[i.promo_id].cle] = true;
+  });
+  c.mesGroupes.forEach(function (g) { cles[clePromo_(g)] = true; });
+  const parEmail = {};
+  listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
+  const maintenant = Date.now();
+  const votes = table_(FEUILLE_VOTES, COL_VOTES).filter(function (v) { return v.type === 'adhesion' && v.cible === user.email; });
+  const groupes = table_(FEUILLE_GROUPES, COL_GROUPES);
+  return Object.keys(cles).filter(function (k) { return parCle[k]; }).map(function (k) {
+    const p = parCle[k];
+    const mien = groupes.filter(function (g) { return clePromo_(g) === k && c.miens[g.id]; })[0];
+    const liste = mien ? [] : groupes.filter(function (g) { return clePromo_(g) === k; }).map(function (g) {
+      const etudiants = electeursGroupe_(g.id);
+      const mesVotes = votes.filter(function (v) { return v.groupe_id === g.id; });
+      const ouvert = mesVotes.filter(function (v) { return voteOuvert_(v, maintenant); })[0];
+      let demande = null;
+      if (ouvert) {
+        const etat = etatVote_(ouvert, etudiants);
+        demande = { id: ouvert.id, oui: etat.oui, non: etat.non, n: etat.n, besoin: etat.besoin,
+          expire_le: new Date(Date.parse(ouvert.cree_le) + VOTE_DUREE_MS).toISOString() };
+      }
+      return { id: g.id, nom: g.nom, demande: demande,
+        bloque: mesVotes.some(function (v) { return v.statut === 'refuse' && maintenant - Date.parse(v.clos_le) < VOTE_BLOCAGE_MS; }),
+        membres: etudiants.filter(function (e) { return parEmail[e]; }).map(function (e) { return { prenom: parEmail[e].prenom, couleur: parEmail[e].couleur }; }) };
+    }).sort(function (a, b) { return a.nom.localeCompare(b.nom); });
+    return { id: p.id, nom: p.nom, etablissement: p.etablissement, mon_groupe_id: mien ? mien.id : '', groupes: liste };
+  });
 }
 
 function err_(code, message) {

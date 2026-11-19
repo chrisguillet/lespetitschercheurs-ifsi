@@ -66,6 +66,9 @@ Tout est organisé en **établissement → promo → groupe** (par exemple *IFSI
 - **Reprise de l'existant** : `setup` crée le groupe « Les petits chercheurs » (IFSI Saint-Nazaire, Promo 24-27) avec tous les accès actifs,
   et lui rattache les fiches et commentaires déjà saisis. Sans risque à relancer.
 
+**Première connexion en autonomie** (voir plus bas la section *Première connexion, codes d'invitation et groupes*) : à sa première connexion,
+une personne choisit son **établissement et sa promo**, indique son prénom et son rôle, ou entre le **code d'invitation** de sa promo.
+
 **Demande d'accès** : une personne dont l'adresse n'est pas connue se connecte avec Google ; une ligne
 `en_attente` est créée dans `Utilisateurs` (50 demandes en attente au maximum) et elle voit « demande envoyée ».
 Elle ne lit rien tant qu'un étudiant n'a pas validé. Dans l'onglet **👥 Administration** (visible des
@@ -163,6 +166,26 @@ Propre à chaque groupe (celui choisi dans le bandeau), visible **de son groupe 
   le décompte « J-12 » ou « en retard de 3 j » et une barre d'avancement.
 - Les **étudiants du groupe** ajoutent, modifient et suppriment ; les formateurs rattachés lisent seulement ; l'administrateur peut supprimer.
 - Nouvelles feuilles `Reunions` et `Jalons` (créées par `setup`, ou automatiquement au premier usage). Rien à migrer.
+
+## Première connexion, codes d'invitation et groupes
+
+- **À la première connexion** (adresse inconnue), l'écran d'accueil propose deux voies :
+  1. **Un code d'invitation** (donné par le formateur ou l'administrateur) : avec son prénom, la personne devient **étudiant(e) de la promo tout de suite**, sans validation.
+  2. **Une demande** : prénom, rôle (étudiant ou formateur), établissement et promo. Elle reste **en attente** et est validée comme avant ;
+     l'administrateur voit la promo et le rôle demandés (rôle présélectionné), et **valider un étudiant l'inscrit à la promo demandée**.
+     Seul l'administrateur donne le rôle étudiant ; un étudiant peut valider une demande de formateur.
+- **Périmètre actuel : une seule promo** (IFSI Saint-Nazaire, Promo 24-27). Tant qu'une seule promo existe, l'accueil et le panneau « sans groupe » n'affichent aucun choix d'établissement ni de promo : elle est choisie d'office. Les choix réapparaissent automatiquement dès qu'une deuxième promo est créée.
+- **Codes d'invitation** : onglet Administration, dans chaque **promo** → *Générer un code* (8 caractères, validité en jours et nombre d'utilisations réglables ;
+  30 jours et 150 par défaut). Un nouveau code remplace l'ancien ; *Révoquer* l'invalide (les personnes déjà inscrites le restent). Un code n'est compté qu'une fois par personne.
+  Essais limités : **5 codes faux en 15 minutes** par adresse. Un code ne donne que le rôle **étudiant** et un accès à **cette promo** (jamais à un groupe).
+- **Sans groupe**, un étudiant inscrit à une promo voit la liste de ses groupes (noms et prénoms des membres, jamais d'adresses) et peut :
+  - **demander à rejoindre un groupe** : les **étudiants du groupe votent à la majorité simple** (mêmes règles que les autres votes : 7 jours, refus non renouvelable pendant 14 jours ;
+    une seule demande en cours par promo, annulable). Si elle est acceptée, la personne entre dans le groupe ;
+  - **créer son groupe** (nom unique dans la promo). **Un groupe d'une seule personne est accepté** : d'autres pourront demander à le rejoindre.
+- Un étudiant déjà actif peut entrer le code d'une **autre promo** depuis ce panneau (donc seulement tant qu'il n'a pas de groupe dans sa promo actuelle).
+- **Pas de « quitter mon groupe » en libre-service** : un retrait passe par le vote du groupe (ou l'administrateur), car les analyses restent rattachées au groupe d'origine.
+- Nouvelle feuille `Inscriptions` (email, promo, date, origine : `code` ou `admin`) et nouvelles colonnes (créées par `setup`) : `Promos` (code, expiration, maximum, usages),
+  `Utilisateurs` (promo et rôle demandés), `Groupes` (créé par). Après collage du code : lancer `setup`, puis créer une nouvelle version du déploiement.
 
 ## Administration : établissements, promos, groupes
 

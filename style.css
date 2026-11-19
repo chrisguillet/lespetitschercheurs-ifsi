@@ -253,3 +253,12 @@ details.admetab,details.admpromo{border:1px solid var(--bd);border-radius:10px;p
 details.admpromo{margin-left:14px;background:rgba(127,127,127,.05)}
 details.admetab>summary,details.admpromo>summary{cursor:pointer;padding:4px 0}
 details.admetab>.grow,details.admpromo>.grow{margin:8px 0}
+
+/* Accueil (première connexion), panneau « rejoindre ou créer un groupe », codes d'invitation */
+#accueil { margin-top: 12px; text-align: left; }
+#accueil input, #accueil select { max-width: 100%; }
+#accueil .note.err, .note.err { border-color: #c0392b; }
+#nogroup .gsec { margin-top: 10px; }
+#nogroup .chip { display: inline-flex; align-items: center; gap: 4px; }
+.admcode { align-items: center; margin: 6px 0; }
+.admcode .code { font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: .08em; font-size: 15px; }
