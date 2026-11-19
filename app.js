@@ -1,5 +1,15 @@
 "use strict";
 
+// Une erreur de script ne doit pas passer inaperçue : on l'affiche en haut de page (aide au diagnostic).
+function signalerErreur(msg, ligne) {
+  const z = document.getElementById("status");
+  if (!z) return;
+  z.textContent = "Erreur d’affichage : " + msg + (ligne ? " (app.js, ligne " + ligne + ")" : "") + ". Si elle persiste, notez ce message dans un retour sur l’outil.";
+  z.classList.remove("hidden");
+}
+window.addEventListener("error", e => signalerErreur(e.message || "inconnue", e.lineno));
+window.addEventListener("unhandledrejection", e => signalerErreur((e.reason && e.reason.message) || "requête échouée"));
+
 const CFG = window.LYDIA_CONFIG;
 const TYPES = ["Article scientifique", "Article de recherche", "Revue de littérature", "Article professionnel",
   "Rapport / recommandation HAS", "Thèse / mémoire", "Autre"];
@@ -129,7 +139,7 @@ function showGate(msg, retry) {
 function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
-  groupes = []; votes = []; promosMoi = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); $("fbopen").classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
+  groupes = []; votes = []; promosMoi = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); $("fbopen")?.classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
@@ -245,7 +255,7 @@ function renderData() {
   if (tab === "suivi") renderSuivi();
   document.querySelector('.tab[data-t="suivi"]').classList.toggle("hidden", !groupeCourant());
   majAlertes();
-  $("fbopen").classList.toggle("hidden", !me);
+  $("fbopen")?.classList.toggle("hidden", !me);
 }
 
 // Affiche l'attente le temps d'une écriture (l'API peut mettre quelques secondes à répondre).
@@ -442,8 +452,9 @@ function alerteJalon(j) {
 const alertesJalons = () => jalonsAll.filter(alerteJalon).sort((a, b) => debutJalon(a).localeCompare(debutJalon(b)));
 let alertesMasquees = false;   // le temps de la session
 function majAlertes() {
-  const l = alertesJalons(), zone = $("alertes");
-  const nb = $("alertnb"); nb.textContent = l.length; nb.classList.toggle("hidden", !l.length);
+  const zone = $("alertes"), nb = $("alertnb");
+  if (!zone || !nb) return;   // page plus ancienne que le script (cache) : pas d'alertes
+  const l = alertesJalons(); nb.textContent = l.length; nb.classList.toggle("hidden", !l.length);
   const montrer = l.length && !alertesMasquees && tab !== "suivi" && !!me;
   zone.classList.toggle("hidden", !montrer);
   if (!montrer) { zone.innerHTML = ""; return; }
@@ -451,7 +462,7 @@ function majAlertes() {
   zone.innerHTML = `<b>⏰ Rétroplanning</b> · ${l.slice(0, 3).map(j => `<span class="${alerteJalon(j) === "retard" ? "late" : ""}"><b>${esc(j.titre)}</b>${nomG(j)} ${esc(fmtDatesJalon(j))} ${delaiJalon(j)}</span>`).join(" · ")}${l.length > 3 ? ` · +${l.length - 3} autre${l.length > 4 ? "s" : ""}` : ""}
     <button type="button" class="btn sm" data-alerte="voir">Voir le calendrier</button> <button type="button" class="btn sm sec" data-alerte="masquer">Masquer</button>`;
 }
-$("alertes").addEventListener("click", e => {
+$("alertes")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.alerte === "masquer") { alertesMasquees = true; majAlertes(); } else setTab("suivi");
 });
@@ -1124,6 +1135,7 @@ const TYPES_FB = { bug: "🐞 Bug", idee: "💡 Idée d’amélioration", autre:
 const FB = { ouvert: false, liste: [], restant: 2, par: 2, edition: "", focus: null };
 
 function ouvrirFeedback() {
+  if (!$("fbmodal")) return;
   FB.ouvert = true; FB.edition = ""; FB.focus = document.activeElement;
   $("fbmodal").classList.remove("hidden"); document.body.classList.add("modalopen");
   renderFeedback();
@@ -1132,6 +1144,7 @@ function ouvrirFeedback() {
   $("fbtexte").focus();
 }
 function fermerFeedback(silencieux) {
+  if (!$("fbmodal")) return;
   FB.ouvert = false; FB.edition = "";
   $("fbmodal").classList.add("hidden");
   if (!cmId && !GM.ouvert) document.body.classList.remove("modalopen");
@@ -1172,9 +1185,9 @@ async function envoyerFeedback() {
     $("fberr").textContent = e.message; $("fbsend").disabled = false;
   }
 }
-$("fbopen").onclick = ouvrirFeedback;
-$("fbclose").onclick = () => fermerFeedback();
-$("fbmodal").addEventListener("click", e => {
+if ($("fbopen")) $("fbopen").onclick = ouvrirFeedback;
+if ($("fbclose")) $("fbclose").onclick = () => fermerFeedback();
+$("fbmodal")?.addEventListener("click", e => {
   if (e.target === $("fbmodal")) return fermerFeedback();
   const b = e.target.closest("button"); if (!b) return;
   if (b.id === "fbsend") envoyerFeedback();
