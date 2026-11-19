@@ -204,10 +204,10 @@ L'onglet Administration (administrateur) présente un **arbre** : chaque **étab
 
 ## Fichiers joints aux documents
 
-Sur la ligne d'un document, « 📎 Ajouter un fichier » permet de joindre un **PDF, PNG ou JPEG** (le contenu fait foi, pas l'extension).
+Dans le formulaire de **sa propre fiche de lecture** (section « Document joint », à la création comme à la modification), l'étudiant peut joindre un **PDF, PNG ou JPEG** (le contenu fait foi, pas l'extension).
 
 - **Stockage** : dossier Drive `Fichiers – lectures IFSI`, créé automatiquement, **privé** (aucun lien public). Les fichiers ne sont servis que par le script (`file_get`), après contrôle des droits ; l'identifiant Drive n'est jamais envoyé au navigateur.
-- **Limites** : 5 Mo par fichier, 10 fichiers par document. Volume à prévoir : jusqu'à 4 000 documents, soit au pire plusieurs Go dans le Drive du propriétaire du script (le total est affiché dans l'administration).
-- **Visibilité** : celle du document (promo). Ajout par les étudiants pouvant modifier le document, suppression par celui qui l'a déposé ou l'administrateur ; supprimer un document supprime ses fichiers.
+- **Limites** : 5 Mo par fichier, **un seul fichier par document** (pour en changer, supprimer l'actuel puis en ajouter un autre). Volume à prévoir : jusqu'à 4 000 documents, soit au pire 20 Go (4 000 × 5 Mo) dans le Drive du propriétaire du script (le total est affiché dans l'administration).
+- **Visibilité** : celle du document (promo) ; le tableau commun ne fait que consulter (📄 cliquable). Ajout uniquement par un étudiant qui a une fiche sur ce document (contrôlé côté serveur), suppression par celui qui l'a déposé ou l'administrateur ; supprimer un document supprime ses fichiers.
 - **Droit d'auteur** : un avertissement (partage interne, but pédagogique) est affiché sous les fichiers et demandé à chaque ajout ; mentionné dans `privacy.html`.
 - **Mise en route** : coller le nouveau `Code.gs`, lancer `setup` (crée la feuille `Fichiers`), **accepter la nouvelle autorisation Drive**, puis déployer une nouvelle version.

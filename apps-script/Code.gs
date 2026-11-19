@@ -73,7 +73,7 @@ const COL_PROMOS = ['id', 'etablissement_id', 'nom', 'cree_le', 'code', 'code_ex
 // Documents (PDF, images) déposés sur un article ; le contenu est dans le Drive du propriétaire du script, jamais public.
 const COL_FICHIERS = ['id', 'article_id', 'drive_id', 'nom', 'type', 'taille', 'cree_par', 'cree_le'];
 const FICHIER_MAX = 5 * 1024 * 1024;     // 5 Mo par fichier
-const FICHIERS_PAR_ARTICLE = 10;
+const FICHIERS_PAR_ARTICLE = 1;
 const COL_INSCRIPTIONS = ['id', 'email', 'promo_id', 'ajoute_le', 'via'];
 const COL_GROUPES = ['id', 'etablissement', 'promo', 'nom', 'cree_le', 'cree_par'];
 const COL_MEMBRES = ['id', 'groupe_id', 'email', 'ajoute_le'];
@@ -2277,7 +2277,12 @@ function ajouterFichier_(user, articleId, nom, base64) {
   if (user.role !== 'etudiant' && user.role !== 'admin') throw err_('forbidden', 'Accès en lecture seule');
   const c = contexte_(user);
   const art = articleVisible_(user, String(articleId || ''));
-  if (user.role === 'etudiant' && !articleModifiable_(user, c, art)) throw err_('forbidden', 'Réservé aux étudiants de la promo');
+  if (user.role === 'etudiant') {
+    if (!articleModifiable_(user, c, art)) throw err_('forbidden', 'Réservé aux étudiants de la promo');
+    // Le fichier se joint depuis sa propre fiche de lecture : il faut en avoir une sur cet article.
+    const aUneFiche = lireTable_(feuilleLectures_(), COLONNES).some(function (r) { return r.article_id === art.id && r.owner === user.email; });
+    if (!aUneFiche) throw err_('forbidden', 'Joignez le fichier depuis votre fiche de lecture de cet article');
+  }
   const b64 = String(base64 || '');
   if (!b64) throw err_('invalid', 'Fichier vide');
   if (b64.length > Math.ceil(FICHIER_MAX * 4 / 3) + 8) throw err_('invalid', 'Fichier trop volumineux (5 Mo maximum)');
@@ -2287,7 +2292,7 @@ function ajouterFichier_(user, articleId, nom, base64) {
   const t = typeDeFichier_(octets);
   if (!t) throw err_('invalid', 'Format non accepté : PDF, PNG ou JPEG uniquement');
   if (table_(FEUILLE_FICHIERS, COL_FICHIERS).filter(function (f) { return f.article_id === art.id; }).length >= FICHIERS_PAR_ARTICLE) {
-    throw err_('invalid', 'Au plus ' + FICHIERS_PAR_ARTICLE + ' fichiers par article');
+    throw err_('invalid', 'Un seul fichier par article : supprimez le fichier actuel avant d\'en ajouter un autre');
   }
   const id = Utilities.getUuid();
   const nomFinal = nomDeFichier_(nom, t.ext);

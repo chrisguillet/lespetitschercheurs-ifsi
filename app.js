@@ -580,6 +580,7 @@ function renderForm() {
    </div>
    <div id="apaprev" class="meta" style="margin-top:12px;padding:10px 12px;border:1px dashed var(--bd);border-radius:8px"></div>
   </details>
+  ${(formFich = !modeArticle && (editing ? d.mine : true) ? { k: editing ? d.article_id : artCible || "", differe: !editing } : null) ? `<details class="sec" open><summary>Document joint (facultatif)</summary><div id="fichform">${fichiersFormHtml()}</div></details>` : ""}
   ${modeArticle ? "" : `<details class="sec" open><summary>Colonnes 2 à 8 · Libres (à remplir comme vous voulez, modifiable à tout moment)</summary>
    <div class="grid">
     ${field("f_mots", "Mots-clés", d.mots, { area: 1 })}
@@ -601,6 +602,10 @@ function renderForm() {
   formBase = JSON.stringify(snapshot());
   restaurerBrouillon();
   $("form").oninput = $("form").onchange = surSaisie;
+  $("form").onclick = e => {
+    const b = e.target.closest("[data-fu],[data-fo],[data-fx],[data-fr]"); if (!b) return;
+    if (b.dataset.fr) { fichierAttente = null; majFichiersForm(); } else if (b.dataset.fu) choisirFichier(b.dataset.fu); else if (b.dataset.fo) ouvrirFichier(b.dataset.fo); else supprimerFichierCli(b.dataset.fx);
+  };
   majApercu(); majDoublon();
 }
 
@@ -608,6 +613,7 @@ function openForm() {
   if (!canWrite()) return;
   focusAvant = document.activeElement;
   scrollAvant = window.scrollY;
+  fichierAttente = null;
   renderForm();
   $("drawer").classList.remove("hidden");
   document.body.classList.add("formmode");          // page à part : le reste de l'interface est masqué
@@ -620,7 +626,7 @@ function closeDrawer(sansBrouillon) {
   if (!sansBrouillon && $("f_titre")) { clearTimeout(brouillonTimer); sauverBrouillon(); }
   $("drawer").classList.add("hidden");
   document.body.classList.remove("formmode");
-  editing = null; artCible = ""; modeArticle = false; forceStatut = "";
+  editing = null; artCible = ""; modeArticle = false; forceStatut = ""; fichierAttente = null; formFich = null;
   window.scrollTo(0, scrollAvant);
   if (focusAvant && focusAvant.focus) { try { focusAvant.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
 }
@@ -765,6 +771,7 @@ async function save() {
   try {
     const artId = modeArticle || (orig && orig.article_id);
     const objChange = !!artId && OBJ.some(k => String(((orig || itemsAll.find(i => i.article_id === artId)) || {})[k] || "") !== data[k]);
+    const jointe = !editing && !modeArticle ? fichierAttente : null, avant = new Set(itemsAll.map(i => i.id));
     const res = await enCours("Enregistrement…", () => modeArticle
       ? api("article_update", { article_id: modeArticle, data: Object.fromEntries(OBJ.map(k => [k, data[k]])) })
       : editing
@@ -775,6 +782,7 @@ async function save() {
     effacerBrouillon();
     closeDrawer(true);
     applyResult(res);
+    if (jointe) await joindreApresCreation(res, jointe, avant);
     if (objChange && (res.propositions || []).some(p => p.mine && p.article_id === artId)) {
       alert("Votre correction de l’article est proposée à la promo : elle sera appliquée quand 3 étudiants (vous compris) l’auront approuvée.");
     }
@@ -786,6 +794,17 @@ async function save() {
     }
     if (e.code === "unauthorized") sessionError(e);
     $("save").disabled = false;
+  }
+}
+
+// Envoie le fichier choisi pendant la création, maintenant que la fiche (donc son article) existe.
+async function joindreApresCreation(res, jointe, avant) {
+  const nouvelle = (res.lectures || []).find(l => l.mine && !avant.has(l.id));
+  if (!nouvelle) return alert("Fiche enregistrée, mais le fichier n’a pas pu être joint : rouvrez la fiche pour l’ajouter.");
+  try { applyResult(await enCours("Envoi du fichier…", () => api("file_add", { article_id: nouvelle.article_id, nom: jointe.nom, data: jointe.data }))); }
+  catch (e) {
+    if (e.code === "unauthorized") return sessionError(e);
+    alert("Fiche enregistrée, mais le fichier n’a pas pu être joint (" + e.message + "). Rouvrez la fiche pour le rajouter.");
   }
 }
 
@@ -1025,15 +1044,28 @@ const FICHIER_MAX = 5 * 1024 * 1024;
 const AVERT_DROIT = "Droit d’auteur : ces fichiers restent un partage INTERNE, à but PÉDAGOGIQUE, réservé aux personnes de l’outil. Ne déposez que des documents que vous avez le droit de partager dans ce cadre, et ne les diffusez pas en dehors.";
 const fichiersDe = k => fichiers.filter(f => f.article_id === k);
 const fmtTaille = o => o < 1048576 ? Math.max(1, Math.round(o / 1024)) + " Ko" : (o / 1048576).toFixed(1).replace(".", ",") + " Mo";
+const chipFichier = (f, avecSuppr) => `<span class="chip fichier"><button type="button" class="lnk" data-fo="${esc(f.id)}" title="Ouvrir dans un nouvel onglet">${f.type === "application/pdf" ? "📄" : "🖼️"} ${esc(f.nom)}</button> <span class="meta">${esc(fmtTaille(f.taille))} · ${esc(f.par)}</span>${avecSuppr && f.supprimable ? ` <button type="button" class="btn sm sec del" style="padding:0 6px" data-fx="${esc(f.id)}" aria-label="Supprimer ${esc(f.nom)}">✕</button>` : ""}</span>`;
+// Tableau commun : consultation seulement (l'ajout et la suppression se font dans l'édition de sa fiche).
 function fichiersHtml(i) {
-  const k = cleArt(i), l = fichiersDe(k), peut = canWrite() && i.article_modifiable;
-  if (!l.length && !peut) return "";
-  const liste = l.map(f => `<span class="chip fichier"><button type="button" class="lnk" data-fo="${esc(f.id)}" title="Ouvrir dans un nouvel onglet">${f.type === "application/pdf" ? "📄" : "🖼️"} ${esc(f.nom)}</button> <span class="meta">${esc(fmtTaille(f.taille))} · ${esc(f.par)}</span>${f.supprimable ? ` <button type="button" class="btn sm sec del" style="padding:0 6px" data-fx="${esc(f.id)}" aria-label="Supprimer ${esc(f.nom)}">✕</button>` : ""}</span>`).join(" ");
-  return `<div class="fichiers">${liste}${peut ? ` <button type="button" class="btn sm sec" data-fu="${esc(k)}">📎 Ajouter un fichier</button>` : ""}
-    <div class="meta">PDF, PNG ou JPEG, 5 Mo maximum. Partage interne à but pédagogique (droit d’auteur).</div></div>`;
+  const l = fichiersDe(cleArt(i));
+  return l.length ? `<div class="fichiers">${l.map(f => chipFichier(f, false)).join(" ")}</div>` : "";
 }
+// Formulaire de ma fiche : un seul fichier par document. En modification, le dépôt est immédiat ;
+// à la création, le fichier choisi est gardé en mémoire et envoyé juste après l'enregistrement de la fiche.
+let fichierAttente = null;   // { nom, data, taille } choisi avant l'enregistrement d'une nouvelle fiche
+let formFich = null;         // { k: article, differe: bool } de la section affichée
+function fichiersFormHtml() {
+  const { k, differe } = formFich, l = k ? fichiersDe(k) : [];
+  const pret = differe && fichierAttente;
+  const puces = l.map(f => chipFichier(f, true)).join(" ")
+    + (pret ? `<span class="chip fichier">📄 ${esc(fichierAttente.nom)} <span class="meta">${esc(fmtTaille(fichierAttente.taille))} · sera joint à l’enregistrement</span> <button type="button" class="btn sm sec del" style="padding:0 6px" data-fr="1" aria-label="Retirer le fichier">✕</button></span>` : "");
+  const libre = !l.length && !pret;
+  return `<div class="fichiers">${puces}${libre ? `<button type="button" class="btn sm sec" data-fu="${esc(k)}">📎 Ajouter un fichier</button>` : ""}</div>
+    <div class="meta">Un fichier par document (PDF, PNG ou JPEG, 5 Mo maximum), partagé avec la promo. Partage interne à but pédagogique (droit d’auteur) : ne déposez que ce que vous avez le droit de partager dans ce cadre.${l.length ? " Pour le remplacer, supprimez-le d’abord." : ""}</div>`;
+}
+function majFichiersForm() { const z = $("fichform"); if (z && formFich) z.innerHTML = fichiersFormHtml(); }
 
-let fupCible = "";
+let fupCible = "";   // article du fichier en cours d’ajout (formulaire de la fiche)
 async function ouvrirFichier(id) {
   const fen = window.open("", "_blank");          // ouverte tout de suite : sinon le navigateur bloque la fenêtre
   try { if (fen) { fen.document.title = "Chargement…"; fen.document.body.innerHTML = '<p style="font:16px system-ui,sans-serif;margin:2em;color:#444">⏳ Chargement du fichier…</p>'; } } catch (_) {}
@@ -1060,13 +1092,15 @@ async function envoyerFichier(file) {
   if (file.size > FICHIER_MAX) return alert(`Fichier trop volumineux (${fmtTaille(file.size)}) : 5 Mo maximum.`);
   const data = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => ko(new Error("Lecture du fichier impossible")); r.readAsDataURL(file); }).catch(e => { alert(e.message); return ""; });
   if (!data) return;
-  try { applyResult(await enCours("Envoi du fichier…", () => api("file_add", { article_id: fupCible, nom, data }))); }
+  if (formFich && formFich.differe) { fichierAttente = { nom, data, taille: file.size }; majFichiersForm(); return; }
+  try { applyResult(await enCours("Envoi du fichier…", () => api("file_add", { article_id: fupCible, nom, data }))); majFichiersForm(); }
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Envoi impossible : " + e.message); }
 }
 async function supprimerFichierCli(id) {
   const f = fichiers.find(x => x.id === id);
+  if (f) fupCible = f.article_id;
   if (!f || !confirm(`Supprimer le fichier « ${f.nom} » ?`)) return;
-  try { applyResult(await enCours("Suppression…", () => api("file_delete", { id }))); }
+  try { applyResult(await enCours("Suppression…", () => api("file_delete", { id }))); majFichiersForm(); }
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Suppression impossible : " + e.message); }
 }
 
@@ -1382,9 +1416,7 @@ const onAction = e => {
   }
   const d = b.dataset;
   if (d.e) startEdit(d.e, false);
-  else if (d.fu) choisirFichier(d.fu);
   else if (d.fo) ouvrirFichier(d.fo);
-  else if (d.fx) supprimerFichierCli(d.fx);
   else if (d.an) startAnalyse(d.an);
   else if (d.ea) startCorrection(d.ea);
   else if (d.pv) voterProp(d.pv, d.pvo === "1");
