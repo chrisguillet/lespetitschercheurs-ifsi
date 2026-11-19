@@ -225,3 +225,9 @@ tr.open .rowacts{display:block}
 .nogroup #all,.nogroup #mine,.nogroup #cmts,.nogroup #biblio,.nogroup #synth{display:none!important}
 .nogroup #ctxbar{display:none}
 @media print{.ctxbar{display:none!important}}
+
+/* Analyses supplémentaires d'un même article : retrait et filet à gauche */
+tr.ssan > td.first, .cardc.ssan { padding-left: 28px; }
+tr.ssan { border-top: 0; }
+.cardc.ssan { margin-left: 18px; border-left-style: dashed; }
+tr.ssan .short, tr.ssan .full { display: none; }

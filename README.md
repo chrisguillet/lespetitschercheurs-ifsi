@@ -26,7 +26,7 @@ Navigateur (GitHub Pages)  ──jeton Google──▶  Apps Script (API)  ─�
 
 | Rôle | Lire | Ses lectures | Lectures des autres | Commentaires | Administration |
 |---|---|---|---|---|---|
-| **Étudiant** | oui | modifier, supprimer | « Contribuer » (avertissement, ancienne version dans `Historique`) ; suppression interdite | publier, modifier et supprimer les siens ; supprimer ceux des autres (modération) | oui |
+| **Étudiant** | oui | modifier, supprimer son analyse | ajouter **sa propre analyse** sur un article de la promo ; **proposer une correction** de la partie objective (validée par 3 étudiants) ; modification et suppression interdites | publier, modifier et supprimer les siens ; supprimer ceux des autres (modération) | oui |
 | **Formateur** | oui | — | — | publier, modifier et supprimer les siens | non |
 | **Lecteur** | oui | — | — | — | non |
 | **Administrateur** | oui | — | — | supprimer (modération) | oui, **y compris les étudiants** (prénom, couleur, rôle, adresse e-mail) et peut **supprimer** un utilisateur (plus d’accès ; ses lectures restent dans le Sheet mais ne sont plus affichées, et ses commentaires sur les lectures des autres apparaissent sous « Utilisateur supprimé ») |
@@ -39,11 +39,18 @@ ses lectures et ses commentaires suivent automatiquement.
 
 Tout est organisé en **établissement → promo → groupe** (par exemple *IFSI Saint-Nazaire → Promo 24-27 → Les petits chercheurs*).
 
-- Chaque **fiche** appartient à un groupe : seuls les membres du groupe (et l'administrateur) la voient. Son propriétaire peut cocher
-  **« La partager avec toute la promo »** : les autres groupes de la même promo la lisent et la commentent, sans pouvoir la modifier.
-- Chaque fiche a **deux fils de commentaires indépendants** : celui du **groupe** et celui de la **promo** (si elle est partagée).
+- **Articles et analyses.** La **partie objective** d'un article (titre, auteur, parution, type, références APA…) est **commune à la promo** ;
+  chaque étudiant y ajoute **sa propre analyse** (mots-clés, concepts, objet, opinion, controverse, colonne libre). Une analyse
+  **« En cours »** n'est visible que de son groupe ; dès qu'elle est **« Terminée »** elle est **partagée automatiquement avec toute la promo** :
+  c'est la grande base de connaissances partagée. Le tableau montre **une ligne par article**, ses autres analyses le suivent juste dessous.
+- À l'ajout, un article déjà présent (même DOI, ou même titre) est détecté : on propose d'**ajouter son analyse** à l'article existant.
+  Une personne n'a qu'une analyse par article.
+- **Corriger la partie objective** : l'auteur de l'article peut la modifier directement tant qu'il est seul à l'avoir analysé ; ensuite toute
+  correction est une **proposition**, appliquée quand **3 étudiants de la promo** (proposant compris) l'ont approuvée, refusée quand 3 l'ont refusée,
+  expirée après 14 jours (ancienne version conservée dans `Historique`). L'administrateur corrige directement.
+- Chaque fiche a **deux fils de commentaires indépendants** : celui du **groupe** et celui de la **promo** (si l'analyse est terminée, donc partagée).
   Rien ne passe de l'un à l'autre. Dans le fil du groupe, les étudiants du groupe peuvent supprimer un commentaire (modération) ; dans le fil
-  de la promo, seuls l'auteur et l'administrateur le peuvent. Retirer le partage cache les commentaires de promo, sans les perdre.
+  de la promo, seuls l'auteur et l'administrateur le peuvent. Repasser une analyse « En cours » cache les commentaires de promo, sans les perdre.
 - Le bandeau sous les onglets choisit le **groupe** (si l'on en a plusieurs, y compris dans d'autres promos) et la **vue** : *Mon groupe* ou *Toute la promo*.
   Tableau, cartes, bibliographie, synthèse et exports suivent la vue. Le choix est mémorisé.
 - Un **étudiant** n'est que dans **un groupe par promo** ; un **formateur** ou un **lecteur** est rattaché par l'administrateur à un ou plusieurs groupes
@@ -140,3 +147,10 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 - Les adresses e-mail ne sont renvoyées au navigateur qu'à l'administrateur (et, pour les demandes en attente et les formateurs / lecteurs, aux étudiants), dans l'onglet Administration.
 - L'adresse de l'administrateur n'est pas dans le dépôt : elle vit dans les propriétés du script.
 - Tant qu'une demande est en attente, ou refusée, aucune lecture ni aucun commentaire n'est renvoyé.
+
+
+## Migration vers « articles + analyses »
+
+Relancez `setup` après avoir collé le nouveau `Code.gs` : il crée les feuilles `Articles` et `Propositions`, rattache chaque lecture existante à un article
+(les lectures du même article dans une promo — même DOI ou même titre, personnes différentes — sont fusionnées) et recalcule le partage
+(Terminée → promo). Opération sans risque à relancer ; les colonnes objectives de `Lectures` ne sont plus lues. Puis nouveau déploiement (nouvelle version).

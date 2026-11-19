@@ -32,9 +32,9 @@ let me = null, users = [], items = [], comments = [], acces = [], pendingCount =
 // items / comments = ce que montre la vue courante ; itemsAll / commentsAll = tout ce que le serveur renvoie à la personne.
 let groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [];
 const ctx = { gid: "", vue: "groupe" };          // groupe choisi, et vue : « groupe » ou « promo » (fiches partagées)
-try { ctx.gid = localStorage.getItem("lydia_groupe") || ""; ctx.vue = localStorage.getItem("lydia_portee") === "promo" ? "promo" : "groupe"; } catch (e) { /* ignoré */ }
+try { ctx.gid = localStorage.getItem("lydia_groupe") || ""; ctx.vue = localStorage.getItem("lydia_portee") === "groupe" ? "groupe" : "promo"; } catch (e) { /* ignoré */ }
 let cmScope = "groupe", studentsSig = "", ctxSig = "";
-let editing = null, override = false, tab = "all", timer = null;
+let editing = null, artCible = "", modeArticle = false, props = [], tab = "all", timer = null;
 const drafts = {};          // brouillons de commentaires, par lecture
 let cmId = null, cmFocus = null;   // lecture dont la discussion est ouverte dans la fenêtre « Commentaires »
 let enLigne = [], enLigneSig = "";   // personnes actives en ce moment (fourni par le serveur)
@@ -74,6 +74,7 @@ async function api(action, payload = {}) {
   if (!j.ok) {
     const err = new Error(j.message || j.error);
     err.code = j.error;
+    err.extra = j.extra;
     throw err;
   }
   return j;
@@ -129,7 +130,7 @@ function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
   groupes = []; votes = []; itemsAll = []; commentsAll = []; groupesAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
-  editing = null; override = false; forceStatut = "";
+  editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
   Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute" });
@@ -193,6 +194,7 @@ function applyData(j) {
   groupes = j.groupes || [];
   votes = j.votes || [];
   itemsAll = j.lectures;
+  props = j.propositions || [];
   commentsAll = j.commentaires || [];
   deriver();
   // La liste des étudiants (filtres, statistiques) dépend de la vue : on ne reconstruit les filtres que si elle change.
@@ -393,53 +395,56 @@ let forceStatut = "", focusAvant = null, scrollAvant = 0;
 function field(id, label, val, opts = {}) {
   const req = opts.req ? '<span class="req"> *</span>' : "";
   if (opts.area) return `<div><label for="${id}">${label}</label><textarea id="${id}" maxlength="2500">${esc(val)}</textarea></div>`;
-  if (opts.sel) return `<div><label for="${id}">${label}${req}</label><select id="${id}"><option value="">— choisir —</option>${opts.sel.map(o => `<option ${o === val ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></div>`;
-  return `<div><label for="${id}">${label}${req}</label><input id="${id}" type="${opts.type || "text"}" maxlength="500" value="${esc(val)}" ${opts.ph ? `placeholder="${opts.ph}"` : ""}></div>`;
+  if (opts.sel) return `<div><label for="${id}">${label}${req}</label><select id="${id}" ${opts.dis || ""}><option value="">— choisir —</option>${opts.sel.map(o => `<option ${o === val ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></div>`;
+  return `<div><label for="${id}">${label}${req}</label><input id="${id}" type="${opts.type || "text"}" maxlength="500" value="${esc(val)}" ${opts.dis || ""} ${opts.ph ? `placeholder="${opts.ph}"` : ""}></div>`;
 }
 
 function renderForm() {
   if (!canWrite()) return;
   const d = editing ? itemsAll.find(i => i.id === editing) || {} : {};
-  $("ftitle").textContent = editing ? (override ? `Contribuer à la lecture de ${d.etudiant}` : "Modifier la lecture") : "Ajouter une lecture";
+  const art = artCible || modeArticle ? itemsAll.find(i => i.article_id === (artCible || modeArticle)) : null;
+  const base = editing ? d : art || {};
   const gc = groupeCourant();
-  $("fnote").textContent = override
-    ? `⚠️ Cette lecture appartient à ${d.etudiant}. Vos modifications seront visibles de tous et l’ancienne version est conservée dans l’historique.`
-    : forceStatut
+  const objDesact = k => artCible && String(art && art[k] || "").trim() ? "disabled" : "";
+  $("ftitle").textContent = modeArticle ? "Corriger l’article" : artCible ? "Ajouter mon analyse" : editing ? "Modifier mon analyse" : "Ajouter une lecture";
+  $("fnote").textContent = modeArticle
+    ? "La partie objective (identification, références) est commune à toute la promo : votre correction sera proposée, puis appliquée quand 3 étudiants de la promo l’auront approuvée (vous comptez pour un)."
+    : artCible
+      ? "Cet article existe déjà dans la base de la promo : sa partie objective est commune. Ajoutez votre propre analyse (colonnes 2 à 8) ; elle sera partagée avec la promo dès qu’elle sera « Terminée »."
+      : forceStatut
       ? "Pour passer cette lecture à « Terminée », complétez d’abord les champs obligatoires de la première partie."
       : "Choisissez « 📖 En cours de lecture » si vous n’avez pas fini : seul le titre est alors obligatoire. Pour une lecture « ✅ Terminée », toute la première partie est obligatoire.";
-  const statut = forceStatut || d.statut || "Terminée";
+  const statut = forceStatut || (editing ? d.statut : "") || "Terminée";
   $("form").innerHTML = `
   <div id="draftnote" class="meta" style="display:none;margin-bottom:10px"></div>
   <details class="sec" open><summary>Colonne 1 · Identification de l’article <span class="req" style="color:#d33">(obligatoire)</span></summary>
-   <div style="margin-bottom:12px"><label for="f_statut">Statut</label><select id="f_statut">
+   <div style="margin-bottom:12px;${modeArticle ? "display:none" : ""}"><label for="f_statut">Statut</label><select id="f_statut">
      <option value="Terminée" ${statut === "Terminée" ? "selected" : ""}>✅ Terminée</option>
      <option value="En cours" ${statut === "En cours" ? "selected" : ""}>📖 En cours de lecture</option></select></div>
    <div class="grid">
-    ${field("f_titre", "Titre de l’article", d.titre, { req: 1 })}
-    ${field("f_parution", "Date de parution", fmtD(d.parution), { req: 1, ph: "2021, mars 2021 ou 04/03/2021" })}
-    ${field("f_auteur", "Auteur(s)", d.auteur, { req: 1, ph: "Nom, Prénom ; Nom, Prénom" })}
-    ${field("f_qualite", "Qualité de l’auteur", d.qualite, { req: 1, ph: "chercheur, IDE, cadre de santé… (séparer par une virgule s’il y en a plusieurs)" })}
-    ${field("f_nation", "Nationalité", d.nation, { req: 1 })}
-    ${field("f_type", "Type d’article", d.type, { req: 1, sel: TYPES })}
+    ${field("f_titre", "Titre de l’article", base.titre, { dis: objDesact("titre"), req: 1 })}
+    ${field("f_parution", "Date de parution", fmtD(base.parution), { dis: objDesact("parution"), req: 1, ph: "2021, mars 2021 ou 04/03/2021" })}
+    ${field("f_auteur", "Auteur(s)", base.auteur, { dis: objDesact("auteur"), req: 1, ph: "Nom, Prénom ; Nom, Prénom" })}
+    ${field("f_qualite", "Qualité de l’auteur", base.qualite, { dis: objDesact("qualite"), req: 1, ph: "chercheur, IDE, cadre de santé… (séparer par une virgule s’il y en a plusieurs)" })}
+    ${field("f_nation", "Nationalité", base.nation, { dis: objDesact("nation"), req: 1 })}
+    ${field("f_type", "Type d’article", base.type, { dis: objDesact("type"), req: 1, sel: TYPES })}
    </div>
    <div id="dup" style="display:none;margin-top:10px;color:#b45309;font-weight:600"></div></details>
-  <details class="sec" open><summary>Partage</summary>
-   <div class="meta" style="margin-bottom:8px">Cette fiche appartient au groupe <b>${esc(editing ? (d.groupe || "") : gc ? gc.nom : "")}</b> : seuls ses membres la voient.</div>
-   <label class="chk"><input type="checkbox" id="f_portee" ${d.portee === "promo" ? "checked" : ""}> 🌐 La partager avec toute la promo</label>
-   <div class="meta" style="margin-top:6px">Les autres groupes pourront la lire et la commenter, sans pouvoir la modifier. Les commentaires du groupe restent réservés au groupe : ils ne sont pas transférés, la promo a sa propre discussion. Décocher la case retire la fiche de la promo.</div>
-  </details>
+  ${modeArticle ? "" : `<details class="sec" open><summary>Partage</summary>
+   <div class="meta">Cette analyse est rattachée au groupe <b>${esc(editing ? (d.groupe || "") : gc ? gc.nom : "")}</b>. <b>En cours</b> : seul votre groupe la voit. <b>Terminée</b> : elle est partagée automatiquement avec toute la promo, qui peut la commenter ; les commentaires du groupe restent réservés au groupe.</div>
+  </details>`}
   <details class="sec" open><summary>Compléments pour la référence APA (facultatifs, mais recommandés pour les articles)</summary>
    <div class="grid">
-    ${field("f_source", "Revue / éditeur / établissement", d.source, { ph: "revue de l’article, éditeur du rapport, université de la thèse" })}
+    ${field("f_source", "Revue / éditeur / établissement", base.source, { dis: objDesact("source"), ph: "revue de l’article, éditeur du rapport, université de la thèse" })}
     ${field("f_volume", "Volume", d.volume)}
     ${field("f_numero", "Numéro", d.numero)}
-    ${field("f_pages", "Pages", d.pages, { ph: "ex. 12-25" })}
-    ${field("f_doi", "DOI ou URL", d.doi, { ph: "10.xxxx/xxxxx ou https://…" })}
-    ${field("f_lien", "Lien vers la fiche ou l’article", d.lien, { ph: "https://… (cliquable dans le tableau commun)" })}
+    ${field("f_pages", "Pages", base.pages, { dis: objDesact("pages"), ph: "ex. 12-25" })}
+    ${field("f_doi", "DOI ou URL", base.doi, { dis: objDesact("doi"), ph: "10.xxxx/xxxxx ou https://…" })}
+    ${field("f_lien", "Lien vers la fiche ou l’article", base.lien, { dis: objDesact("lien"), ph: "https://… (cliquable dans le tableau commun)" })}
    </div>
    <div id="apaprev" class="meta" style="margin-top:12px;padding:10px 12px;border:1px dashed var(--bd);border-radius:8px"></div>
   </details>
-  <details class="sec" open><summary>Colonnes 2 à 8 · Libres (à remplir comme vous voulez, modifiable à tout moment)</summary>
+  ${modeArticle ? "" : `<details class="sec" open><summary>Colonnes 2 à 8 · Libres (à remplir comme vous voulez, modifiable à tout moment)</summary>
    <div class="grid">
     ${field("f_mots", "Mots-clés", d.mots, { area: 1 })}
     <div><label for="f_kw">Mots-clés en anglais</label><textarea id="f_kw" maxlength="2500">${esc(d.kw)}</textarea>
@@ -450,9 +455,9 @@ function renderForm() {
     ${field("f_opinion", "Opinion de l’auteur", d.opinion, { area: 1 })}
     ${field("f_controverse", "Controverse", d.controverse, { area: 1 })}
     ${field("f_libre", "Colonne libre", d.libre, { area: 1 })}
-   </div></details>
+   </div></details>`}
   <div class="savebar"><div id="ferr" class="err" role="alert"></div>
-   <button class="btn" id="save" type="button">${editing ? "Enregistrer les modifications" : "Enregistrer la lecture"}</button>
+   <button class="btn" id="save" type="button">${modeArticle ? "Proposer la correction" : editing ? "Enregistrer les modifications" : artCible ? "Enregistrer mon analyse" : "Enregistrer la lecture"}</button>
    <button class="btn sec" id="cancel" type="button">Annuler</button></div>`;
   $("save").onclick = save;
   $("trad").onclick = traduire;
@@ -479,7 +484,7 @@ function closeDrawer(sansBrouillon) {
   if (!sansBrouillon && $("f_titre")) { clearTimeout(brouillonTimer); sauverBrouillon(); }
   $("drawer").classList.add("hidden");
   document.body.classList.remove("formmode");
-  editing = null; override = false; forceStatut = "";
+  editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   window.scrollTo(0, scrollAvant);
   if (focusAvant && focusAvant.focus) { try { focusAvant.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
 }
@@ -489,7 +494,7 @@ document.addEventListener("keydown", e => {
   const ouvert = document.querySelector("details.colmenu[open]");
   if (ouvert) ouvert.removeAttribute("open"); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
 });
-$("addbtn").onclick = () => { editing = null; override = false; forceStatut = ""; openForm(); };
+$("addbtn").onclick = () => { editing = null; artCible = ""; modeArticle = false; forceStatut = ""; openForm(); };
 
 /* ---------- Traduction des mots-clés ---------- */
 
@@ -523,8 +528,7 @@ const CHAMPS_FORM = ["statut", "titre", "parution", "auteur", "qualite", "nation
   "pages", "doi", "lien", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre"];
 let formBase = "", brouillonTimer = null;
 
-const snapshot = () => ({ ...Object.fromEntries(CHAMPS_FORM.map(k => [k, $("f_" + k) ? $("f_" + k).value : ""])),
-  portee: $("f_portee") && $("f_portee").checked ? "promo" : "groupe" });
+const snapshot = () => Object.fromEntries(CHAMPS_FORM.map(k => [k, $("f_" + k) ? $("f_" + k).value : ""]));
 
 function lireForm() {
   const v = snapshot();
@@ -557,15 +561,20 @@ function majDoublon() {
   if (!box) return;
   const { data } = lireForm();
   const t = cleTitre(data.titre), d = cleDoi(data.doi);
-  const autre = (t.length >= 8 || d) ? itemsAll.find(i => i.id !== editing && ((d && cleDoi(i.doi) === d) || (t.length >= 8 && cleTitre(i.titre) === t))) : null;
+  const cur = editing ? (itemsAll.find(i => i.id === editing) || {}).article_id : artCible || modeArticle;
+  const autre = (t.length >= 8 || d) ? itemsAll.find(i => i.article_id !== cur && ((d && cleDoi(i.doi) === d) || (t.length >= 8 && cleTitre(i.titre) === t))) : null;
   if (!autre) { box.style.display = "none"; return; }
-  box.textContent = autre.mine
-    ? "⚠ Vous avez déjà saisi cet article. Vérifiez qu’il ne s’agit pas d’un doublon."
-    : `⚠ Cet article est déjà dans le tableau (saisi par ${autre.etudiant}). Vérifiez avant d’enregistrer un doublon.`;
+  const peutAjouter = !editing && !artCible && !modeArticle && !autre.mine && autre.article_modifiable
+    && !itemsAll.some(i => i.mine && i.article_id === autre.article_id);
+  box.innerHTML = autre.mine
+    ? "⚠ Vous avez déjà saisi cet article : modifiez plutôt votre analyse."
+    : `⚠ Cet article est déjà dans la base de la promo (déjà analysé par ${esc(autre.etudiant)}).`
+      + (peutAjouter ? ' <button type="button" class="btn sm" id="dupuse">Ajouter mon analyse à cet article</button>' : "");
   box.style.display = "block";
+  if ($("dupuse")) $("dupuse").onclick = () => basculerAnalyse(autre.article_id);
 }
 
-const cleBrouillon = () => "lydia_brouillon:" + (me ? me.prenom : "") + ":" + (editing || "new") + (override ? ":o" : "");
+const cleBrouillon = () => "lydia_brouillon:" + (me ? me.prenom : "") + ":" + (editing || (modeArticle ? "art:" + modeArticle : artCible ? "an:" + artCible : "new"));
 function effacerBrouillon() { clearTimeout(brouillonTimer); try { localStorage.removeItem(cleBrouillon()); } catch (e) { /* ignoré */ } }
 
 function sauverBrouillon() {
@@ -582,8 +591,7 @@ function restaurerBrouillon() {
   let b = null;
   try { b = JSON.parse(localStorage.getItem(cleBrouillon()) || "null"); } catch (e) { b = null; }
   if (!b || !b.v || Date.now() - b.t > 30 * 864e5) return;
-  CHAMPS_FORM.forEach(k => { if ($("f_" + k) && b.v[k] !== undefined) $("f_" + k).value = b.v[k]; });
-  if ($("f_portee") && b.v.portee) $("f_portee").checked = b.v.portee === "promo";
+  CHAMPS_FORM.forEach(k => { if ($("f_" + k) && !$("f_" + k).disabled && b.v[k] !== undefined) $("f_" + k).value = b.v[k]; });
   const note = $("draftnote");
   note.innerHTML = `📝 Brouillon non enregistré restauré (${esc(fmtDT(new Date(b.t).toISOString()))}). <button type="button" class="btn sm sec" id="draftreset">Repartir de zéro</button>`;
   note.style.display = "block";
@@ -596,23 +604,50 @@ function surSaisie(e) {
   planifierBrouillon();
 }
 
+// Bascule le formulaire de « nouvel article » vers « mon analyse sur cet article », en gardant ce qui est déjà saisi.
+function basculerAnalyse(articleId) {
+  const garde = snapshot();
+  effacerBrouillon();
+  artCible = articleId;
+  renderForm();
+  ["statut", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre"].forEach(k => { if ($("f_" + k) && garde[k]) $("f_" + k).value = garde[k]; });
+  majApercu(); majDoublon();
+}
+
+const OBJ = ["titre", "parution", "auteur", "qualite", "nation", "type", "source", "volume", "numero", "pages", "doi", "lien"];
+
 async function save() {
   clearTimeout(brouillonTimer);
   const { data, dateOk } = lireForm();
   if (!dateOk) { $("ferr").textContent = "Date de parution non reconnue (exemples : 2021, mars 2021, 04/03/2021)"; return; }
-  const need = data.statut === "En cours" ? ["titre"] : FIN;
+  const orig = editing ? itemsAll.find(i => i.id === editing) : null;
+  const need = (modeArticle ? itemsAll.some(i => i.article_id === modeArticle && i.statut === "Terminée") ? FIN : ["titre"]
+    : data.statut === "En cours" ? ["titre"] : FIN);
   const miss = need.filter(k => !data[k]);
   if (miss.length) { $("ferr").textContent = "À compléter : " + miss.map(k => LAB[k]).join(", "); return; }
   $("save").disabled = true;
   try {
-    const res = await enCours("Enregistrement…", () => editing
-      ? api("update", { id: editing, override, data })
-      : api("add", { data: { ...data, groupe_id: (groupeCourant() || {}).id } }));
+    const artId = modeArticle || (orig && orig.article_id);
+    const objChange = !!artId && OBJ.some(k => String(((orig || itemsAll.find(i => i.article_id === artId)) || {})[k] || "") !== data[k]);
+    const res = await enCours("Enregistrement…", () => modeArticle
+      ? api("article_update", { article_id: modeArticle, data: Object.fromEntries(OBJ.map(k => [k, data[k]])) })
+      : editing
+        ? api("update", { id: editing, data })
+        : artCible
+          ? api("add", { data: { ...data, article_id: artCible } })
+          : api("add", { data: { ...data, groupe_id: (groupeCourant() || {}).id } }));
     effacerBrouillon();
     closeDrawer(true);
     applyResult(res);
+    if (objChange && (res.propositions || []).some(p => p.mine && p.article_id === artId)) {
+      alert("Votre correction de l’article est proposée à la promo : elle sera appliquée quand 3 étudiants (vous compris) l’auront approuvée.");
+    }
   } catch (e) {
     $("ferr").textContent = "Enregistrement impossible : " + e.message;
+    if (e.code === "duplicate" && e.extra && e.extra.article_id) {
+      $("ferr").innerHTML = esc(e.message) + ' <button type="button" class="btn sm" id="dupgo">Ajouter mon analyse à cet article</button>';
+      $("dupgo").onclick = () => basculerAnalyse(e.extra.article_id);
+    }
     if (e.code === "unauthorized") sessionError(e);
     $("save").disabled = false;
   }
@@ -627,10 +662,12 @@ async function del(id) {
 function startEdit(id, ov, statut) {
   const it = itemsAll.find(i => i.id === id);
   if (!it) return;
-  if (ov && !confirm(`Cette lecture appartient à ${it.etudiant}.\n\nVoulez-vous vraiment la modifier ? L’ancienne version sera conservée dans l’historique.`)) return;
-  editing = id; override = ov; forceStatut = statut || "";
+  editing = id; artCible = ""; modeArticle = false; forceStatut = statut || "";
   openForm();
 }
+
+function startAnalyse(articleId) { editing = null; artCible = articleId; modeArticle = false; forceStatut = ""; openForm(); }
+function startCorrection(articleId) { editing = null; artCible = ""; modeArticle = articleId; forceStatut = ""; openForm(); }
 
 // « Terminée » en un clic quand tous les champs obligatoires sont déjà remplis ; sinon on ouvre le formulaire.
 async function marquerTerminee(id) {
@@ -639,8 +676,7 @@ async function marquerTerminee(id) {
   if (FIN.some(k => !String(it[k] || "").trim())) { startEdit(id, false, "Terminée"); return; }
   const data = Object.fromEntries(CHAMPS_FORM.map(k => [k, String(it[k] || "")]));
   data.statut = "Terminée";
-  data.portee = it.portee;
-  try { applyResult(await enCours("Enregistrement…", () => api("update", { id, override: false, data }))); }
+  try { applyResult(await enCours("Enregistrement…", () => api("update", { id, data }))); }
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Enregistrement impossible : " + e.message); }
 }
 
@@ -783,10 +819,11 @@ $("cmodal").addEventListener("mousedown", e => { if (e.target === $("cmodal")) f
 
 const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).length; const u = nbNonLus(i.id); return n ? `<span class="cn" title="${n} commentaire${n > 1 ? "s" : ""}${u ? ", " + u + " non lu" + (u > 1 ? "s" : "") : ""}">💬 ${n}</span>${u ? `<span class="new">${u} non lu${u > 1 ? "s" : ""}</span>` : ""}` : ""; };
 
-function actionsHtml(i) {
-  const edit = !canWrite() || !i.modifiable ? "" : i.mine
-    ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> `
-    : `<button class="btn sm sec" data-o="${esc(i.id)}">Contribuer</button> `;
+function actionsHtml(i, sub) {
+  const dejaMienne = itemsAll.some(x => x.mine && x.article_id === i.article_id);
+  const edit = !canWrite() ? "" : (i.mine && i.modifiable ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier mon analyse</button> ` : "")
+    + (!sub && i.article_modifiable && !dejaMienne ? `<button class="btn sm" data-an="${esc(i.article_id)}">＋ Ajouter mon analyse</button> ` : "")
+    + (!sub && i.article_modifiable ? `<button class="btn sm sec" data-ea="${esc(i.article_id)}">Corriger l’article</button> ` : "");
   const n = comments.filter(x => x.lecture_id === i.id).length, u = nbNonLus(i.id);
   return `${edit}<button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n}${u ? ", " + u + " non lus" : ""})">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button>`;
 }
@@ -795,33 +832,60 @@ function infosHtml(i) {
   return `Parution : ${esc(fmtD(i.parution)) || "—"}<br>Auteur : ${esc(i.auteur) || "—"} (${esc(i.qualite) || "—"})<br>Nationalité : ${esc(i.nation) || "—"}<br>Type : ${esc(i.type) || "—"}<br><i>Saisi le ${esc(fmtD(i.ajoute))}</i>${i.modifie_par ? `<br><i>Modifié par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}</i>` : ""}`;
 }
 
-function cells(i) {
+// Une ligne par article : ses autres analyses suivent juste en dessous (lignes « sub »).
+const nbAnalyses = i => items.filter(x => x.article_id === i.article_id).length;
+const badgeAnalyses = (i, sub) => sub ? '<span class="badge" title="Autre analyse du même article">↳ analyse</span>'
+  : nbAnalyses(i) > 1 ? `<span class="badge" title="Analyses de cet article">🧩 ${nbAnalyses(i)} analyses</span>` : "";
+
+const CHAMP_LIB = { titre: "titre", parution: "parution", auteur: "auteur", qualite: "qualité", nation: "nationalité", type: "type",
+  source: "revue", volume: "volume", numero: "numéro", pages: "pages", doi: "DOI", lien: "lien" };
+function propHtml(i, sub) {
+  if (sub) return "";
+  return props.filter(p => p.article_id === i.article_id).map(p => {
+    const champs = Object.keys(p.valeurs).filter(k => String(p.valeurs[k] || "") !== String(i[k] || "")).map(k => `${CHAMP_LIB[k] || k} → « ${esc(String(p.valeurs[k] || "—"))} »`).join(" ; ");
+    const vote = !canWrite() ? "" : p.mine
+      ? `<button type="button" class="btn sm sec del" data-pc="${esc(p.id)}">Annuler ma proposition</button>`
+      : `<button type="button" class="btn sm ${p.monVote === 1 ? "" : "sec"}" data-pv="${esc(p.id)}" data-pvo="1" aria-pressed="${p.monVote === 1}">👍 Approuver</button> <button type="button" class="btn sm ${p.monVote === 0 ? "" : "sec"}" data-pv="${esc(p.id)}" data-pvo="0" aria-pressed="${p.monVote === 0}">👎 Refuser</button>`;
+    return `<div class="vote" style="margin-top:6px">✏️ <b>${esc(p.par)}</b> propose de corriger l’article : ${champs || "—"} <span class="meta">(${p.pour} approbation${p.pour > 1 ? "s" : ""} sur ${p.seuil} nécessaires)</span> ${vote}</div>`;
+  }).join("");
+}
+
+async function voterProp(id, oui) {
+  try { applyResult(await enCours("Vote…", () => api("article_vote", { id, vote: oui }))); }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Vote impossible : " + e.message); }
+}
+async function annulerProp(id) {
+  try { applyResult(await enCours("Annulation…", () => api("article_cancel", { id }))); }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Annulation impossible : " + e.message); }
+}
+
+function cells(i, sub) {
   const c = esc(i.couleur);
   const prog = i.statut === "En cours";
-  const main = `<tr data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
+  const main = `<tr data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""} ${sub ? "ssan" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeAnalyses(i, sub)}${badgeNouveau(i)}${nbComm(i)}
    <b>${esc(i.titre)}</b>${lienHtml(i)}
    <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
    <div class="meta full">${infosHtml(i)}</div>
-   <div class="rowacts">${actionsHtml(i)}</div></td>
+   ${propHtml(i, sub)}<div class="rowacts">${actionsHtml(i, sub)}</div></td>
    <td class="c2 nowrapc"><div class="chipsc">${chips(i.mots)}</div></td><td class="c3 nowrapc"><div class="chipsc">${chips(i.kw)}</div></td>
    <td class="c4">${clampTxt(i.id, i.concepts)}</td><td class="c5">${clampTxt(i.id, i.objet)}</td><td class="c6">${clampTxt(i.id, i.opinion)}</td>
    <td class="c7">${clampTxt(i.id, i.controverse)}</td><td class="c8">${clampTxt(i.id, i.libre)}</td><td class="apa c9">${apaCell(i)}</td></tr>`;
   return main;
 }
 
-function cardHtml(i) {
+function cardHtml(i, sub) {
   const c = esc(i.couleur);
   const prog = i.statut === "En cours";
   const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b>${clampTxt(i.id, v)}</div>` : "";
-  return `<article class="cardc ${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
-   <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeNouveau(i)}</div>
+  return `<article class="cardc ${prog ? "prog" : ""} ${sub ? "ssan" : ""} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
+   <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeAnalyses(i, sub)}${badgeNouveau(i)}</div>
    <h3><span class="chev" aria-hidden="true"></span>${esc(i.titre)}</h3>${lienHtml(i)}
    <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
    <div class="meta full">${infosHtml(i)}</div>
    ${motsListe(i.mots).length || motsListe(i.kw).length ? `<div class="chipsc">${chips(i.mots)}${chips(i.kw)}</div>` : ""}
    ${sect("Concepts en sciences infirmières", i.concepts)}${sect("Objet / sujet principal", i.objet)}${sect("Opinion de l’auteur", i.opinion)}${sect("Controverse", i.controverse)}${sect("Libre", i.libre)}
    <div class="sect"><b>Référence APA</b>${apaCell(i)}</div>
-   <div class="acts">${actionsHtml(i)}</div>
+   ${propHtml(i, sub)}<div class="acts">${actionsHtml(i, sub)}</div>
   </article>`;
 }
 
@@ -971,7 +1035,7 @@ function renderFilters() {
   });
   $("expall").onclick = toutDeplier;
   $("refresh").onclick = () => refresh(true);
-  if ($("add2")) $("add2").onclick = () => { editing = null; override = false; forceStatut = ""; openForm(); };
+  if ($("add2")) $("add2").onclick = () => { editing = null; artCible = ""; modeArticle = false; forceStatut = ""; openForm(); };
   $("xl").onclick = exportXlsx;
   $("pdf").onclick = exportPdf;
   majBoutonDeplier(); majSync();
@@ -1007,9 +1071,13 @@ function filtered() {
   const l = items.filter(i => (!F.who || i.etudiant === F.who) && (!F.st || i.statut === F.st) && (!F.type || i.type === F.type)
     && (!F.kw || motsListe(i.mots).concat(motsListe(i.kw)).some(k => cleTitre(k) === F.kw))
     && (!q || correspond(i, q)));
-  return l.sort((a, b) => F.sort === "ajoute"
+  l.sort((a, b) => F.sort === "ajoute"
     ? String(b.ajoute).localeCompare(a.ajoute)
     : String(a[F.sort] || "").localeCompare(String(b[F.sort] || ""), "fr"));
+  // Les analyses d'un même article se suivent, à la place de la première.
+  const parArt = new Map();
+  l.forEach(i => { const k = i.article_id || i.id; if (!parArt.has(k)) parArt.set(k, []); parArt.get(k).push(i); });
+  return [...parArt.values()].flat();
 }
 
 function renderTable() {
@@ -1020,8 +1088,8 @@ function renderTable() {
   $("tablewrap").classList.toggle("hidden", cartes);
   $("cards").classList.toggle("hidden", !cartes);
   // La vue inutilisée est vidée, pas seulement masquée : rien ne peut réapparaître en dessous si une feuille de style périmée est en cache.
-  if (cartes) { $("rows").innerHTML = ""; $("cards").innerHTML = l.length ? l.map(cardHtml).join("") : `<div class="empty">${vide}</div>`; }
-  else { $("cards").innerHTML = ""; $("rows").innerHTML = l.length ? l.map(cells).join("") : `<tr><td colspan="9" class="empty">${vide}</td></tr>`; }
+  if (cartes) { $("rows").innerHTML = ""; $("cards").innerHTML = l.length ? l.map((i, n) => cardHtml(i, n > 0 && l[n - 1].article_id === i.article_id)).join("") : `<div class="empty">${vide}</div>`; }
+  else { $("cards").innerHTML = ""; $("rows").innerHTML = l.length ? l.map((i, n) => cells(i, n > 0 && l[n - 1].article_id === i.article_id)).join("") : `<tr><td colspan="9" class="empty">${vide}</td></tr>`; }
   applyCols();
   const nbres = $("nbres");
   if (nbres) nbres.textContent = (F.q || F.who || F.st || F.type || F.kw) ? `${l.length} / ${items.length} lectures` : "";
@@ -1062,7 +1130,10 @@ const onAction = e => {
   }
   const d = b.dataset;
   if (d.e) startEdit(d.e, false);
-  else if (d.o) startEdit(d.o, true);
+  else if (d.an) startAnalyse(d.an);
+  else if (d.ea) startCorrection(d.ea);
+  else if (d.pv) voterProp(d.pv, d.pvo === "1");
+  else if (d.pc) annulerProp(d.pc);
   else if (d.apa) copierApa(d.apa);
   else if (d.cu) marquerNonLus([d.cu]);
   else if (d.kw !== undefined) filtrerMotCle(d.kw);
@@ -1101,8 +1172,11 @@ $("rows").onkeydown = $("cards").onkeydown = e => {
 
 const B = { who: "", enCours: false };
 
+// Une référence par article, même s'il porte plusieurs analyses.
+const parArticle = l => { const vu = new Set(); return l.filter(i => { const k = i.article_id || i.id; if (vu.has(k)) return false; vu.add(k); return true; }); };
+
 function biblioListe() {
-  return LydiaApa.bibliographie(items.filter(i => (!B.who || i.etudiant === B.who) && (B.enCours || i.statut === "Terminée")));
+  return LydiaApa.bibliographie(parArticle(items.filter(i => (!B.who || i.etudiant === B.who) && (B.enCours || i.statut === "Terminée"))));
 }
 
 function renderBiblioTools() {
@@ -1169,15 +1243,16 @@ function renderSynth() {
   if (!items.length) { $("synthbox").innerHTML = '<div class="card empty">Pas encore de données à synthétiser.</div>'; return; }
   const fin = items.filter(i => i.statut === "Terminée").length;
   const annees = new Map();
-  items.forEach(i => { const a = (/^(\d{4})/.exec(i.parution || "") || [])[1]; if (a) annees.set(a, (annees.get(a) || 0) + 1); });
+  const arts = parArticle(items);
+  arts.forEach(i => { const a = (/^(\d{4})/.exec(i.parution || "") || [])[1]; if (a) annees.set(a, (annees.get(a) || 0) + 1); });
   const parAnnee = [...annees.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12);
   const kpi = (n, t) => `<div class="kpi"><b>${n}</b>${t}</div>`;
   $("synthbox").innerHTML = `<div class="kpis">${kpi(items.length, "lectures")}${kpi(fin, "terminées")}${kpi(items.length - fin, "en cours")}${kpi(comments.length, "commentaires")}</div>
    <div class="synth">
    ${barres("Lectures par étudiant", students().map(s => [s.prenom, items.filter(i => i.etudiant === s.prenom).length, s.couleur]), "var(--pri)")}
-   ${barres("Types d’articles", compter(items.map(i => i.type), 8), "var(--pri)")}
-   ${barres("Nationalité des auteurs", compter(items.map(i => i.nation), 10), "var(--pri)")}
-   ${barres("Qualité des auteurs (plusieurs possibles par lecture)", compter(items.flatMap(i => metiersListe(i.qualite)), 8), "var(--pri)")}
+   ${barres("Types d’articles", compter(arts.map(i => i.type), 8), "var(--pri)")}
+   ${barres("Nationalité des auteurs", compter(arts.map(i => i.nation), 10), "var(--pri)")}
+   ${barres("Qualité des auteurs (plusieurs possibles par lecture)", compter(arts.flatMap(i => metiersListe(i.qualite)), 8), "var(--pri)")}
    ${barres("Années de parution", parAnnee, "var(--pri)")}
    ${barres("Mots-clés les plus fréquents", compter(items.flatMap(i => motsListe(i.mots)), 12), "var(--pri)")}
    </div>`;

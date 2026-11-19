@@ -32,10 +32,23 @@ const FEUILLE_LUS = 'Lus';
 const FEUILLE_GROUPES = 'Groupes';
 const FEUILLE_MEMBRES = 'Membres';
 const FEUILLE_VOTES = 'Votes';
+const FEUILLE_ARTICLES = 'Articles';
+const FEUILLE_PROPOSITIONS = 'Propositions';
 
 const COLONNES = ['id', 'owner', 'statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'ajoute', 'modifie_le', 'modifie_par',
-  'source', 'volume', 'numero', 'pages', 'doi', 'lien', 'groupe_id', 'portee'];
+  'source', 'volume', 'numero', 'pages', 'doi', 'lien', 'groupe_id', 'portee', 'article_id'];
+// Un article (partie objective, mise en commun dans la promo) porte une ou plusieurs analyses (feuille Lectures,
+// une par étudiant). Les colonnes objectives de Lectures ne servent plus qu'à la reprise de l'existant.
+const COL_ARTICLES = ['id', 'cree_par', 'groupe_id', 'ajoute', 'modifie_le', 'modifie_par',
+  'titre', 'parution', 'auteur', 'qualite', 'nation', 'type', 'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
+// Correction de la partie objective proposée par un étudiant : appliquée quand 3 étudiants de la promo l'ont approuvée
+// (le proposant compte), refusée quand 3 l'ont rejetée, sinon expirée au bout de 14 jours.
+const COL_PROPOSITIONS = ['id', 'article_id', 'propose_par', 'cree_le', 'valeurs', 'votes', 'statut', 'clos_le'];
+const PROP_SEUIL = 3;
+const PROP_DUREE_MS = 14 * 24 * 3600 * 1000;
+const OBJECTIFS = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type', 'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
+const ANALYSES = ['statut', 'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre'];
 const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion'];
 // portee : « groupe » ou « promo » ; groupe_id : groupe de l'auteur au moment du commentaire.
 const COL_COMMENTAIRES = ['id', 'lecture_id', 'auteur_email', 'auteur', 'date', 'texte', 'modifie_le', 'portee', 'groupe_id'];
@@ -48,8 +61,9 @@ const COL_LUS = ['id', 'commentaires'];
 const COL_HISTORIQUE = ['date', 'id', 'modifie_par', 'proprietaire', 'avant'];
 const CHAMPS = ['statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre',
-  'source', 'volume', 'numero', 'pages', 'doi', 'lien', 'portee'];
-const PORTEES = ['groupe', 'promo'];
+  'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
+// Une analyse terminée est partagée avec toute la promo ; en cours, elle reste dans le groupe de son auteur.
+function porteeDe_(statut) { return statut === 'Terminée' ? 'promo' : 'groupe'; }
 const NOM_MAX = 60;
 const VOTE_DUREE_MS = 7 * 24 * 3600 * 1000;      // une proposition non tranchée expire au bout de 7 jours
 const VOTE_BLOCAGE_MS = 14 * 24 * 3600 * 1000;   // et une proposition de retrait refusée ne peut pas être refaite avant 14 jours
@@ -93,6 +107,8 @@ function setup() {
   preparer_(ss, FEUILLE_GROUPES, COL_GROUPES);
   preparer_(ss, FEUILLE_MEMBRES, COL_MEMBRES);
   preparer_(ss, FEUILLE_VOTES, COL_VOTES);
+  preparer_(ss, FEUILLE_ARTICLES, COL_ARTICLES);
+  preparer_(ss, FEUILLE_PROPOSITIONS, COL_PROPOSITIONS);
   const u = preparer_(ss, FEUILLE_UTILISATEURS, COL_UTILISATEURS);
   if (u.getLastRow() < 2) {
     u.getRange(2, 1, 4, 5).setValues([
@@ -104,6 +120,7 @@ function setup() {
   }
   memo_ = {};
   migrerVersGroupes_();
+  migrerVersArticles_();
 }
 
 // Reprise de l'existant (idempotente, lancée par setup) : un premier groupe reçoit tous les accès actifs,
@@ -144,6 +161,57 @@ function migrerVersGroupes_() {
       });
     } finally { memo_ = {}; memoOn_ = true; }
   });
+}
+
+// Reprise de l'existant (idempotente) : chaque lecture sans article en reçoit un, en fusionnant dans une même promo
+// les lectures du même article (même DOI ou même titre) quand elles viennent de personnes différentes.
+function migrerVersArticles_() {
+  avecVerrou_(function () {
+    memoOn_ = false;
+    try {
+      const shL = feuilleLectures_(), shA = feuilleArticles_();
+      const c = { groupesParId: {} };
+      table_(FEUILLE_GROUPES, COL_GROUPES).forEach(function (g) { c.groupesParId[g.id] = g; });
+      const articles = lireTable_(shA, COL_ARTICLES);
+      const lectures = lireTable_(shL, COLONNES);
+      const proprios = {};   // article_id -> propriétaires déjà présents
+      lectures.forEach(function (r) { if (r.article_id) (proprios[r.article_id] = proprios[r.article_id] || {})[r.owner] = true; });
+      const iArt = COLONNES.indexOf('article_id') + 1, iP = COLONNES.indexOf('portee') + 1;
+      lectures.forEach(function (r) {
+        const g = c.groupesParId[r.groupe_id];
+        if (!r.article_id && g) {
+          const promo = clePromo_(g);
+          let a = articles.filter(function (x) {
+            const gx = c.groupesParId[x.groupe_id];
+            return gx && clePromo_(gx) === promo && memeArticle_(x, r) && !(proprios[x.id] && proprios[x.id][r.owner]);
+          })[0];
+          if (!a) {
+            a = { id: Utilities.getUuid(), cree_par: r.owner, groupe_id: r.groupe_id, ajoute: r.ajoute, modifie_le: '', modifie_par: '' };
+            OBJECTIFS.forEach(function (k) { a[k] = r[k]; });
+            shA.appendRow(COL_ARTICLES.map(function (k) { return a[k]; }));
+            articles.push(a);
+          }
+          (proprios[a.id] = proprios[a.id] || {})[r.owner] = true;
+          r.article_id = a.id;
+          shL.getRange(r._row, iArt, 1, 1).setValues([[a.id]]);
+        }
+        const p = porteeDe_(r.statut);
+        if (r.portee !== p) shL.getRange(r._row, iP, 1, 1).setValues([[p]]);
+      });
+    } finally { memo_ = {}; memoOn_ = true; }
+  });
+}
+
+function cleDoi_(d) {
+  return String(d || '').trim().toLowerCase().replace(/^(https?:\/\/)?(dx\.)?doi\.org\//, '').replace(/^doi:\s*/, '');
+}
+
+// Deux fiches décrivent le même article : même DOI, ou (sans DOI différents) même titre d'au moins 8 caractères.
+function memeArticle_(a, b) {
+  const da = cleDoi_(a.doi), db = cleDoi_(b.doi);
+  if (da && db) return da === db;
+  const ta = normaliserTerme_(a.titre), tb = normaliserTerme_(b.titre);
+  return ta.length >= 8 && ta === tb;
 }
 
 function preparer_(ss, nom, entetes) {
@@ -227,7 +295,16 @@ function doPost(e) {
         return json_(Object.assign({ ok: true, id: id }, donnees_(user)));
       }
       case 'update':
-        muter_(function () { modifier_(user, req.id, req.data, req.override === true); });
+        muter_(function () { modifier_(user, req.id, req.data); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'article_update':
+        muter_(function () { modifierArticle_(user, req.article_id, req.data); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'article_vote':
+        muter_(function () { voterArticle_(user, req.id, req.vote === true); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'article_cancel':
+        muter_(function () { annulerProposition_(user, req.id); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'delete':
         muter_(function () { supprimer_(user, req.id); });
@@ -293,7 +370,7 @@ function doPost(e) {
     }
   } catch (e) {
     if (!e.code) console.error(e);
-    return json_({ ok: false, error: e.code || 'server', message: e.code ? e.message : 'Erreur serveur' });
+    return json_({ ok: false, error: e.code || 'server', message: e.code ? e.message : 'Erreur serveur', extra: e.extra });
   }
 }
 
@@ -313,6 +390,7 @@ function donnees_(user) {
     enLigne: listerEnLigne_(user),
     groupes: groupesPourClient_(user, c),
     votes: votesPourClient_(user, c),
+    propositions: propositionsPourClient_(user, c),
     lectures: lister_(user),
     commentaires: listerCommentaires_(user),
     lus: listerLus_(user),
@@ -504,7 +582,7 @@ function administrer_(user, data) {
 }
 
 function migrerEmail_(ancien, nouveau) {
-  const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
+  const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleArticles_(), COL_ARTICLES, 'cree_par'], [feuillePropositions_(), COL_PROPOSITIONS, 'propose_par'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
   if (feuilleLus_(false)) tables.push([feuilleLus_(false), COL_LUS, 'id']);
   [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
     .forEach(function (t) {
@@ -542,44 +620,128 @@ function lireTable_(sh, colonnes) {
   });
 }
 
+function feuilleArticles_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  // Créée au besoin : une installation antérieure fonctionne jusqu'au prochain setup().
+  return ss.getSheetByName(FEUILLE_ARTICLES) || preparer_(ss, FEUILLE_ARTICLES, COL_ARTICLES);
+}
+
+function articlesParId_() {
+  const m = {};
+  lireTable_(feuilleArticles_(), COL_ARTICLES).forEach(function (a) { m[a.id] = a; });
+  return m;
+}
+
 function lister_(user) {
   const parEmail = {};
   listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
   const c = contexte_(user);
+  const arts = articlesParId_();
   // Les lectures d'un utilisateur supprimé, ou d'un groupe supprimé, restent dans la feuille mais ne sont plus affichées.
   return lireTable_(feuilleLectures_(), COLONNES).filter(function (r) {
-    return parEmail[r.owner] && lectureVisible_(c, r);
+    return parEmail[r.owner] && arts[r.article_id] && lectureVisible_(c, r);
   }).map(function (r) {
     const proprio = parEmail[r.owner];
     const g = c.groupesParId[r.groupe_id];
+    const a = arts[r.article_id];
     const pub = { etudiant: proprio.prenom, couleur: proprio.couleur, mine: r.owner === user.email };
     COLONNES.forEach(function (col) { if (col !== 'owner') pub[col] = r[col]; });
-    pub.portee = r.portee === 'promo' ? 'promo' : 'groupe';
+    OBJECTIFS.forEach(function (k) { pub[k] = a[k]; });
+    pub.portee = porteeDe_(r.statut);
     pub.groupe = g.nom;
     pub.etablissement = g.etablissement;
     pub.promo = g.promo;
-    // Modifiable par tout étudiant du groupe de la fiche (pas par les autres groupes de la promo).
-    pub.modifiable = user.role === 'etudiant' && !!c.miens[g.id];
+    // L'analyse n'est modifiable que par son auteur ; l'article (partie objective) par tout étudiant de la promo.
+    pub.modifiable = user.role === 'etudiant' && r.owner === user.email;
+    pub.article_modifiable = articleModifiable_(user, c, a);
+    if ((a.modifie_le || '') > (pub.modifie_le || '')) { pub.modifie_le = a.modifie_le; pub.modifie_par = a.modifie_par; }
     return pub;
   });
+}
+
+function promoDeArticle_(c, a) {
+  const g = c.groupesParId[a.groupe_id];
+  return g ? clePromo_(g) : '';
+}
+
+function articleModifiable_(user, c, a) {
+  return user.role === 'etudiant' && !!c.promos[promoDeArticle_(c, a)];
 }
 
 function lectureVisible_(c, r) {
   const g = c.groupesParId[r.groupe_id];
   if (!g) return false;
   if (c.admin || c.miens[g.id]) return true;
-  return r.portee === 'promo' && !!c.promos[clePromo_(g)];
+  return porteeDe_(r.statut) === 'promo' && !!c.promos[clePromo_(g)];
 }
 
+// Analyses visibles par la personne qui portent l'article.
+function analysesVisibles_(c, articleId) {
+  return lireTable_(feuilleLectures_(), COLONNES).filter(function (r) {
+    return r.article_id === articleId && lectureVisible_(c, r);
+  });
+}
+
+function articleVisible_(user, articleId) {
+  const c = contexte_(user);
+  const a = articlesParId_()[articleId];
+  if (!a || !c.groupesParId[a.groupe_id]) throw err_('not_found', 'Article introuvable');
+  if (!c.admin && !analysesVisibles_(c, articleId).length) throw err_('not_found', 'Article introuvable');
+  return a;
+}
+
+// Groupe de l'étudiant dans la promo concernée.
+function groupeDansPromo_(c, promo) {
+  const g = c.mesGroupes.filter(function (x) { return clePromo_(x) === promo; })[0];
+  if (!g) throw err_('forbidden', 'Vous ne faites pas partie de cette promo');
+  return g;
+}
+
+// data.article_id : ajoute SON analyse à un article existant (les champs objectifs ne comblent que les vides) ;
+// sinon crée l'article (avec détection des doublons dans la promo, sauf data.nouveau === true) et la première analyse.
 function ajouter_(user, data) {
   exigerEtudiant_(user);
-  const gid = groupeParDefaut_(user, data && data.groupe_id);
+  const c = contexte_(user);
   const d = nettoyer_(data);
-  d.portee = d.portee || 'groupe';
-  valider_(d);
-  const meta = { id: Utilities.getUuid(), owner: user.email, ajoute: new Date().toISOString(),
-    modifie_le: '', modifie_par: '', groupe_id: gid };
-  const ligne = COLONNES.map(function (c) { return c in meta ? meta[c] : d[c]; });
+  const maintenant = new Date().toISOString();
+  let art, g;
+  if (data && data.article_id) {
+    art = articleVisible_(user, String(data.article_id));
+    g = groupeDansPromo_(c, promoDeArticle_(c, art));
+    if (lireTable_(feuilleLectures_(), COLONNES).some(function (r) { return r.article_id === art.id && r.owner === user.email; })) {
+      throw err_('invalid', 'Vous avez déjà une analyse pour cet article');
+    }
+    const fusion = {};
+    OBJECTIFS.forEach(function (k) { fusion[k] = art[k] || d[k]; });
+    valider_(Object.assign({}, d, fusion));
+    if (OBJECTIFS.some(function (k) { return fusion[k] !== art[k]; })) {
+      ecrireArticle_(art, fusion, user, maintenant);
+    }
+  } else {
+    const gid = groupeParDefaut_(user, data && data.groupe_id);
+    g = c.mesGroupes.filter(function (x) { return x.id === gid; })[0];
+    valider_(d);
+    if (!(data && data.nouveau === true)) {
+      const promo = clePromo_(g);
+      const doublon = lireTable_(feuilleArticles_(), COL_ARTICLES).filter(function (x) {
+        return promoDeArticle_(c, x) === promo && memeArticle_(x, d) && analysesVisibles_(c, x.id).length;
+      })[0];
+      if (doublon) {
+        const e = err_('duplicate', 'Cet article existe déjà dans la promo : ajoutez-y plutôt votre analyse.');
+        e.extra = { article_id: doublon.id, titre: doublon.titre };
+        throw e;
+      }
+    }
+    art = { id: Utilities.getUuid(), cree_par: user.email, groupe_id: g.id, ajoute: maintenant, modifie_le: '', modifie_par: '' };
+    OBJECTIFS.forEach(function (k) { art[k] = d[k]; });
+    feuilleArticles_().appendRow(COL_ARTICLES.map(function (k) { return art[k]; }));
+  }
+  const meta = { id: Utilities.getUuid(), owner: user.email, ajoute: maintenant, modifie_le: '', modifie_par: '',
+    groupe_id: g.id, portee: porteeDe_(d.statut), article_id: art.id };
+  const ligne = COLONNES.map(function (k) {
+    if (k in meta) return meta[k];
+    return ANALYSES.indexOf(k) >= 0 ? d[k] : '';
+  });
   feuilleLectures_().appendRow(ligne);
   return meta.id;
 }
@@ -593,27 +755,183 @@ function groupeParDefaut_(user, demande) {
   throw err_('invalid', c.mesGroupes.length ? 'Choisissez un groupe' : 'Vous ne faites encore partie d’aucun groupe');
 }
 
-function modifier_(user, id, data, override) {
+function ecrireArticle_(art, valeurs, user, date) {
+  historiserArticle_(art, user, date);
+  const ligne = COL_ARTICLES.map(function (k) {
+    if (OBJECTIFS.indexOf(k) >= 0) return valeurs[k];
+    if (k === 'modifie_le') return date;
+    if (k === 'modifie_par') return user.prenom;
+    return art[k];
+  });
+  feuilleArticles_().getRange(art._row, 1, 1, COL_ARTICLES.length).setValues([ligne]);
+}
+
+function historiserArticle_(art, user, date) {
+  const avant = {};
+  OBJECTIFS.forEach(function (k) { avant[k] = art[k]; });
+  const proprio = listerUtilisateurs_().filter(function (u) { return u.email === art.cree_par; })[0];
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName(FEUILLE_HISTORIQUE)
+    .appendRow([date, art.id, user.prenom, proprio ? proprio.prenom : '', JSON.stringify(avant).slice(0, 49000)]);
+}
+
+// Modifie son analyse (et, si les champs objectifs sont fournis, la partie objective de l'article).
+function modifier_(user, id, data) {
   exigerEtudiant_(user);
   const sh = feuilleLectures_();
   const r = trouver_(sh, id);
   exigerMembre_(user, r.groupe_id);
-  const proprio = r.owner === user.email;
-  if (!proprio && !override) {
-    throw err_('not_owner', 'Cette lecture appartient à quelqu’un d’autre');
-  }
+  if (r.owner !== user.email) throw err_('not_owner', 'Cette lecture appartient à quelqu’un d’autre');
+  const art = articlesParId_()[r.article_id];
+  if (!art) throw err_('not_found', 'Article introuvable');
   const d = nettoyer_(data);
-  d.portee = d.portee || r.portee || 'groupe';
-  valider_(d);
+  const voulu = {};
+  OBJECTIFS.forEach(function (k) { voulu[k] = data[k] === undefined ? art[k] : d[k]; });
+  const change = OBJECTIFS.some(function (k) { return voulu[k] !== art[k]; });
+  const direct = !change || modifDirecte_(user, art);
+  const obj = direct ? voulu : art;
+  valider_(Object.assign({}, d, obj));
   const maintenant = new Date().toISOString();
-  if (!proprio) historiser_(r, user, maintenant);
-  const ligne = COLONNES.map(function (c) {
-    if (CHAMPS.indexOf(c) >= 0) return d[c];
-    if (c === 'modifie_le') return maintenant;
-    if (c === 'modifie_par') return user.prenom;
-    return r[c];
+  if (change && direct) {
+    validerArticleTerminees_(r.article_id, obj, r.id);
+    ecrireArticle_(art, obj, user, maintenant);
+  } else if (change) {
+    validerArticleTerminees_(r.article_id, voulu, r.id);
+    proposerArticle_(user, art, voulu, maintenant);
+  }
+  const ligne = COLONNES.map(function (k) {
+    if (ANALYSES.indexOf(k) >= 0) return d[k];
+    if (k === 'portee') return porteeDe_(d.statut);
+    if (k === 'modifie_le') return maintenant;
+    if (k === 'modifie_par') return user.prenom;
+    return r[k];
   });
   sh.getRange(r._row, 1, 1, COLONNES.length).setValues([ligne]);
+}
+
+// Si une analyse de l'article est terminée, les six champs obligatoires de l'article doivent rester renseignés.
+function validerArticleTerminees_(articleId, obj, sauf) {
+  const terminee = lireTable_(feuilleLectures_(), COLONNES).some(function (x) {
+    return x.article_id === articleId && x.id !== sauf && x.statut === 'Terminée';
+  });
+  if (terminee) valider_(Object.assign({ statut: 'Terminée' }, obj));
+  else valider_(Object.assign({ statut: 'En cours' }, obj));
+}
+
+// Correction directe : l'administrateur, ou le créateur de l'article tant qu'il est seul à l'avoir analysé.
+function modifDirecte_(user, art) {
+  if (user.role === 'admin') return true;
+  if (art.cree_par !== user.email) return false;
+  return !lireTable_(feuilleLectures_(), COLONNES).some(function (r) { return r.article_id === art.id && r.owner !== user.email; });
+}
+
+// Correction de la partie objective : directe pour l'administrateur / le créateur isolé, sinon proposition à valider.
+function modifierArticle_(user, articleId, data) {
+  const c = contexte_(user);
+  if (user.role !== 'etudiant' && user.role !== 'admin') throw err_('forbidden', 'Accès en lecture seule');
+  const art = articleVisible_(user, String(articleId));
+  if (user.role === 'etudiant' && !articleModifiable_(user, c, art)) throw err_('forbidden', 'Réservé aux étudiants de la promo');
+  const d = nettoyer_(data);
+  const obj = {};
+  OBJECTIFS.forEach(function (k) { obj[k] = data[k] === undefined ? art[k] : d[k]; });
+  if (!OBJECTIFS.some(function (k) { return obj[k] !== art[k]; })) throw err_('invalid', 'Aucune modification');
+  validerArticleTerminees_(art.id, obj, '');
+  const maintenant = new Date().toISOString();
+  if (modifDirecte_(user, art)) ecrireArticle_(art, obj, user, maintenant);
+  else proposerArticle_(user, art, obj, maintenant);
+}
+
+function feuillePropositions_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheetByName(FEUILLE_PROPOSITIONS) || preparer_(ss, FEUILLE_PROPOSITIONS, COL_PROPOSITIONS);
+}
+
+function votesProp_(p) {
+  try { return JSON.parse(p.votes || '{}') || {}; } catch (e) { return {}; }
+}
+
+// Les propositions ouvertes depuis trop longtemps expirent (au fil des lectures).
+function cloreExpireesProp_() {
+  const sh = feuillePropositions_();
+  const maintenant = Date.now();
+  lireTable_(sh, COL_PROPOSITIONS).forEach(function (p) {
+    if (p.statut === 'ouvert' && maintenant - Date.parse(p.cree_le) > PROP_DUREE_MS) {
+      sh.getRange(p._row, 7, 1, 2).setValues([['expire', new Date().toISOString()]]);
+    }
+  });
+}
+
+function proposerArticle_(user, art, valeurs, date) {
+  const sh = feuillePropositions_();
+  // Une seule proposition ouverte par personne et par article : la nouvelle remplace l'ancienne.
+  lireTable_(sh, COL_PROPOSITIONS).filter(function (p) {
+    return p.article_id === art.id && p.propose_par === user.email && p.statut === 'ouvert';
+  }).forEach(function (p) { sh.getRange(p._row, 7, 1, 2).setValues([['annule', date]]); });
+  const v = {}; v[user.email] = 1;
+  const val = {};
+  OBJECTIFS.forEach(function (k) { val[k] = valeurs[k]; });
+  sh.appendRow([Utilities.getUuid(), art.id, user.email, date, JSON.stringify(val), JSON.stringify(v), 'ouvert', '']);
+}
+
+function voterArticle_(user, id, oui) {
+  exigerEtudiant_(user);
+  const sh = feuillePropositions_();
+  cloreExpireesProp_();
+  const p = lireTable_(sh, COL_PROPOSITIONS).filter(function (x) { return x.id === id; })[0];
+  if (!p) throw err_('not_found', 'Proposition introuvable');
+  if (p.statut !== 'ouvert') throw err_('invalid', 'Cette proposition est close');
+  const c = contexte_(user);
+  const art = articleVisible_(user, p.article_id);
+  if (!articleModifiable_(user, c, art)) throw err_('forbidden', 'Réservé aux étudiants de la promo');
+  if (p.propose_par === user.email && oui === false) throw err_('invalid', 'Annulez votre proposition plutôt que la refuser');
+  const votes = votesProp_(p);
+  votes[user.email] = oui ? 1 : 0;
+  const actifs = {};
+  listerUtilisateurs_().forEach(function (u) { if (u.role === 'etudiant' && u.statut === 'actif') actifs[u.email] = true; });
+  let pour = 0, contre = 0;
+  Object.keys(votes).forEach(function (e) { if (!actifs[e]) return; if (votes[e]) pour++; else contre++; });
+  let statut = 'ouvert';
+  const maintenant = new Date().toISOString();
+  if (pour >= PROP_SEUIL) statut = 'adopte';
+  else if (contre >= PROP_SEUIL) statut = 'refuse';
+  if (statut === 'adopte') {
+    const valeurs = JSON.parse(p.valeurs);
+    const cible = articlesParId_()[p.article_id];
+    // Si l'article est devenu incomplet entre-temps, la proposition ne peut pas être appliquée.
+    validerArticleTerminees_(cible.id, valeurs, '');
+    ecrireArticle_(cible, valeurs, user, maintenant);
+  }
+  sh.getRange(p._row, 6, 1, 3).setValues([[JSON.stringify(votes), statut, statut === 'ouvert' ? '' : maintenant]]);
+}
+
+function annulerProposition_(user, id) {
+  const sh = feuillePropositions_();
+  const p = lireTable_(sh, COL_PROPOSITIONS).filter(function (x) { return x.id === id; })[0];
+  if (!p) throw err_('not_found', 'Proposition introuvable');
+  if (p.propose_par !== user.email && user.role !== 'admin') throw err_('forbidden', 'Seul l’auteur peut annuler');
+  if (p.statut !== 'ouvert') throw err_('invalid', 'Cette proposition est close');
+  sh.getRange(p._row, 7, 1, 2).setValues([['annule', new Date().toISOString()]]);
+}
+
+// Propositions ouvertes sur les articles que la personne voit (adresses jamais exposées : identifiants publics).
+function propositionsPourClient_(user, c) {
+  cloreExpireesProp_();
+  const arts = articlesParId_();
+  const visibles = {};
+  lireTable_(feuilleLectures_(), COLONNES).forEach(function (r) {
+    if (arts[r.article_id] && lectureVisible_(c, r)) visibles[r.article_id] = true;
+  });
+  const parEmail = {};
+  listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
+  return lireTable_(feuillePropositions_(), COL_PROPOSITIONS).filter(function (p) {
+    return p.statut === 'ouvert' && visibles[p.article_id] && parEmail[p.propose_par];
+  }).map(function (p) {
+    const v = votesProp_(p);
+    let pour = 0, contre = 0;
+    Object.keys(v).forEach(function (e) { if (!parEmail[e]) return; if (v[e]) pour++; else contre++; });
+    return { id: p.id, article_id: p.article_id, par: parEmail[p.propose_par].prenom, cree_le: p.cree_le,
+      valeurs: JSON.parse(p.valeurs), pour: pour, contre: contre, seuil: PROP_SEUIL,
+      mine: p.propose_par === user.email, monVote: user.email in v ? (v[user.email] ? 1 : 0) : -1 };
+  });
 }
 
 function supprimer_(user, id) {
@@ -628,6 +946,11 @@ function supprimer_(user, id) {
   lireTable_(c, COL_COMMENTAIRES).filter(function (x) { return x.lecture_id === id; })
     .sort(function (a, b) { return b._row - a._row; })
     .forEach(function (x) { c.deleteRow(x._row); });
+  // Un article sans plus aucune analyse disparaît.
+  if (r.article_id && !lireTable_(sh, COLONNES).some(function (x) { return x.article_id === r.article_id; })) {
+    const a = articlesParId_()[r.article_id];
+    if (a) feuilleArticles_().deleteRow(a._row);
+  }
 }
 
 function historiser_(ancienne, user, date) {
@@ -681,7 +1004,7 @@ function commenter_(user, lectureId, texte, portee) {
   if (porteeFinale === 'groupe') {
     if (!c.miens[g.id]) throw err_('forbidden', 'Ce fil est réservé aux membres du groupe');
   } else {
-    if (l.portee !== 'promo') throw err_('forbidden', 'Cette fiche n’est pas partagée avec la promo');
+    if (porteeDe_(l.statut) !== 'promo') throw err_('forbidden', 'Cette analyse n’est pas partagée avec la promo');
     const mien = c.mesGroupes.filter(function (x) { return clePromo_(x) === clePromo_(g); })[0];
     if (!mien) throw err_('forbidden', 'Réservé aux membres de la promo');
     gid = mien.id;
@@ -1194,7 +1517,6 @@ function valider_(d) {
     throw err_('invalid', 'À compléter : ' + manquants.map(function (k) { return LIBELLES[k]; }).join(', '));
   }
   if (d.type && TYPES.indexOf(d.type) < 0) throw err_('invalid', 'Type d’article invalide');
-  if (PORTEES.indexOf(d.portee) < 0) throw err_('invalid', 'Partage invalide');
   if (d.parution && !/^\d{4}(-\d{2}(-\d{2})?)?$/.test(d.parution)) throw err_('invalid', 'Date de parution invalide');
   // Le lien est cliquable dans l'application : seuls http(s) sont acceptés (jamais javascript:, data:, etc.).
   if (d.lien && !/^https?:\/\/[^\s<>"']+$/i.test(d.lien)) throw err_('invalid', 'Lien invalide : il doit commencer par http:// ou https://');
