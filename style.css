@@ -232,6 +232,9 @@ tr.art { cursor: pointer; }
 tr.art:focus-visible, .cardc.art:focus-visible { outline: 2px solid var(--pri); outline-offset: -2px; }
 .artacts { margin-top: 8px; }
 .artres .badge { margin: 2px 4px 2px 0; }
+tr.art .hint-o { display: none; }
+tr.art.open .hint-o { display: inline; }
+tr.art.open .hint-c { display: none; }
 tr.fiche { display: none; }
 tr.fiche.show { display: table-row; }
 tr.fiche > td.first { padding-left: 28px; }

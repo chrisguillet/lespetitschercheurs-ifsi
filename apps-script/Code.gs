@@ -109,7 +109,7 @@ function lu_(cle, fn) {
 }
 function muter_(fn) {
   memoOn_ = false;
-  try { return avecVerrou_(fn); } finally { memo_ = {}; memoOn_ = true; }
+  try { return avecVerrou_(fn); } finally { memo_ = {}; memoOn_ = true; viderCacheTables_(); }
 }
 const EMAIL_VALIDE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -144,6 +144,7 @@ function setup() {
   migrerVersGroupes_();
   migrerVersArticles_();
   migrerVersStructure_();
+  viderCacheTables_();
 }
 
 // Reprise de l'existant (idempotente, lancée par setup) : un premier groupe reçoit tous les accès actifs,
@@ -1189,7 +1190,32 @@ function nettoyerCommentaire_(texte) {
 
 function table_(nom, colonnes) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nom);
-  return sh ? lireTable_(sh, colonnes) : [];
+  if (!sh) return [];
+  // Les feuilles de structure changent rarement : lues depuis le cache du script (10 min) sauf pendant une écriture,
+  // où l'on relit toujours le Sheet. Le cache est vidé à la fin de chaque écriture.
+  if (!TABLES_EN_CACHE[nom] || !memoOn_) return lireTable_(sh, colonnes);
+  return lu_('t:' + nom, function () {
+    const cache = CacheService.getScriptCache();
+    let valeurs = null;
+    try { valeurs = JSON.parse(cache.get('tc_' + nom) || 'null'); } catch (e) { valeurs = null; }
+    if (!valeurs) {
+      valeurs = sh.getDataRange().getDisplayValues().slice(1);
+      const brut = JSON.stringify(valeurs);
+      if (brut.length < 90000) cache.put('tc_' + nom, brut, CACHE_TABLES_S);
+    }
+    return valeurs.map(function (v, i) {
+      const o = { _row: i + 2 };
+      colonnes.forEach(function (c, j) { o[c] = v[j] === undefined ? '' : String(v[j]); });
+      return o;
+    }).filter(function (o) { return o.id; });
+  });
+}
+
+const CACHE_TABLES_S = 600;
+const TABLES_EN_CACHE = { 'Etablissements': true, 'Promos': true, 'Inscriptions': true };
+function viderCacheTables_() {
+  const cache = CacheService.getScriptCache();
+  Object.keys(TABLES_EN_CACHE).forEach(function (n) { cache.remove('tc_' + n); });
 }
 
 function feuilleDe_(nom, colonnes) {

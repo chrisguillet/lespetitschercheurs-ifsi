@@ -129,7 +129,7 @@ function showGate(msg, retry) {
 function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
-  groupes = []; votes = []; promosMoi = []; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
+  groupes = []; votes = []; promosMoi = []; dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
@@ -188,7 +188,16 @@ function deriver() {
   comments = commentsAll.filter(c => ids.has(c.lecture_id) && (ctx.vue === "promo" ? c.portee === "promo" : c.portee !== "promo"));
 }
 
+// Signature des données utiles (hors « en ligne ») : une actualisation qui ne change rien ne reconstruit pas le tableau.
+let dataSig = "";
 function applyData(j) {
+  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.reunions, j.jalons, j.lectures, j.commentaires, j.lus, j.enAttente]);
+  const change = sig !== dataSig;
+  dataSig = sig;
+  applyDataBrut(j);
+  return change;
+}
+function applyDataBrut(j) {
   derniereSync = new Date();
   majSync();
   if (j.utilisateurs) users = j.utilisateurs;
@@ -270,7 +279,13 @@ async function refresh(manuel) {
   if (!token || !me) return;
   if (manuel === true) showStatus("⏳ Actualisation…");
   try {
-    applyData(await api("list"));
+    const change = applyData(await api("list"));
+    if (!change && manuel !== true) {   // rien de neuf : on met seulement à jour ce qui bouge sans les données (en ligne, compteurs)
+      renderCtx(); renderPending(); renderOnline(); majSync();
+      if (tab === "admin" && canAdmin()) await loadAdmin();
+      clearStatus();
+      return;
+    }
     renderCtx();
     majGroupe();
     if (usersChanged) renderFilters();
@@ -1010,7 +1025,7 @@ function artRow(g) {
    <b>${esc(i.titre)}</b>${lienHtml(i)}
    <div class="meta">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
    ${propHtml(i)}<div class="artacts">${actionsArticle(i)}</div></td>
-   <td class="artres" colspan="7"><div class="meta" style="margin-bottom:4px">${open ? "Fiches de lecture ci-dessous" : "Cliquez pour déplier les fiches de lecture"}</div>${resumeFiches(g)}</td>
+   <td class="artres" colspan="7"><div class="meta" style="margin-bottom:4px"><span class="hint-c">Cliquez pour déplier les fiches de lecture</span><span class="hint-o">Fiches de lecture ci-dessous</span></div>${resumeFiches(g)}</td>
    <td class="apa c9">${apaCell(i)}</td></tr>`;
 }
 
@@ -1281,12 +1296,18 @@ function toggleOpen(id, host) {
   majBoutonDeplier();
 }
 
+// Déplier / replier un document : on change des classes, sans reconstruire le tableau.
 function toggleArt(k) {
-  if (artOuvert(k)) { openArts.delete(k); fermesArts.add(k); } else { openArts.add(k); fermesArts.delete(k); }
-  renderTable();
+  const ouvrir = !artOuvert(k);
+  if (ouvrir) { openArts.add(k); fermesArts.delete(k); } else { openArts.delete(k); fermesArts.add(k); }
+  const racine = F.view === "cartes" ? $("cards") : $("rows");
+  racine.querySelectorAll("tr.art, .cardc.art").forEach(h => {
+    if (h.dataset.art !== k) return;
+    h.classList.toggle("open", ouvrir); h.setAttribute("aria-expanded", String(ouvrir));
+    const g = h.closest(".artgrp"); if (g) g.classList.toggle("open", ouvrir);
+  });
+  racine.querySelectorAll("tr.fiche").forEach(t => { if (t.dataset.fa === k) t.classList.toggle("show", ouvrir); });
   majBoutonDeplier();
-  const h = [...document.querySelectorAll("tr.art, .cardc.art")].find(x => x.dataset.art === k);
-  if (h) { try { h.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
 }
 
 function toutDeplier() {

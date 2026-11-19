@@ -142,6 +142,11 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 - **Renommer le Sheet** : sans effet sur l'application (le script lui est rattaché par son identifiant).
 - Le tableau se rafraîchit toutes les 45 secondes (et au retour sur l’onglet) (réglable dans `config.js`).
 
+## Performances
+
+- Chaque requête lit chaque feuille **une seule fois**. Les feuilles de structure (`Etablissements`, `Promos`, `Inscriptions`), qui changent rarement, sont servies par le **cache du script (10 minutes)** ; il est vidé à chaque écriture faite par l'application. Si vous modifiez ces trois feuilles **à la main** dans le Sheet, la modification peut mettre jusqu'à 10 minutes à apparaître.
+- Côté navigateur, l'actualisation automatique ne reconstruit pas le tableau quand rien n'a changé, et déplier un document ne reconstruit pas non plus le tableau.
+
 ## Notes de sécurité
 
 - `config.js` ne contient aucun secret : l'ID client et l'URL de l'API sont publics par nature.
