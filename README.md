@@ -28,7 +28,6 @@ Navigateur (GitHub Pages)  ──jeton Google──▶  Apps Script (API)  ─�
 |---|---|---|---|---|---|
 | **Étudiant** | oui | modifier, supprimer son analyse | ajouter **sa propre analyse** sur un article de la promo ; **proposer une correction** de la partie objective (validée par 3 étudiants) ; modification et suppression interdites | publier, modifier et supprimer les siens ; supprimer ceux des autres (modération) | oui |
 | **Formateur** | oui | — | — | publier, modifier et supprimer les siens | non |
-| **Lecteur** | oui | — | — | — | non |
 | **Administrateur** | oui | — | — | supprimer (modération) | oui, **y compris les étudiants** (prénom, couleur, rôle, adresse e-mail) et peut **supprimer** un utilisateur (plus d’accès ; ses lectures restent dans le Sheet mais ne sont plus affichées, et ses commentaires sur les lectures des autres apparaissent sous « Utilisateur supprimé ») |
 
 L'**administrateur** est une adresse fixe, définie dans la propriété de script `ADMIN_EMAIL` (voir plus bas). Elle n'apparaît
@@ -53,7 +52,7 @@ Tout est organisé en **établissement → promo → groupe** (par exemple *IFSI
   de la promo, seuls l'auteur et l'administrateur le peuvent. Repasser une analyse « En cours » cache les commentaires de promo, sans les perdre.
 - Le bandeau sous les onglets choisit le **groupe** (si l'on en a plusieurs, y compris dans d'autres promos) et la **vue** : *Mon groupe* ou *Toute la promo*.
   Tableau, cartes, bibliographie, synthèse et exports suivent la vue. Le choix est mémorisé.
-- Un **étudiant** n'est que dans **un groupe par promo** ; un **formateur** ou un **lecteur** est rattaché par l'administrateur à un ou plusieurs groupes
+- Un **étudiant** n'est que dans **un groupe par promo** ; un **formateur** est rattaché par l'administrateur à un ou plusieurs groupes
   et ne voit que ceux-là (plus les fiches partagées avec la promo de ces groupes).
 - **L'administrateur** crée, renomme, déplace et supprime les groupes, et gère les membres (onglet Administration, bloc *Groupes*).
   Supprimer un groupe conserve ses fiches dans le Sheet mais ne les affiche plus.
@@ -62,7 +61,7 @@ Tout est organisé en **établissement → promo → groupe** (par exemple *IFSI
   (la personne visée ne vote pas ; la proposition compte pour un « oui » de son auteur). Garde-fous : la proposition expire après **7 jours** ;
   un retrait refusé ne peut pas être reproposé pendant **14 jours** ; à deux étudiants le retrait ne se vote pas (l'administrateur retire le membre) ;
   on ne vide jamais un groupe de ses étudiants ; tout est tracé dans l'onglet `Votes`. Les fiches d'un membre retiré restent au groupe.
-- Un étudiant ne voit **pas les adresses e-mail des autres étudiants** (seulement les demandes en attente et les formateurs / lecteurs). Les autres étudiants
+- Un étudiant ne voit **pas les adresses e-mail des autres étudiants** (seulement les demandes en attente et les formateurs). Les autres étudiants
   sont désignés par un identifiant public dérivé de l'adresse.
 - **Reprise de l'existant** : `setup` crée le groupe « Les petits chercheurs » (IFSI Saint-Nazaire, Promo 24-27) avec tous les accès actifs,
   et lui rattache les fiches et commentaires déjà saisis. Sans risque à relancer.
@@ -70,7 +69,7 @@ Tout est organisé en **établissement → promo → groupe** (par exemple *IFSI
 **Demande d'accès** : une personne dont l'adresse n'est pas connue se connecte avec Google ; une ligne
 `en_attente` est créée dans `Utilisateurs` (50 demandes en attente au maximum) et elle voit « demande envoyée ».
 Elle ne lit rien tant qu'un étudiant n'a pas validé. Dans l'onglet **👥 Administration** (visible des
-étudiants et de l'administrateur, avec un compteur de demandes), on donne un prénom et un rôle (Lecteur ou Formateur), ou on refuse.
+étudiants et de l'administrateur, avec un compteur de demandes), on donne un prénom et un rôle (Formateur ; l'administrateur peut aussi en faire un Étudiant), ou on refuse.
 On peut ensuite changer le rôle, ou retirer l'accès. Seul l'administrateur peut gérer les étudiants.
 
 ## Mise en place
@@ -127,7 +126,7 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 - **Annuler une contribution** : retrouver l'ancienne version dans `Historique` (colonne `avant`, JSON)
   et la recopier dans la lecture concernée.
 - **Ne pas modifier** les colonnes `id` et `owner` de `Lectures`, ni les ids de `Commentaires`.
-- **Rôle inconnu ou mal orthographié** dans `Utilisateurs` : traité comme `lecteur` (le moins privilégié).
+- **Rôle inconnu ou mal orthographié** dans `Utilisateurs` : traité comme `formateur` (tant qu'il n'est rattaché à aucun groupe, il ne voit rien). L'ancien rôle `lecteur` n'existe plus : `setup` le convertit en `formateur`.
 - **Sauvegarde automatique** : dans l'éditeur Apps Script, lancer **une fois** `activerSauvegardes` (accepter les nouvelles
   autorisations Drive). Une copie du Sheet est alors faite chaque jour vers 3 h dans le dossier Drive
   « Sauvegardes – lectures IFSI ». On garde les **7 plus récentes** (une par jour) et les **8 dernières faites un lundi**
@@ -144,7 +143,7 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 
 - `config.js` ne contient aucun secret : l'ID client et l'URL de l'API sont publics par nature.
 - Le script refuse tout jeton dont l'audience n'est pas votre ID client, ou dont l'adresse n'est pas vérifiée.
-- Les adresses e-mail ne sont renvoyées au navigateur qu'à l'administrateur (et, pour les demandes en attente et les formateurs / lecteurs, aux étudiants), dans l'onglet Administration.
+- Les adresses e-mail ne sont renvoyées au navigateur qu'à l'administrateur (et, pour les demandes en attente et les formateurs, aux étudiants), dans l'onglet Administration.
 - L'adresse de l'administrateur n'est pas dans le dépôt : elle vit dans les propriétés du script.
 - Tant qu'une demande est en attente, ou refusée, aucune lecture ni aucun commentaire n'est renvoyé.
 
@@ -154,3 +153,23 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 Relancez `setup` après avoir collé le nouveau `Code.gs` : il crée les feuilles `Articles` et `Propositions`, rattache chaque lecture existante à un article
 (les lectures du même article dans une promo — même DOI ou même titre, personnes différentes — sont fusionnées) et recalcule le partage
 (Terminée → promo). Opération sans risque à relancer ; les colonnes objectives de `Lectures` ne sont plus lues. Puis nouveau déploiement (nouvelle version).
+
+## Suivi de projet (onglet « 🗓️ Suivi de projet »)
+
+Propre à chaque groupe (celui choisi dans le bandeau), visible **de son groupe seulement** : ses étudiants, ses formateurs rattachés et l'administrateur. Rien n'est partagé avec le reste de la promo (contrairement aux analyses terminées).
+
+- **Réunions** : un compte rendu par réunion (date, titre, participants, **ce qui a été vu**, **ce qui est attendu**, **étapes pour la suite**), les plus récentes en premier.
+- **Rétroplanning** : des **jalons** avec échéance et statut (à faire, en cours, fait), triés par date, avec une frise (la ligne rouge est aujourd'hui),
+  le décompte « J-12 » ou « en retard de 3 j » et une barre d'avancement.
+- Les **étudiants du groupe** ajoutent, modifient et suppriment ; les formateurs rattachés lisent seulement ; l'administrateur peut supprimer.
+- Nouvelles feuilles `Reunions` et `Jalons` (créées par `setup`, ou automatiquement au premier usage). Rien à migrer.
+
+## Administration : établissements, promos, groupes
+
+L'onglet Administration (administrateur) présente un **arbre** : chaque **établissement** contient ses **promos**, chaque promo ses **groupes**.
+
+- On crée, **renomme** et supprime les établissements et les promos ; renommer met à jour tous les groupes concernés.
+- On ne supprime un établissement qu'une fois ses promos supprimées, et une promo qu'une fois ses groupes supprimés (une promo peut exister sans groupe).
+- Un groupe se crée directement dans sa promo, se renomme et peut être **déplacé vers une autre promo** (liste déroulante) ; on y ajoute ou retire des membres.
+- Les volets repliés le restent d'une mise à jour à l'autre.
+- Les feuilles `Etablissements` et `Promos` sont créées et remplies par `setup` à partir des groupes existants (idempotent).

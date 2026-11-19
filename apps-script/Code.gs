@@ -7,9 +7,8 @@
  *
  * Rôles (colonne « role » de l'onglet Utilisateurs) :
  *  - etudiant  : ses lectures, « contribuer » aux lectures des autres, validation des
- *                demandes d'accès (lecteurs et formateurs), modération des commentaires ;
+ *                demandes d'accès (formateurs), modération des commentaires ;
  *  - formateur : lecture + commentaires ;
- *  - lecteur   : lecture seule.
  * Rôle « admin » : adresse fixe de la propriété de script ADMIN_EMAIL (absente de la feuille).
  * Lecture, gestion de tous les accès (y compris les étudiants et leurs adresses), modération.
  *
@@ -19,7 +18,7 @@
  * Groupes : établissement > promo > groupe. Chaque fiche appartient à un groupe et reste visible de ses
  * seuls membres, sauf si elle est partagée avec la promo (portée « promo »). Les commentaires ont
  * la même portée que leur fil : ceux du groupe et ceux de la promo sont distincts.
- * Un étudiant appartient à un seul groupe par promo ; formateurs et lecteurs sont rattachés à des groupes
+ * Un étudiant appartient à un seul groupe par promo ; les formateurs sont rattachés à des groupes
  * par l'administrateur. L'administrateur crée les groupes et gère les membres ; les étudiants peuvent
  * ajouter un membre à leur groupe, et retirer un membre ou renommer le groupe par vote à la majorité.
  */
@@ -34,6 +33,10 @@ const FEUILLE_MEMBRES = 'Membres';
 const FEUILLE_VOTES = 'Votes';
 const FEUILLE_ARTICLES = 'Articles';
 const FEUILLE_PROPOSITIONS = 'Propositions';
+const FEUILLE_REUNIONS = 'Reunions';
+const FEUILLE_ETABLISSEMENTS = 'Etablissements';
+const FEUILLE_PROMOS = 'Promos';
+const FEUILLE_JALONS = 'Jalons';
 
 const COLONNES = ['id', 'owner', 'statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'ajoute', 'modifie_le', 'modifie_par',
@@ -47,11 +50,20 @@ const COL_ARTICLES = ['id', 'cree_par', 'groupe_id', 'ajoute', 'modifie_le', 'mo
 const COL_PROPOSITIONS = ['id', 'article_id', 'propose_par', 'cree_le', 'valeurs', 'votes', 'statut', 'clos_le'];
 const PROP_SEUIL = 3;
 const PROP_DUREE_MS = 14 * 24 * 3600 * 1000;
+// Suivi de projet d'un groupe : comptes rendus de réunion et jalons du rétroplanning (visibles du groupe, de ses formateurs
+// rattachés et de l'administrateur ; modifiables par les étudiants du groupe).
+const COL_REUNIONS = ['id', 'groupe_id', 'date', 'titre', 'participants', 'vu', 'attendu', 'suite',
+  'cree_par', 'cree_le', 'modifie_le', 'modifie_par'];
+const COL_JALONS = ['id', 'groupe_id', 'titre', 'echeance', 'statut', 'note', 'cree_par', 'cree_le', 'modifie_le', 'modifie_par'];
+const STATUTS_JALON = ['a_faire', 'en_cours', 'fait'];
 const OBJECTIFS = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type', 'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
 const ANALYSES = ['statut', 'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre'];
 const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion'];
 // portee : « groupe » ou « promo » ; groupe_id : groupe de l'auteur au moment du commentaire.
 const COL_COMMENTAIRES = ['id', 'lecture_id', 'auteur_email', 'auteur', 'date', 'texte', 'modifie_le', 'portee', 'groupe_id'];
+// Structure : établissement > promo > groupe. Les groupes gardent les noms (clé de promo), ces feuilles listent aussi les promos vides.
+const COL_ETABLISSEMENTS = ['id', 'nom', 'cree_le'];
+const COL_PROMOS = ['id', 'etablissement_id', 'nom', 'cree_le'];
 const COL_GROUPES = ['id', 'etablissement', 'promo', 'nom', 'cree_le'];
 const COL_MEMBRES = ['id', 'groupe_id', 'email', 'ajoute_le'];
 // type : « retrait » (cible = adresse du membre) ou « nom » (valeur = nouveau nom) ; votes = JSON {adresse: 1|0}.
@@ -109,6 +121,10 @@ function setup() {
   preparer_(ss, FEUILLE_VOTES, COL_VOTES);
   preparer_(ss, FEUILLE_ARTICLES, COL_ARTICLES);
   preparer_(ss, FEUILLE_PROPOSITIONS, COL_PROPOSITIONS);
+  preparer_(ss, FEUILLE_REUNIONS, COL_REUNIONS);
+  preparer_(ss, FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS);
+  preparer_(ss, FEUILLE_PROMOS, COL_PROMOS);
+  preparer_(ss, FEUILLE_JALONS, COL_JALONS);
   const u = preparer_(ss, FEUILLE_UTILISATEURS, COL_UTILISATEURS);
   if (u.getLastRow() < 2) {
     u.getRange(2, 1, 4, 5).setValues([
@@ -121,6 +137,7 @@ function setup() {
   memo_ = {};
   migrerVersGroupes_();
   migrerVersArticles_();
+  migrerVersStructure_();
 }
 
 // Reprise de l'existant (idempotente, lancée par setup) : un premier groupe reçoit tous les accès actifs,
@@ -197,6 +214,21 @@ function migrerVersArticles_() {
         }
         const p = porteeDe_(r.statut);
         if (r.portee !== p) shL.getRange(r._row, iP, 1, 1).setValues([[p]]);
+      });
+    } finally { memo_ = {}; memoOn_ = true; }
+  });
+}
+
+// Reprise (idempotente) : les établissements et promos déjà portés par des groupes deviennent des entrées de la structure,
+// et l'ancien rôle « lecteur » devient « formateur » (le partage se fait désormais au niveau de la promo).
+function migrerVersStructure_() {
+  avecVerrou_(function () {
+    memoOn_ = false;
+    try {
+      table_(FEUILLE_GROUPES, COL_GROUPES).forEach(function (g) { assurerStructure_(g.etablissement, g.promo); });
+      const sh = feuilleUtilisateurs_();
+      sh.getDataRange().getDisplayValues().forEach(function (r, i) {
+        if (i > 0 && String(r[2]).trim().toLowerCase() === 'lecteur') sh.getRange(i + 1, 3, 1, 1).setValues([['formateur']]);
       });
     } finally { memo_ = {}; memoOn_ = true; }
   });
@@ -300,6 +332,18 @@ function doPost(e) {
       case 'article_update':
         muter_(function () { modifierArticle_(user, req.article_id, req.data); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'reunion_save':
+        muter_(function () { enregistrerSuivi_(user, 'reunion', req.groupe_id, req.id, req.data); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'reunion_delete':
+        muter_(function () { supprimerSuivi_(user, 'reunion', req.id); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'jalon_save':
+        muter_(function () { enregistrerSuivi_(user, 'jalon', req.groupe_id, req.id, req.data); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'jalon_delete':
+        muter_(function () { supprimerSuivi_(user, 'jalon', req.id); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'article_vote':
         muter_(function () { voterArticle_(user, req.id, req.vote === true); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
@@ -341,6 +385,12 @@ function doPost(e) {
       case 'vote_cancel':
         muter_(function () { annulerVote_(user, req.id); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
+      case 'etab_create': case 'etab_rename': case 'etab_delete': case 'promo_create': case 'promo_rename': case 'promo_delete':
+        muter_(function () {
+          ({ etab_create: creerEtablissement_, etab_rename: renommerEtablissement_, etab_delete: function (u) { supprimerEtablissement_(u, req.id); },
+            promo_create: creerPromo_, promo_rename: renommerPromo_, promo_delete: function (u) { supprimerPromo_(u, req.id); } })[req.action](user, req.data);
+        });
+        return json_(Object.assign({ ok: true }, donnees_(user), accesSiAdmin_(user)));
       case 'group_create':
         muter_(function () { creerGroupe_(user, req.data); });
         return json_(Object.assign({ ok: true }, donnees_(user), accesSiAdmin_(user)));
@@ -358,7 +408,7 @@ function doPost(e) {
         return json_({ ok: true, items: traduireMotsCles_(req.texte) });
       case 'admin_list':
         exigerGestion_(user);
-        return json_({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user) });
+        return json_({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user), structure: listerStructureAdmin_(user) });
       case 'admin_set':
         muter_(function () { administrer_(user, req.data); });
         return json_(Object.assign({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user) }, donnees_(user)));
@@ -391,6 +441,8 @@ function donnees_(user) {
     groupes: groupesPourClient_(user, c),
     votes: votesPourClient_(user, c),
     propositions: propositionsPourClient_(user, c),
+    reunions: suiviPourClient_(user, c, 'reunion'),
+    jalons: suiviPourClient_(user, c, 'jalon'),
     lectures: lister_(user),
     commentaires: listerCommentaires_(user),
     lus: listerLus_(user),
@@ -400,7 +452,7 @@ function donnees_(user) {
 }
 
 function accesSiAdmin_(user) {
-  return user.role === 'admin' ? { acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user) } : {};
+  return user.role === 'admin' ? { acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user), structure: listerStructureAdmin_(user) } : {};
 }
 
 /* ---------- Présence (qui est en ligne) ---------- */
@@ -484,8 +536,8 @@ function lireUtilisateurs_() {
       _row: i + 2,
       email: String(r[0]).trim().toLowerCase(),
       prenom: String(r[1]).trim(),
-      // Rôle inconnu ou vide : le moins privilégié.
-      role: role === 'etudiant' || role === 'formateur' ? role : 'lecteur',
+      // Rôle inconnu, vide ou ancien « lecteur » : formateur (sans groupe rattaché, il ne voit rien d'autre que ce que la promo partage).
+      role: role === 'etudiant' ? role : 'formateur',
       couleur: /^#[0-9a-fA-F]{6}$/.test(String(r[3]).trim()) ? String(r[3]).trim() : COULEUR_DEFAUT,
       // Ligne ancienne sans statut : considérée comme active.
       statut: statut === 'en_attente' || statut === 'refuse' ? statut : 'actif',
@@ -500,7 +552,7 @@ function enregistrerDemande_(email) {
   if (existants.some(function (u) { return u.email === email; })) return;
   const enAttente = existants.filter(function (u) { return u.statut === 'en_attente'; }).length;
   if (enAttente >= MAX_EN_ATTENTE) throw err_('forbidden', 'Trop de demandes en attente, réessayez plus tard');
-  feuilleUtilisateurs_().appendRow([email, '', 'lecteur', COULEUR_DEFAUT, 'en_attente', new Date().toISOString(), '']);
+  feuilleUtilisateurs_().appendRow([email, '', 'formateur', COULEUR_DEFAUT, 'en_attente', new Date().toISOString(), '']);
 }
 
 function emailAdmin_() {
@@ -517,7 +569,7 @@ function majConnexion_(user) {
 /* ---------- Administration des accès (étudiants) ---------- */
 
 // L'administrateur voit tout le monde. Un étudiant ne voit pas les adresses des autres étudiants (la promo en compte beaucoup) :
-// il garde les demandes en attente et les formateurs / lecteurs qu'il peut gérer.
+// il garde les demandes en attente et les formateurs qu'il peut gérer.
 function listerAcces_(user) {
   const admin = user.role === 'admin';
   const nbL = {}, nbC = {};
@@ -556,7 +608,7 @@ function administrer_(user, data) {
   const role = String(data.role || '');
   const statut = String(data.statut || '');
   const prenom = String(data.prenom === undefined || data.prenom === null ? '' : data.prenom).trim();
-  if ((admin ? ['etudiant', 'formateur', 'lecteur'] : ['formateur', 'lecteur']).indexOf(role) < 0) {
+  if ((admin ? ['etudiant', 'formateur'] : ['formateur']).indexOf(role) < 0) {
     throw err_('invalid', 'Rôle invalide');
   }
   if (['actif', 'refuse'].indexOf(statut) < 0) throw err_('invalid', 'Statut invalide');
@@ -582,7 +634,7 @@ function administrer_(user, data) {
 }
 
 function migrerEmail_(ancien, nouveau) {
-  const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleArticles_(), COL_ARTICLES, 'cree_par'], [feuillePropositions_(), COL_PROPOSITIONS, 'propose_par'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
+  const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleArticles_(), COL_ARTICLES, 'cree_par'], [feuillePropositions_(), COL_PROPOSITIONS, 'propose_par'], [feuilleSuivi_('reunion'), COL_REUNIONS, 'cree_par'], [feuilleSuivi_('jalon'), COL_JALONS, 'cree_par'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
   if (feuilleLus_(false)) tables.push([feuilleLus_(false), COL_LUS, 'id']);
   [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
     .forEach(function (t) {
@@ -1282,7 +1334,7 @@ function ajouterMembreDemande_(user, gid, pid, email) {
     ? utilisateurActif_(function (u) { return u.email === String(email).trim().toLowerCase(); })
     : utilisateurActif_(function (u) { return pid_(u.email) === pid; });
   if (!cible) throw err_('not_found', 'Personne introuvable');
-  if (!admin && cible.role !== 'etudiant') throw err_('forbidden', 'Seul l’administrateur rattache un formateur ou un lecteur');
+  if (!admin && cible.role !== 'etudiant') throw err_('forbidden', 'Seul l’administrateur rattache un formateur');
   ajouterMembre_(g, cible);
 }
 
@@ -1419,11 +1471,128 @@ function listerGroupesAdmin_(user) {
   });
 }
 
+// Nom de l'établissement et de la promo : ceux de la structure (promo_id) ou, à défaut, ceux saisis (créés au besoin, casse existante conservée).
+function structureDe_(data, courant) {
+  if (data.promo_id) {
+    const p = table_(FEUILLE_PROMOS, COL_PROMOS).filter(function (x) { return x.id === String(data.promo_id); })[0];
+    const e = p && table_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).filter(function (x) { return x.id === p.etablissement_id; })[0];
+    if (!p || !e) throw err_('not_found', 'Promo introuvable');
+    return { etablissement: e.nom, promo: p.nom };
+  }
+  const base = courant || {};
+  const etab = nomValide_(data.etablissement === undefined ? base.etablissement : data.etablissement, 'Établissement');
+  const promo = nomValide_(data.promo === undefined ? base.promo : data.promo, 'Promo');
+  return assurerStructure_(etab, promo);
+}
+
+// Crée l'établissement et la promo s'ils n'existent pas ; renvoie leurs noms canoniques.
+function assurerStructure_(etab, promo) {
+  const maintenant = new Date().toISOString();
+  const shE = feuilleDe_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS), shP = feuilleDe_(FEUILLE_PROMOS, COL_PROMOS);
+  let e = lireTable_(shE, COL_ETABLISSEMENTS).filter(function (x) { return normaliserTerme_(x.nom) === normaliserTerme_(etab); })[0];
+  if (!e) {
+    e = { id: Utilities.getUuid(), nom: etab, cree_le: maintenant };
+    shE.appendRow(COL_ETABLISSEMENTS.map(function (c) { return e[c]; }));
+  }
+  let p = lireTable_(shP, COL_PROMOS).filter(function (x) { return x.etablissement_id === e.id && normaliserTerme_(x.nom) === normaliserTerme_(promo); })[0];
+  if (!p) {
+    p = { id: Utilities.getUuid(), etablissement_id: e.id, nom: promo, cree_le: maintenant };
+    shP.appendRow(COL_PROMOS.map(function (c) { return p[c]; }));
+  }
+  return { etablissement: e.nom, promo: p.nom };
+}
+
+function listerStructureAdmin_(user) {
+  if (user.role !== 'admin') return [];
+  const promos = table_(FEUILLE_PROMOS, COL_PROMOS);
+  return table_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).map(function (e) {
+    return { id: e.id, nom: e.nom, promos: promos.filter(function (p) { return p.etablissement_id === e.id; })
+      .map(function (p) { return { id: p.id, nom: p.nom }; }) };
+  });
+}
+
+function etabParId_(id) {
+  const e = table_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).filter(function (x) { return x.id === String(id || ''); })[0];
+  if (!e) throw err_('not_found', 'Établissement introuvable');
+  return e;
+}
+function promoParId_(id) {
+  const p = table_(FEUILLE_PROMOS, COL_PROMOS).filter(function (x) { return x.id === String(id || ''); })[0];
+  if (!p) throw err_('not_found', 'Promo introuvable');
+  return p;
+}
+
+function creerEtablissement_(user, data) {
+  exigerAdmin_(user);
+  const nom = nomValide_(data && data.nom, 'Établissement');
+  if (table_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).some(function (x) { return normaliserTerme_(x.nom) === normaliserTerme_(nom); })) {
+    throw err_('invalid', 'Cet établissement existe déjà');
+  }
+  feuilleDe_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).appendRow([Utilities.getUuid(), nom, new Date().toISOString()]);
+}
+
+function renommerEtablissement_(user, data) {
+  exigerAdmin_(user);
+  const e = etabParId_(data && data.id);
+  const nom = nomValide_(data.nom, 'Établissement');
+  if (table_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).some(function (x) { return x.id !== e.id && normaliserTerme_(x.nom) === normaliserTerme_(nom); })) {
+    throw err_('invalid', 'Cet établissement existe déjà');
+  }
+  feuilleDe_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).getRange(e._row, 2, 1, 1).setValues([[nom]]);
+  const shG = feuilleDe_(FEUILLE_GROUPES, COL_GROUPES);
+  table_(FEUILLE_GROUPES, COL_GROUPES).filter(function (g) { return g.etablissement === e.nom; })
+    .forEach(function (g) { shG.getRange(g._row, 2, 1, 1).setValues([[nom]]); });
+}
+
+function supprimerEtablissement_(user, id) {
+  exigerAdmin_(user);
+  const e = etabParId_(id);
+  if (table_(FEUILLE_PROMOS, COL_PROMOS).some(function (p) { return p.etablissement_id === e.id; })) {
+    throw err_('invalid', 'Supprimez d’abord les promos de cet établissement');
+  }
+  feuilleDe_(FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS).deleteRow(e._row);
+}
+
+function creerPromo_(user, data) {
+  exigerAdmin_(user);
+  const e = etabParId_(data && data.etablissement_id);
+  const nom = nomValide_(data.nom, 'Promo');
+  if (table_(FEUILLE_PROMOS, COL_PROMOS).some(function (p) { return p.etablissement_id === e.id && normaliserTerme_(p.nom) === normaliserTerme_(nom); })) {
+    throw err_('invalid', 'Cette promo existe déjà dans cet établissement');
+  }
+  feuilleDe_(FEUILLE_PROMOS, COL_PROMOS).appendRow([Utilities.getUuid(), e.id, nom, new Date().toISOString()]);
+}
+
+function renommerPromo_(user, data) {
+  exigerAdmin_(user);
+  const p = promoParId_(data && data.id);
+  const e = etabParId_(p.etablissement_id);
+  const nom = nomValide_(data.nom, 'Promo');
+  if (table_(FEUILLE_PROMOS, COL_PROMOS).some(function (x) { return x.id !== p.id && x.etablissement_id === e.id && normaliserTerme_(x.nom) === normaliserTerme_(nom); })) {
+    throw err_('invalid', 'Cette promo existe déjà dans cet établissement');
+  }
+  feuilleDe_(FEUILLE_PROMOS, COL_PROMOS).getRange(p._row, 3, 1, 1).setValues([[nom]]);
+  const shG = feuilleDe_(FEUILLE_GROUPES, COL_GROUPES);
+  table_(FEUILLE_GROUPES, COL_GROUPES).filter(function (g) { return g.etablissement === e.nom && g.promo === p.nom; })
+    .forEach(function (g) { shG.getRange(g._row, 3, 1, 1).setValues([[nom]]); });
+}
+
+function supprimerPromo_(user, id) {
+  exigerAdmin_(user);
+  const p = promoParId_(id);
+  const e = etabParId_(p.etablissement_id);
+  if (table_(FEUILLE_GROUPES, COL_GROUPES).some(function (g) { return g.etablissement === e.nom && g.promo === p.nom; })) {
+    throw err_('invalid', 'Supprimez d’abord les groupes de cette promo');
+  }
+  feuilleDe_(FEUILLE_PROMOS, COL_PROMOS).deleteRow(p._row);
+}
+
 function creerGroupe_(user, data) {
   exigerAdmin_(user);
   if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
-  const g = { id: Utilities.getUuid(), etablissement: nomValide_(data.etablissement, 'Établissement'),
-    promo: nomValide_(data.promo, 'Promo'), nom: nomValide_(data.nom, 'Nom'), cree_le: new Date().toISOString() };
+  const st = structureDe_(data, null);
+  const g = { id: Utilities.getUuid(), etablissement: st.etablissement,
+    promo: st.promo, nom: nomValide_(data.nom, 'Nom'), cree_le: new Date().toISOString() };
   const cle = clePromo_(g);
   verifierNomLibre_(cle, g.nom, '');
   const vus = {};
@@ -1444,8 +1613,8 @@ function modifierGroupe_(user, data) {
   exigerAdmin_(user);
   if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
   const g = groupeParId_(String(data.id || ''));
-  const n = { etablissement: nomValide_(data.etablissement === undefined ? g.etablissement : data.etablissement, 'Établissement'),
-    promo: nomValide_(data.promo === undefined ? g.promo : data.promo, 'Promo'),
+  const st = structureDe_(data, g);
+  const n = { etablissement: st.etablissement, promo: st.promo,
     nom: nomValide_(data.nom === undefined ? g.nom : data.nom, 'Nom') };
   const cle = clePromo_(n);
   verifierNomLibre_(cle, n.nom, g.id);
@@ -1468,6 +1637,98 @@ function supprimerGroupe_(user, id) {
       .sort(function (a, b) { return b._row - a._row; }).forEach(function (r) { sh.deleteRow(r._row); });
   });
   feuilleDe_(FEUILLE_GROUPES, COL_GROUPES).deleteRow(g._row);
+}
+
+/* ---------- Suivi de projet : réunions et rétroplanning ---------- */
+
+const SUIVI = {
+  reunion: { feuille: FEUILLE_REUNIONS, colonnes: COL_REUNIONS, champs: ['date', 'titre', 'participants', 'vu', 'attendu', 'suite'] },
+  jalon: { feuille: FEUILLE_JALONS, colonnes: COL_JALONS, champs: ['titre', 'echeance', 'statut', 'note'] }
+};
+
+function feuilleSuivi_(type) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const d = SUIVI[type];
+  // Créée au besoin : une installation antérieure fonctionne jusqu'au prochain setup().
+  return ss.getSheetByName(d.feuille) || preparer_(ss, d.feuille, d.colonnes);
+}
+
+function dateValide_(v) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(v + 'T00:00:00Z');
+  return !isNaN(d) && d.toISOString().slice(0, 10) === v;
+}
+
+function validerSuivi_(type, d) {
+  if (type === 'reunion') {
+    if (!dateValide_(d.date)) throw err_('invalid', 'Date de réunion invalide');
+    if (!d.titre && !d.vu && !d.attendu && !d.suite) throw err_('invalid', 'Renseignez au moins un titre ou un compte rendu');
+  } else {
+    if (!d.titre) throw err_('invalid', 'Le jalon doit avoir un titre');
+    if (!dateValide_(d.echeance)) throw err_('invalid', 'Échéance invalide');
+    if (STATUTS_JALON.indexOf(d.statut) < 0) throw err_('invalid', 'Statut invalide');
+  }
+}
+
+function enregistrerSuivi_(user, type, groupeId, id, data) {
+  exigerEtudiant_(user);
+  if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
+  const def = SUIVI[type];
+  const sh = feuilleSuivi_(type);
+  let existante = null;
+  let gid = String(groupeId || '');
+  if (id) {
+    existante = lireTable_(sh, def.colonnes).filter(function (x) { return x.id === id; })[0];
+    if (!existante) throw err_('not_found', 'Élément introuvable');
+    gid = existante.groupe_id;
+  }
+  exigerMembre_(user, gid);
+  const d = {};
+  def.champs.forEach(function (k) {
+    const v = data[k] === undefined || data[k] === null ? '' : String(data[k]).trim();
+    if (v.length > LONGUEUR_MAX) throw err_('invalid', 'Champ trop long (' + LONGUEUR_MAX + ' caractères maximum)');
+    d[k] = v;
+  });
+  if (type === 'jalon' && !d.statut) d.statut = 'a_faire';
+  validerSuivi_(type, d);
+  const maintenant = new Date().toISOString();
+  if (!existante) {
+    const m = { id: Utilities.getUuid(), groupe_id: gid, cree_par: user.email, cree_le: maintenant, modifie_le: '', modifie_par: '' };
+    sh.appendRow(def.colonnes.map(function (k) { return k in m ? m[k] : d[k]; }));
+    return;
+  }
+  const ligne = def.colonnes.map(function (k) {
+    if (def.champs.indexOf(k) >= 0) return d[k];
+    if (k === 'modifie_le') return maintenant;
+    if (k === 'modifie_par') return user.prenom;
+    return existante[k];
+  });
+  sh.getRange(existante._row, 1, 1, def.colonnes.length).setValues([ligne]);
+}
+
+// Les étudiants du groupe modifient et suppriment ; l'administrateur peut aussi supprimer (modération).
+function supprimerSuivi_(user, type, id) {
+  const def = SUIVI[type];
+  const sh = feuilleSuivi_(type);
+  const x = lireTable_(sh, def.colonnes).filter(function (r) { return r.id === id; })[0];
+  if (!x) throw err_('not_found', 'Élément introuvable');
+  if (user.role !== 'admin') { exigerEtudiant_(user); exigerMembre_(user, x.groupe_id); }
+  sh.deleteRow(x._row);
+}
+
+function suiviPourClient_(user, c, type) {
+  const def = SUIVI[type];
+  const parEmail = {};
+  listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
+  return lireTable_(feuilleSuivi_(type), def.colonnes).filter(function (r) {
+    return c.groupesParId[r.groupe_id] && (c.admin || c.miens[r.groupe_id]);
+  }).map(function (r) {
+    const o = { id: r.id, groupe_id: r.groupe_id, cree_le: r.cree_le, modifie_le: r.modifie_le, modifie_par: r.modifie_par,
+      par: parEmail[r.cree_par] ? parEmail[r.cree_par].prenom : 'Utilisateur supprimé',
+      modifiable: user.role === 'etudiant' && !!c.miens[r.groupe_id] };
+    def.champs.forEach(function (k) { o[k] = r[k]; });
+    return o;
+  });
 }
 
 /* ---------- Validation ---------- */

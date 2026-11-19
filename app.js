@@ -30,7 +30,7 @@ let token = null;
 try { token = sessionStorage.getItem("lydia_token"); } catch (e) { /* stockage indisponible */ }
 let me = null, users = [], items = [], comments = [], acces = [], pendingCount = 0;
 // items / comments = ce que montre la vue courante ; itemsAll / commentsAll = tout ce que le serveur renvoie à la personne.
-let groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [];
+let structureAdmin = [], adminFerme = new Set(), reunionsAll = [], jalonsAll = [], groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [];
 const ctx = { gid: "", vue: "groupe" };          // groupe choisi, et vue : « groupe » ou « promo » (fiches partagées)
 try { ctx.gid = localStorage.getItem("lydia_groupe") || ""; ctx.vue = localStorage.getItem("lydia_portee") === "groupe" ? "groupe" : "promo"; } catch (e) { /* ignoré */ }
 let cmScope = "groupe", studentsSig = "", ctxSig = "";
@@ -48,7 +48,7 @@ const F = { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute
   view: lsGet("lydia_vue", matchMedia("(max-width:700px)").matches ? "cartes" : "tableau") };
 const masquees = new Set((() => { try { return JSON.parse(lsGet("lydia_cols", "[]")); } catch (e) { return []; } })());
 
-// etudiant : écrit, administre et commente ; formateur : lit et commente ; lecteur : lit.
+// etudiant : écrit, administre et commente ; formateur : lit et commente (dans ses groupes) ; admin : gère tout.
 const canWrite = () => !!me && me.role === "etudiant";
 const canComment = () => !!me && (me.role === "formateur" || me.role === "etudiant");
 const canAdmin = () => !!me && (me.role === "etudiant" || me.role === "admin");   // valide les accès, modère
@@ -129,7 +129,7 @@ function showGate(msg, retry) {
 function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
-  groupes = []; votes = []; itemsAll = []; commentsAll = []; groupesAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
+  groupes = []; votes = []; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
@@ -195,6 +195,8 @@ function applyData(j) {
   votes = j.votes || [];
   itemsAll = j.lectures;
   props = j.propositions || [];
+  reunionsAll = j.reunions || [];
+  jalonsAll = j.jalons || [];
   commentsAll = j.commentaires || [];
   deriver();
   // La liste des étudiants (filtres, statistiques) dépend de la vue : on ne reconstruit les filtres que si elle change.
@@ -228,6 +230,8 @@ function renderData() {
   majModal();
   if (tab === "biblio") renderBiblio();
   if (tab === "synth") renderSynth();
+  if (tab === "suivi") renderSuivi();
+  document.querySelector('.tab[data-t="suivi"]').classList.toggle("hidden", !groupeCourant());
 }
 
 // Affiche l'attente le temps d'une écriture (l'API peut mettre quelques secondes à répondre).
@@ -310,7 +314,7 @@ const students = () => {
   return [...m.values()].sort((a, b) => a.prenom.localeCompare(b.prenom, "fr"));
 };
 
-const ROLE_NOM = { etudiant: "Étudiant", formateur: "Formateur · lecture et commentaires", lecteur: "Lecteur · lecture seule", admin: "Administrateur" };
+const ROLE_NOM = { etudiant: "Étudiant", formateur: "Formateur · lecture et commentaires", admin: "Administrateur" };
 
 const themeSombre = () => (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
 function majLibelleTheme() { const b = $("themebtn"); if (b) b.textContent = themeSombre() ? "☀️ Mode clair" : "🌙 Mode sombre"; }
@@ -347,7 +351,7 @@ function renderOnline() {
   const sig = JSON.stringify(enLigne);
   if (sig === enLigneSig && $("online").innerHTML) return;
   enLigneSig = sig;
-  const role = { formateur: "formateur", lecteur: "lecteur" };
+  const role = { formateur: "formateur" };
   const lignes = enLigne.map(u => `<div class="olu"><span class="dot" style="background:${esc(u.couleur)}"></span><b>${esc(u.prenom)}</b>${u.moi ? ' <span class="meta">(vous)</span>' : role[u.role] ? ` <span class="meta">${role[u.role]}</span>` : ""}</div>`).join("");
   const n = enLigne.length;
   $("online").innerHTML = `<details class="colmenu"><summary class="btn sm sec" aria-label="${n} personne${n > 1 ? "s" : ""} en ligne"><span class="live" aria-hidden="true"></span> ${n} en ligne</summary>
@@ -360,7 +364,7 @@ function renderPending() {
   el.classList.toggle("hidden", !(canAdmin() && pendingCount));
 }
 
-const ONGLETS = ["all", "mine", "cmts", "biblio", "synth", "admin"];
+const ONGLETS = ["all", "mine", "cmts", "suivi", "biblio", "synth", "admin"];
 function setTab(t) {
   tab = t;
   document.querySelectorAll(".tab").forEach(b => {
@@ -371,10 +375,123 @@ function setTab(t) {
   ONGLETS.forEach(x => $(x).classList.toggle("hidden", t !== x));
   if (t === "admin" && canAdmin()) loadAdmin();
   if (t === "cmts") renderComments();
+  if (t === "suivi") renderSuivi();
   if (t === "biblio") { renderBiblioTools(); renderBiblio(); }
   if (t === "synth") renderSynth();
 }
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.t));
+
+/* ---------- Suivi de projet : rétroplanning et réunions du groupe ---------- */
+
+const STATUT_JALON = { a_faire: "À faire", en_cours: "En cours", fait: "Fait ✅" };
+let suiviForm = null;   // { type: "jalon" | "reunion", id } pendant la saisie : on ne reconstruit pas le formulaire (actualisation automatique)
+
+const aujourdhui = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+const jourDe = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ""); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
+const ecartJours = iso => { const d = jourDe(iso); return d ? Math.round((d - aujourdhui()) / 864e5) : null; };
+
+function delaiJalon(j) {
+  if (j.statut === "fait") return "";
+  const e = ecartJours(j.echeance);
+  if (e === null) return "";
+  if (e < 0) return `<span class="late">⚠ en retard de ${-e} j</span>`;
+  return e === 0 ? "<b>aujourd’hui</b>" : `J-${e}`;
+}
+
+function frise(l) {
+  if (l.length < 1) return "";
+  const t0 = aujourdhui().getTime();
+  const dates = l.map(j => jourDe(j.echeance).getTime()).concat([t0]);
+  const min = Math.min(...dates), max = Math.max(...dates), span = Math.max(max - min, 864e5);
+  const pos = t => `${(5 + 90 * (t - min) / span).toFixed(1)}%`;
+  return `<div class="frise" role="img" aria-label="Frise des jalons"><div class="fligne"></div>
+   <div class="faujourdhui" style="left:${pos(t0)}" title="Aujourd’hui"><span>aujourd’hui</span></div>
+   ${l.map(j => `<div class="fjalon ${esc(j.statut)} ${j.statut !== "fait" && ecartJours(j.echeance) < 0 ? "retard" : ""}" style="left:${pos(jourDe(j.echeance).getTime())}" title="${esc(j.titre)} · ${esc(fmtD(j.echeance))}"><span>${esc(j.titre)}<br>${esc(fmtD(j.echeance))}</span></div>`).join("")}</div>`;
+}
+
+function renderSuivi() {
+  const g = groupeCourant();
+  if (!g) { $("retro").innerHTML = ""; $("reunions").innerHTML = ""; return; }
+  const ecrit = canWrite() && groupes.some(x => x.id === g.id);
+  $("addjalon").classList.toggle("hidden", !ecrit);
+  $("addreunion").classList.toggle("hidden", !ecrit);
+  const jal = jalonsAll.filter(j => j.groupe_id === g.id).sort((a, b) => a.echeance.localeCompare(b.echeance));
+  const fait = jal.filter(j => j.statut === "fait").length;
+  $("retro").innerHTML = jal.length
+    ? `<div class="meta" style="margin:8px 0">Groupe <b>${esc(g.nom)}</b> · ${fait} jalon${fait > 1 ? "s" : ""} fait${fait > 1 ? "s" : ""} sur ${jal.length}</div>
+       <div class="barre" aria-hidden="true"><i style="width:${Math.round(100 * fait / jal.length)}%"></i></div>${frise(jal)}
+       <div class="jalons">${jal.map(j => `<div class="jalon ${esc(j.statut)}"><div><span class="badge ${j.statut === "fait" ? "" : "prog"}">${esc(STATUT_JALON[j.statut] || j.statut)}</span> <b>${esc(j.titre)}</b>
+         <span class="meta">· ${esc(fmtD(j.echeance))} ${delaiJalon(j)}</span>${j.note ? `<div class="meta">${esc(j.note)}</div>` : ""}</div>
+         ${j.modifiable ? `<div><button type="button" class="btn sm sec" data-jed="${esc(j.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-jdel="${esc(j.id)}">Supprimer</button></div>` : ""}</div>`).join("")}</div>`
+    : `<div class="empty">Aucun jalon pour l’instant.${ecrit ? " Ajoutez les grandes étapes (plan, première version, dépôt…) avec leur échéance." : ""}</div>`;
+  const reu = reunionsAll.filter(x => x.groupe_id === g.id).sort((a, b) => b.date.localeCompare(a.date));
+  const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b><div style="white-space:pre-wrap">${esc(v)}</div></div>` : "";
+  $("reunions").innerHTML = reu.length ? reu.map(x => `<article class="cardc reunion"><div class="tools" style="justify-content:space-between"><h3 style="margin:0">${esc(fmtD(x.date))}${x.titre ? " · " + esc(x.titre) : ""}</h3>
+    ${x.modifiable ? `<div><button type="button" class="btn sm sec" data-red="${esc(x.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-rdel="${esc(x.id)}">Supprimer</button></div>` : ""}</div>
+    <div class="meta">${x.participants ? "Participants : " + esc(x.participants) + " · " : ""}saisi par ${esc(x.par)}${x.modifie_par ? ` · modifié par ${esc(x.modifie_par)}` : ""}</div>
+    ${sect("Ce qui a été vu", x.vu)}${sect("Ce qui est attendu", x.attendu)}${sect("Étapes pour la suite", x.suite)}</article>`).join("")
+    : `<div class="empty">Aucun compte rendu pour l’instant.</div>`;
+}
+
+function ouvrirSuiviForm(type, id) {
+  suiviForm = { type, id: id || "" };
+  const g = groupeCourant();
+  if (type === "jalon") {
+    const j = jalonsAll.find(x => x.id === id) || { statut: "a_faire" };
+    $("jalonform").innerHTML = `<div class="sec" style="margin:10px 0"><div class="grid">
+      <div><label for="j_titre">Jalon</label><input id="j_titre" maxlength="200" value="${esc(j.titre)}" placeholder="ex. Plan détaillé validé"></div>
+      <div><label for="j_echeance">Échéance</label><input id="j_echeance" type="date" value="${esc(j.echeance)}"></div>
+      <div><label for="j_statut">Statut</label><select id="j_statut">${Object.keys(STATUT_JALON).map(k => `<option value="${k}" ${j.statut === k ? "selected" : ""}>${esc(STATUT_JALON[k])}</option>`).join("")}</select></div>
+      <div><label for="j_note">Note</label><input id="j_note" maxlength="500" value="${esc(j.note)}"></div></div>
+      <div class="savebar"><div id="jerr" class="err" role="alert"></div><button class="btn" id="jsave" type="button">Enregistrer le jalon</button> <button class="btn sec" id="jcancel" type="button">Annuler</button></div></div>`;
+    $("jsave").onclick = () => enregistrerSuivi("jalon", g.id, id, { titre: $("j_titre").value, echeance: $("j_echeance").value, statut: $("j_statut").value, note: $("j_note").value }, "jerr");
+    $("jcancel").onclick = () => fermerSuiviForm();
+    $("j_titre").focus();
+  } else {
+    const x = reunionsAll.find(r => r.id === id) || { date: stamp() };
+    $("reunionform").innerHTML = `<div class="sec" style="margin:10px 0"><div class="grid">
+      <div><label for="r_date">Date</label><input id="r_date" type="date" value="${esc(x.date)}"></div>
+      <div><label for="r_titre">Titre</label><input id="r_titre" maxlength="200" value="${esc(x.titre)}" placeholder="ex. Point avec la formatrice"></div>
+      <div><label for="r_participants">Participants</label><input id="r_participants" maxlength="500" value="${esc(x.participants)}"></div></div>
+      <div class="grid"><div><label for="r_vu">Ce qui a été vu</label><textarea id="r_vu" maxlength="2500">${esc(x.vu)}</textarea></div>
+      <div><label for="r_attendu">Ce qui est attendu</label><textarea id="r_attendu" maxlength="2500">${esc(x.attendu)}</textarea></div>
+      <div><label for="r_suite">Étapes pour la suite</label><textarea id="r_suite" maxlength="2500">${esc(x.suite)}</textarea></div></div>
+      <div class="savebar"><div id="rerr" class="err" role="alert"></div><button class="btn" id="rsave" type="button">Enregistrer le compte rendu</button> <button class="btn sec" id="rcancel" type="button">Annuler</button></div></div>`;
+    $("rsave").onclick = () => enregistrerSuivi("reunion", g.id, id, Object.fromEntries(["date", "titre", "participants", "vu", "attendu", "suite"].map(k => [k, $("r_" + k).value])), "rerr");
+    $("rcancel").onclick = () => fermerSuiviForm();
+    $("r_vu").focus();
+  }
+}
+
+function fermerSuiviForm() { suiviForm = null; $("jalonform").innerHTML = ""; $("reunionform").innerHTML = ""; }
+
+async function enregistrerSuivi(type, gid, id, data, errId) {
+  try {
+    const res = await enCours("Enregistrement…", () => api(type + "_save", { groupe_id: gid, id: id || undefined, data }));
+    fermerSuiviForm();
+    applyResult(res);
+  } catch (e) {
+    if (e.code === "unauthorized") sessionError(e); else $(errId).textContent = "Enregistrement impossible : " + e.message;
+  }
+}
+
+async function supprimerSuivi(type, id) {
+  if (!confirm(type === "jalon" ? "Supprimer ce jalon ?" : "Supprimer ce compte rendu ?")) return;
+  try { applyResult(await enCours("Suppression…", () => api(type + "_delete", { id }))); }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Suppression impossible : " + e.message); }
+}
+
+$("addjalon").onclick = () => { fermerSuiviForm(); ouvrirSuiviForm("jalon"); };
+$("addreunion").onclick = () => { fermerSuiviForm(); ouvrirSuiviForm("reunion"); };
+$("suivi").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  const d = b.dataset;
+  if (d.jed) { fermerSuiviForm(); ouvrirSuiviForm("jalon", d.jed); }
+  else if (d.red) { fermerSuiviForm(); ouvrirSuiviForm("reunion", d.red); }
+  else if (d.jdel) supprimerSuivi("jalon", d.jdel);
+  else if (d.rdel) supprimerSuivi("reunion", d.rdel);
+});
 
 /* ---------- Mes lectures ---------- */
 
@@ -1275,6 +1392,7 @@ async function loadAdmin() {
     const r = await api("admin_list");
     const next = r.acces;
     groupesAdmin = r.groupesAdmin || [];
+    structureAdmin = r.structure || [];
     // Pas de reconstruction si rien n'a changé ou si une saisie est en cours (sinon elle serait perdue).
     const a = document.activeElement;
     const typing = a && a.closest && a.closest("#adminbox") && (a.tagName === "INPUT" || a.tagName === "SELECT");
@@ -1290,7 +1408,7 @@ function accesRow(a) {
   // Un étudiant ne peut pas gérer les étudiants ; l'administrateur, si.
   if (a.protege && !sup) return `<tr><td>${k}</td>${dates}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Géré par l’administrateur</td></tr>`;
   const opt = (v, lbl) => `<option value="${v}" ${a.role === v ? "selected" : ""}>${lbl}</option>`;
-  const roles = (sup ? opt("etudiant", "Étudiant") : "") + opt("lecteur", "Lecteur") + opt("formateur", "Formateur");
+  const roles = (sup ? opt("etudiant", "Étudiant") : "") + opt("formateur", "Formateur");
   const acts = a.statut === "actif"
     ? `<button class="btn sm" data-as="actif">Enregistrer</button> <button class="btn sm sec del" data-as="refuse">Retirer l’accès</button>`
     : a.statut === "en_attente"
@@ -1305,7 +1423,7 @@ function accesRow(a) {
 
 let renderedAcces = "";
 // Le rendu dépend du rôle (étudiant ou administrateur) autant que de la liste : les deux entrent dans la signature.
-const signatureAcces = l => (me ? me.role : "") + "|" + JSON.stringify([l, groupesAdmin]);
+const signatureAcces = l => (me ? me.role : "") + "|" + JSON.stringify([l, groupesAdmin, structureAdmin]);
 function renderAdmin() {
   renderedAcces = signatureAcces(acces);
   const head = `<tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th>${isSuper() ? "<th>Couleur</th>" : ""}<th>Rôle</th><th>Actions</th></tr>`;
@@ -1338,7 +1456,15 @@ async function supprimerUtilisateur(b) {
   }
 }
 
+// Volets repliés / dépliés de l'arbre : mémorisés d'une mise à jour à l'autre.
+$("adminbox").addEventListener("toggle", e => {
+  const k = e.target.dataset && e.target.dataset.k;
+  if (k) { if (e.target.open) adminFerme.delete(k); else adminFerme.add(k); }
+}, true);
+
 $("adminbox").onclick = async e => {
+  const sb = e.target.closest("button[data-s]");
+  if (sb) return actionStructureAdmin(sb);
   const gb = e.target.closest("button[data-g]");
   if (gb) return actionGroupeAdmin(gb);
   const del = e.target.closest("button[data-del]");
@@ -1567,43 +1693,91 @@ $("gbody").onclick = async e => {
 
 /* ----- Administration des groupes (administrateur) ----- */
 
+// Structure en arbre : établissement → promos → groupes. Les volets repliés par l'administrateur restent repliés après chaque mise à jour.
 function blocGroupes() {
   const etudiants = acces.filter(a => a.statut === "actif" && a.role === "etudiant");
-  const optsEtab = [...new Set(groupesAdmin.map(x => x.etablissement))], optsPromo = [...new Set(groupesAdmin.map(x => x.promo))];
-  const parPromo = new Map();
-  groupesAdmin.forEach(x => { const k = x.etablissement + " · " + x.promo; parPromo.set(k, (parPromo.get(k) || []).concat(x)); });
-  const carte = x => {
+  const promosPlates = structureAdmin.flatMap(e => e.promos.map(p => ({ id: p.id, etab: e.nom, nom: p.nom })));
+  const ouvert = k => adminFerme.has(k) ? "" : "open";
+  const carte = (x, promoId) => {
     const dispo = acces.filter(a => a.statut === "actif" && !x.membres.some(m => m.email === a.email));
     return `<div class="admgrp" data-gid="${esc(x.id)}">
-      <div class="grow"><input data-gf="nom" maxlength="60" value="${esc(x.nom)}" aria-label="Nom du groupe"><input data-gf="etablissement" maxlength="60" value="${esc(x.etablissement)}" aria-label="Établissement"><input data-gf="promo" maxlength="60" value="${esc(x.promo)}" aria-label="Promo">
+      <div class="grow"><input data-gf="nom" maxlength="60" value="${esc(x.nom)}" aria-label="Nom du groupe">
+        <select data-gf="promo_id" aria-label="Promo du groupe">${promosPlates.map(p => `<option value="${esc(p.id)}" ${p.id === promoId ? "selected" : ""}>${esc(p.etab)} · ${esc(p.nom)}</option>`).join("")}</select>
         <button type="button" class="btn sm" data-g="save">Enregistrer</button><button type="button" class="btn sm sec del" data-g="del">🗑 Supprimer le groupe</button></div>
       <div>${x.membres.length ? x.membres.map(m => `<span class="chip">${esc(m.prenom)} <span class="meta">${esc(m.role)}</span> <button type="button" class="btn sm sec del" style="padding:0 6px" data-g="rm" data-email="${esc(m.email)}" aria-label="Retirer ${esc(m.prenom)} du groupe">✕</button></span>`).join("") : '<span class="meta">Aucun membre.</span>'}</div>
       <div class="grow"><select data-gadd aria-label="Ajouter au groupe"><option value="">— ajouter une personne —</option>${dispo.map(a => `<option value="${esc(a.email)}">${esc(a.prenom || a.email)} (${esc(a.role)}) — ${esc(a.email)}</option>`).join("")}</select><button type="button" class="btn sm" data-g="add">Ajouter</button></div>
     </div>`;
   };
-  return `<h3>👥 Groupes (${groupesAdmin.length})</h3>
-    <div class="note">Établissement → promo → groupe. Un étudiant n’est que dans un groupe par promo ; un formateur ou un lecteur peut être rattaché à plusieurs groupes (il ne voit que ceux-là). Supprimer un groupe conserve ses fiches dans le Google Sheet mais ne les affiche plus.</div>
-    <div class="admgrp" id="gnew"><b>Nouveau groupe</b>
-      <div class="grow"><input id="gn_etab" list="dl_etab" maxlength="60" placeholder="Établissement" value="${esc(optsEtab[0] || "")}"><input id="gn_promo" list="dl_promo" maxlength="60" placeholder="Promo (ex. Promo 24-27)" value="${esc(optsPromo[0] || "")}"><input id="gn_nom" maxlength="60" placeholder="Nom du groupe">
-      <datalist id="dl_etab">${optsEtab.map(o => `<option value="${esc(o)}">`).join("")}</datalist><datalist id="dl_promo">${optsPromo.map(o => `<option value="${esc(o)}">`).join("")}</datalist></div>
-      <label for="gn_membres" class="meta" style="margin:0">Étudiants du groupe (Ctrl/Cmd + clic pour en choisir plusieurs)</label>
-      <select id="gn_membres" multiple size="6">${etudiants.map(a => `<option value="${esc(a.email)}">${esc(a.prenom || a.email)} — ${esc(a.email)}</option>`).join("")}</select>
-      <div><button type="button" class="btn sm" data-g="create">Créer le groupe</button></div></div>
-    ${[...parPromo.entries()].map(([k, l]) => `<h4 style="margin:12px 0 0">${esc(k)} (${l.length} groupe${l.length > 1 ? "s" : ""})</h4>${l.map(carte).join("")}`).join("")}`;
+  const promoBloc = (e, p) => {
+    const gs = groupesAdmin.filter(g => g.etablissement === e.nom && g.promo === p.nom);
+    return `<details class="admpromo" data-k="p:${esc(p.id)}" ${ouvert("p:" + p.id)}><summary><b>🎓 ${esc(p.nom)}</b> <span class="meta">${gs.length} groupe${gs.length > 1 ? "s" : ""}</span></summary>
+      <div class="grow" data-pid="${esc(p.id)}"><input data-sf="nom" maxlength="60" value="${esc(p.nom)}" aria-label="Nom de la promo"><button type="button" class="btn sm" data-s="promo_rename">Renommer la promo</button><button type="button" class="btn sm sec del" data-s="promo_delete">🗑 Supprimer la promo</button></div>
+      ${gs.map(g => carte(g, p.id)).join("")}
+      <div class="admgrp" data-newg="${esc(p.id)}"><b>＋ Nouveau groupe dans cette promo</b>
+        <div class="grow"><input data-ng="nom" maxlength="60" placeholder="Nom du groupe"></div>
+        <label class="meta" style="margin:0">Étudiants du groupe (Ctrl/Cmd + clic pour en choisir plusieurs)</label>
+        <select data-ng="membres" multiple size="5">${etudiants.map(a => `<option value="${esc(a.email)}">${esc(a.prenom || a.email)} — ${esc(a.email)}</option>`).join("")}</select>
+        <div><button type="button" class="btn sm" data-s="group_create">Créer le groupe</button></div></div>
+    </details>`;
+  };
+  const etabBloc = e => `<details class="admetab" data-k="e:${esc(e.id)}" ${ouvert("e:" + e.id)}><summary><b>🏫 ${esc(e.nom)}</b> <span class="meta">${e.promos.length} promo${e.promos.length > 1 ? "s" : ""}</span></summary>
+      <div class="grow" data-eid="${esc(e.id)}"><input data-sf="nom" maxlength="60" value="${esc(e.nom)}" aria-label="Nom de l’établissement"><button type="button" class="btn sm" data-s="etab_rename">Renommer l’établissement</button><button type="button" class="btn sm sec del" data-s="etab_delete">🗑 Supprimer l’établissement</button></div>
+      <div class="grow" data-eid="${esc(e.id)}"><input data-sf="newpromo" maxlength="60" placeholder="Nouvelle promo (ex. Promo 24-27)"><button type="button" class="btn sm" data-s="promo_create">＋ Ajouter la promo</button></div>
+      ${e.promos.map(p => promoBloc(e, p)).join("") || '<div class="meta">Aucune promo : ajoutez-en une ci-dessus.</div>'}
+    </details>`;
+  return `<h3>🏫 Établissements, promos et groupes</h3>
+    <div class="note">Établissement → promo → groupe. Un étudiant n’est que dans un groupe par promo ; un formateur peut être rattaché à plusieurs groupes (il ne voit que ceux-là, et les analyses terminées de leur promo). Renommer un établissement ou une promo met à jour tous ses groupes. On ne supprime un établissement qu’une fois ses promos supprimées, une promo qu’une fois ses groupes supprimés. Supprimer un groupe conserve ses fiches dans le Google Sheet mais ne les affiche plus.</div>
+    <div class="grow" style="margin:8px 0"><input id="ne_nom" maxlength="60" placeholder="Nouvel établissement (ex. IFSI Saint-Nazaire)"><button type="button" class="btn sm" data-s="etab_create">＋ Ajouter l’établissement</button></div>
+    ${structureAdmin.map(etabBloc).join("") || '<div class="meta">Aucun établissement pour l’instant.</div>'}`;
 }
 
+// Actions sur la structure (établissements, promos, création de groupe dans une promo).
+async function actionStructureAdmin(b) {
+  const a = b.dataset.s;
+  const zone = b.closest("[data-eid], [data-pid], [data-newg]");
+  const val = sel => { const el = zone && zone.querySelector(sel); return el ? el.value : ""; };
+  let appel;
+  if (a === "etab_create") appel = () => api("etab_create", { data: { nom: $("ne_nom").value } });
+  else if (a === "etab_rename") appel = () => api("etab_rename", { data: { id: zone.dataset.eid, nom: val('[data-sf="nom"]') } });
+  else if (a === "etab_delete") {
+    const e = structureAdmin.find(x => x.id === zone.dataset.eid);
+    if (!e || !confirm(`Supprimer l’établissement « ${e.nom} » ?`)) return;
+    appel = () => api("etab_delete", { id: e.id });
+  } else if (a === "promo_create") appel = () => api("promo_create", { data: { etablissement_id: zone.dataset.eid, nom: val('[data-sf="newpromo"]') } });
+  else if (a === "promo_rename") appel = () => api("promo_rename", { data: { id: zone.dataset.pid, nom: val('[data-sf="nom"]') } });
+  else if (a === "promo_delete") {
+    const p = structureAdmin.flatMap(e => e.promos).find(x => x.id === zone.dataset.pid);
+    if (!p || !confirm(`Supprimer la promo « ${p.nom} » ?`)) return;
+    appel = () => api("promo_delete", { id: p.id });
+  } else if (a === "group_create") {
+    const sel = zone.querySelector('[data-ng="membres"]');
+    appel = () => api("group_create", { data: { promo_id: zone.dataset.newg, nom: zone.querySelector('[data-ng="nom"]').value, membres: [...sel.selectedOptions].map(o => o.value) } });
+  } else return;
+  await lancerAdmin(b, appel);
+}
+
+async function lancerAdmin(b, appel) {
+  b.disabled = true;
+  try {
+    const res = await enCours("Enregistrement…", appel);
+    if (res.acces) acces = res.acces;
+    if (res.groupesAdmin) groupesAdmin = res.groupesAdmin;
+    if (res.structure) structureAdmin = res.structure;
+    renderAdmin();
+    applyResult(res);
+  } catch (err) {
+    b.disabled = false;
+    if (err.code === "unauthorized") sessionError(err); else alert("Action impossible : " + err.message);
+  }
+}
 async function actionGroupeAdmin(b) {
   const a = b.dataset.g;
   const carte = b.closest(".admgrp");
   const gid = carte && carte.dataset.gid;
   const val = (sel) => { const el = carte.querySelector(sel); return el ? el.value : ""; };
   let appel;
-  if (a === "create") {
-    const sel = $("gn_membres");
-    const data = { etablissement: $("gn_etab").value, promo: $("gn_promo").value, nom: $("gn_nom").value, membres: [...sel.selectedOptions].map(o => o.value) };
-    appel = () => api("group_create", { data });
-  } else if (a === "save") {
-    const data = { id: gid, nom: val('[data-gf="nom"]'), etablissement: val('[data-gf="etablissement"]'), promo: val('[data-gf="promo"]') };
+  if (a === "save") {
+    const data = { id: gid, nom: val('[data-gf="nom"]'), promo_id: val('[data-gf="promo_id"]') };
     appel = () => api("group_update", { data });
   } else if (a === "del") {
     const g = groupesAdmin.find(x => x.id === gid);
@@ -1616,17 +1790,7 @@ async function actionGroupeAdmin(b) {
   } else if (a === "rm") {
     appel = () => api("member_remove", { groupe_id: gid, email: b.dataset.email });
   } else return;
-  b.disabled = true;
-  try {
-    const res = await enCours("Enregistrement…", appel);
-    if (res.acces) acces = res.acces;
-    if (res.groupesAdmin) groupesAdmin = res.groupesAdmin;
-    renderAdmin();
-    applyResult(res);
-  } catch (err) {
-    b.disabled = false;
-    if (err.code === "unauthorized") sessionError(err); else alert("Action impossible : " + err.message);
-  }
+  await lancerAdmin(b, appel);
 }
 
 /* ---------- Démarrage ---------- */

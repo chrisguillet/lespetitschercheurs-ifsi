@@ -22,6 +22,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
     <button class="tab on" data-t="all" role="tab" aria-selected="true">📊 Tableau commun</button>
     <button class="tab" data-t="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
     <button class="tab" data-t="cmts" role="tab" aria-selected="false">💬 Commentaires <span id="cmtcount" class="count hidden"></span></button>
+    <button class="tab hidden" data-t="suivi" role="tab" aria-selected="false">🗓️ Suivi de projet</button>
     <button class="tab" data-t="biblio" role="tab" aria-selected="false">📖 Bibliographie</button>
     <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
     <button class="tab hidden" data-t="admin" role="tab" aria-selected="false">👥 Administration <span id="pending" class="count hidden"></span></button>
@@ -67,6 +68,21 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
       <div id="cmtsbox"></div>
     </section>
 
+    <section id="suivi" class="hidden">
+      <div class="card">
+        <div class="tools" style="justify-content:space-between"><h2 style="margin:0;font-size:16px">🧭 Rétroplanning</h2>
+          <button class="btn sm" id="addjalon" type="button">＋ Ajouter un jalon</button></div>
+        <div id="jalonform"></div>
+        <div id="retro"></div>
+      </div>
+      <div class="card">
+        <div class="tools" style="justify-content:space-between"><h2 style="margin:0;font-size:16px">📝 Réunions du groupe</h2>
+          <button class="btn sm" id="addreunion" type="button">＋ Ajouter un compte rendu</button></div>
+        <div id="reunionform"></div>
+        <div id="reunions"></div>
+      </div>
+    </section>
+
     <section id="biblio" class="hidden">
       <div class="card tools noprint" id="bibtools"></div>
       <div class="card" id="biblist"></div>
@@ -80,7 +96,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
       <div class="card">
         <h2 style="margin-top:0;font-size:16px">Demandes d’accès et droits</h2>
         <div class="note">Une personne inconnue qui se connecte apparaît ici en attente. Donnez-lui un prénom puis un rôle :
-          <b>Lecteur</b> (lecture seule) ou <b>Formateur</b> (lecture + commentaires). Les étudiants sont gérés par l’administrateur.</div>
+          <b>Formateur</b> (lecture + commentaires, dans les groupes auquel l’administrateur le rattache). Les étudiants sont gérés par l’administrateur.</div>
         <div id="adminbox"></div>
       </div>
     </section>
