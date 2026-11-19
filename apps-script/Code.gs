@@ -800,7 +800,7 @@ function ajouter_(user, data) {
     art = articleVisible_(user, String(data.article_id));
     g = groupeDansPromo_(c, promoDeArticle_(c, art));
     if (lireTable_(feuilleLectures_(), COLONNES).some(function (r) { return r.article_id === art.id && r.owner === user.email; })) {
-      throw err_('invalid', 'Vous avez déjà une analyse pour cet article');
+      throw err_('invalid', 'Vous avez déjà une fiche de lecture pour cet article');
     }
     const fusion = {};
     OBJECTIFS.forEach(function (k) { fusion[k] = art[k] || d[k]; });
@@ -818,7 +818,7 @@ function ajouter_(user, data) {
         return promoDeArticle_(c, x) === promo && memeArticle_(x, d) && analysesVisibles_(c, x.id).length;
       })[0];
       if (doublon) {
-        const e = err_('duplicate', 'Cet article existe déjà dans la promo : ajoutez-y plutôt votre analyse.');
+        const e = err_('duplicate', 'Cet article existe déjà dans la promo : ajoutez-y plutôt votre fiche de lecture.');
         e.extra = { article_id: doublon.id, titre: doublon.titre };
         throw e;
       }
@@ -1095,7 +1095,7 @@ function commenter_(user, lectureId, texte, portee) {
   if (porteeFinale === 'groupe') {
     if (!c.miens[g.id]) throw err_('forbidden', 'Ce fil est réservé aux membres du groupe');
   } else {
-    if (porteeDe_(l.statut) !== 'promo') throw err_('forbidden', 'Cette analyse n’est pas partagée avec la promo');
+    if (porteeDe_(l.statut) !== 'promo') throw err_('forbidden', 'Cette fiche de lecture n’est pas partagée avec la promo');
     const mien = c.mesGroupes.filter(function (x) { return clePromo_(x) === clePromo_(g); })[0];
     if (!mien) throw err_('forbidden', 'Réservé aux membres de la promo');
     gid = mien.id;

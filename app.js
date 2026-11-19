@@ -131,7 +131,7 @@ function reinitialiserEtat() {
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
   groupes = []; votes = []; promosMoi = []; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
-  openRows.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
+  openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
   Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute" });
   B.who = ""; B.enCours = false;
@@ -526,11 +526,11 @@ function renderForm() {
   const base = editing ? d : art || {};
   const gc = groupeCourant();
   const objDesact = k => artCible && String(art && art[k] || "").trim() ? "disabled" : "";
-  $("ftitle").textContent = modeArticle ? "Corriger l’article" : artCible ? "Ajouter mon analyse" : editing ? "Modifier mon analyse" : "Ajouter une lecture";
+  $("ftitle").textContent = modeArticle ? "Corriger l’article" : artCible ? "Ajouter ma fiche de lecture" : editing ? "Modifier ma fiche de lecture" : "Ajouter une lecture";
   $("fnote").textContent = modeArticle
     ? "La partie objective (identification, références) est commune à toute la promo : votre correction sera proposée, puis appliquée quand 3 étudiants de la promo l’auront approuvée (vous comptez pour un)."
     : artCible
-      ? "Cet article existe déjà dans la base de la promo : sa partie objective est commune. Ajoutez votre propre analyse (colonnes 2 à 8) ; elle sera partagée avec la promo dès qu’elle sera « Terminée »."
+      ? "Cet article existe déjà dans la base de la promo : sa partie objective est commune. Ajoutez votre propre fiche de lecture (colonnes 2 à 8) ; elle sera partagée avec la promo dès qu’elle sera « Terminée »."
       : forceStatut
       ? "Pour passer cette lecture à « Terminée », complétez d’abord les champs obligatoires de la première partie."
       : "Choisissez « 📖 En cours de lecture » si vous n’avez pas fini : seul le titre est alors obligatoire. Pour une lecture « ✅ Terminée », toute la première partie est obligatoire.";
@@ -551,7 +551,7 @@ function renderForm() {
    </div>
    <div id="dup" style="display:none;margin-top:10px;color:#b45309;font-weight:600"></div></details>
   ${modeArticle ? "" : `<details class="sec" open><summary>Partage</summary>
-   <div class="meta">Cette analyse est rattachée au groupe <b>${esc(editing ? (d.groupe || "") : gc ? gc.nom : "")}</b>. <b>En cours</b> : seul votre groupe la voit. <b>Terminée</b> : elle est partagée automatiquement avec toute la promo, qui peut la commenter ; les commentaires du groupe restent réservés au groupe.</div>
+   <div class="meta">Cette fiche de lecture est rattachée au groupe <b>${esc(editing ? (d.groupe || "") : gc ? gc.nom : "")}</b>. <b>En cours</b> : seul votre groupe la voit. <b>Terminée</b> : elle est partagée automatiquement avec toute la promo, qui peut la commenter ; les commentaires du groupe restent réservés au groupe.</div>
   </details>`}
   <details class="sec" open><summary>Compléments pour la référence APA (facultatifs, mais recommandés pour les articles)</summary>
    <div class="grid">
@@ -577,7 +577,7 @@ function renderForm() {
     ${field("f_libre", "Colonne libre", d.libre, { area: 1 })}
    </div></details>`}
   <div class="savebar"><div id="ferr" class="err" role="alert"></div>
-   <button class="btn" id="save" type="button">${modeArticle ? "Proposer la correction" : editing ? "Enregistrer les modifications" : artCible ? "Enregistrer mon analyse" : "Enregistrer la lecture"}</button>
+   <button class="btn" id="save" type="button">${modeArticle ? "Proposer la correction" : editing ? "Enregistrer les modifications" : artCible ? "Enregistrer ma fiche de lecture" : "Enregistrer la lecture"}</button>
    <button class="btn sec" id="cancel" type="button">Annuler</button></div>`;
   $("save").onclick = save;
   $("trad").onclick = traduire;
@@ -687,9 +687,9 @@ function majDoublon() {
   const peutAjouter = !editing && !artCible && !modeArticle && !autre.mine && autre.article_modifiable
     && !itemsAll.some(i => i.mine && i.article_id === autre.article_id);
   box.innerHTML = autre.mine
-    ? "⚠ Vous avez déjà saisi cet article : modifiez plutôt votre analyse."
+    ? "⚠ Vous avez déjà saisi cet article : modifiez plutôt votre fiche de lecture."
     : `⚠ Cet article est déjà dans la base de la promo (déjà analysé par ${esc(autre.etudiant)}).`
-      + (peutAjouter ? ' <button type="button" class="btn sm" id="dupuse">Ajouter mon analyse à cet article</button>' : "");
+      + (peutAjouter ? ' <button type="button" class="btn sm" id="dupuse">Ajouter ma fiche de lecture à cet article</button>' : "");
   box.style.display = "block";
   if ($("dupuse")) $("dupuse").onclick = () => basculerAnalyse(autre.article_id);
 }
@@ -724,7 +724,7 @@ function surSaisie(e) {
   planifierBrouillon();
 }
 
-// Bascule le formulaire de « nouvel article » vers « mon analyse sur cet article », en gardant ce qui est déjà saisi.
+// Bascule le formulaire de « nouvel article » vers « ma fiche de lecture sur cet article », en gardant ce qui est déjà saisi.
 function basculerAnalyse(articleId) {
   const garde = snapshot();
   effacerBrouillon();
@@ -765,7 +765,7 @@ async function save() {
   } catch (e) {
     $("ferr").textContent = "Enregistrement impossible : " + e.message;
     if (e.code === "duplicate" && e.extra && e.extra.article_id) {
-      $("ferr").innerHTML = esc(e.message) + ' <button type="button" class="btn sm" id="dupgo">Ajouter mon analyse à cet article</button>';
+      $("ferr").innerHTML = esc(e.message) + ' <button type="button" class="btn sm" id="dupgo">Ajouter ma fiche de lecture à cet article</button>';
       $("dupgo").onclick = () => basculerAnalyse(e.extra.article_id);
     }
     if (e.code === "unauthorized") sessionError(e);
@@ -939,23 +939,47 @@ $("cmodal").addEventListener("mousedown", e => { if (e.target === $("cmodal")) f
 
 const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).length; const u = nbNonLus(i.id); return n ? `<span class="cn" title="${n} commentaire${n > 1 ? "s" : ""}${u ? ", " + u + " non lu" + (u > 1 ? "s" : "") : ""}">💬 ${n}</span>${u ? `<span class="new">${u} non lu${u > 1 ? "s" : ""}</span>` : ""}` : ""; };
 
-function actionsHtml(i, sub) {
-  const dejaMienne = itemsAll.some(x => x.mine && x.article_id === i.article_id);
-  const edit = !canWrite() ? "" : (i.mine && i.modifiable ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier mon analyse</button> ` : "")
-    + (!sub && i.article_modifiable && !dejaMienne ? `<button class="btn sm" data-an="${esc(i.article_id)}">＋ Ajouter mon analyse</button> ` : "")
-    + (!sub && i.article_modifiable ? `<button class="btn sm sec" data-ea="${esc(i.article_id)}">Corriger l’article</button> ` : "");
+// Actions d'une fiche de lecture : la modifier (la sienne) et la commenter.
+function actionsHtml(i) {
+  const edit = canWrite() && i.mine && i.modifiable ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier ma fiche de lecture</button> ` : "";
   const n = comments.filter(x => x.lecture_id === i.id).length, u = nbNonLus(i.id);
   return `${edit}<button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n}${u ? ", " + u + " non lus" : ""})">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button>`;
+}
+
+// Actions du document : ajouter sa fiche de lecture, corriger la partie objective.
+function actionsArticle(i) {
+  if (!canWrite() || !i.article_modifiable) return "";
+  const dejaMienne = itemsAll.some(x => x.mine && x.article_id === i.article_id);
+  return (!dejaMienne ? `<button class="btn sm" data-an="${esc(i.article_id)}">＋ Ajouter ma fiche de lecture</button> ` : "")
+    + `<button class="btn sm sec" data-ea="${esc(i.article_id)}">Corriger l’article</button>`;
 }
 
 function infosHtml(i) {
   return `Parution : ${esc(fmtD(i.parution)) || "—"}<br>Auteur : ${esc(i.auteur) || "—"} (${esc(i.qualite) || "—"})<br>Nationalité : ${esc(i.nation) || "—"}<br>Type : ${esc(i.type) || "—"}<br><i>Saisi le ${esc(fmtD(i.ajoute))}</i>${i.modifie_par ? `<br><i>Modifié par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}</i>` : ""}`;
 }
 
-// Une ligne par article : ses autres analyses suivent juste en dessous (lignes « sub »).
-const nbAnalyses = i => items.filter(x => x.article_id === i.article_id).length;
-const badgeAnalyses = (i, sub) => sub ? '<span class="badge" title="Autre analyse du même article">↳ analyse</span>'
-  : nbAnalyses(i) > 1 ? `<span class="badge" title="Analyses de cet article">🧩 ${nbAnalyses(i)} analyses</span>` : "";
+// Un document (article) par ligne ; ses fiches de lecture se déplient en dessous.
+const openArts = new Set(), fermesArts = new Set();     // documents dépliés ; documents repliés à la main malgré un filtre actif
+const filtreActif = () => !!(F.q || F.who || F.st || F.type || F.kw);
+const artOuvert = k => openArts.has(k) || (filtreActif() && !fermesArts.has(k));   // une recherche déplie les documents trouvés
+const cleArt = i => i.article_id || i.id;
+const libFiches = n => `${n} fiche${n > 1 ? "s" : ""} de lecture`;
+
+function groupesArticles(l) {
+  const m = new Map();
+  l.forEach(i => { const k = cleArt(i); if (!m.has(k)) m.set(k, []); m.get(k).push(i); });
+  return [...m.values()];
+}
+
+// Résumé d'un document : qui a fait une fiche, et où elle en est.
+function resumeFiches(g) {
+  return g.map(x => `<span class="badge ${x.statut === "En cours" ? "prog" : ""}" style="--c:${esc(x.couleur)}" title="${x.statut === "En cours" ? "En cours de lecture" : "Terminée"}">${esc(x.etudiant)} ${x.statut === "En cours" ? "📖" : "✅"}</span>`).join(" ");
+}
+function badgesArticle(g) {
+  const nc = g.reduce((n, x) => n + comments.filter(c => c.lecture_id === x.id).length, 0);
+  const nl = g.reduce((n, x) => n + nbNonLus(x.id), 0);
+  return `<span class="badge" title="Fiches de lecture de ce document">📚 ${libFiches(g.length)}</span>${nc ? `<span class="cn" title="${nc} commentaire${nc > 1 ? "s" : ""}">💬 ${nc}</span>` : ""}${nl ? `<span class="new">${nl} non lu${nl > 1 ? "s" : ""}</span>` : ""}`;
+}
 
 const CHAMP_LIB = { titre: "titre", parution: "parution", auteur: "auteur", qualite: "qualité", nation: "nationalité", type: "type",
   source: "revue", volume: "volume", numero: "numéro", pages: "pages", doi: "DOI", lien: "lien" };
@@ -979,33 +1003,51 @@ async function annulerProp(id) {
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Annulation impossible : " + e.message); }
 }
 
-function cells(i, sub) {
-  const c = esc(i.couleur);
-  const prog = i.statut === "En cours";
-  const main = `<tr data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""} ${sub ? "ssan" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeAnalyses(i, sub)}${badgeNouveau(i)}${nbComm(i)}
+// Ligne du document : titre, références, qui l'a lu ; les fiches de lecture sont dessous.
+function artRow(g) {
+  const i = g[0], k = cleArt(i), open = artOuvert(k);
+  return `<tr class="art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}"><td class="first"><span class="chev" aria-hidden="true"></span>${badgesArticle(g)}
    <b>${esc(i.titre)}</b>${lienHtml(i)}
-   <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
-   <div class="meta full">${infosHtml(i)}</div>
-   ${propHtml(i, sub)}<div class="rowacts">${actionsHtml(i, sub)}</div></td>
-   <td class="c2 nowrapc"><div class="chipsc">${chips(i.mots)}</div></td><td class="c3 nowrapc"><div class="chipsc">${chips(i.kw)}</div></td>
-   <td class="c4">${clampTxt(i.id, i.concepts)}</td><td class="c5">${clampTxt(i.id, i.objet)}</td><td class="c6">${clampTxt(i.id, i.opinion)}</td>
-   <td class="c7">${clampTxt(i.id, i.controverse)}</td><td class="c8">${clampTxt(i.id, i.libre)}</td><td class="apa c9">${apaCell(i)}</td></tr>`;
-  return main;
+   <div class="meta">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
+   ${propHtml(i)}<div class="artacts">${actionsArticle(i)}</div></td>
+   <td class="artres" colspan="7"><div class="meta" style="margin-bottom:4px">${open ? "Fiches de lecture ci-dessous" : "Cliquez pour déplier les fiches de lecture"}</div>${resumeFiches(g)}</td>
+   <td class="apa c9">${apaCell(i)}</td></tr>`;
 }
 
-function cardHtml(i, sub) {
+// Fiche de lecture : colonnes 2 à 8, visible quand son document est déplié.
+function cells(i) {
+  const c = esc(i.couleur), k = cleArt(i);
+  const prog = i.statut === "En cours";
+  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="fiche ${artOuvert(k) ? "show" : ""} ${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
+   <div class="meta">Fiche de lecture${i.modifie_par ? ` · modifiée par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}` : ""} · saisie le ${esc(fmtD(i.ajoute))}</div>
+   <div class="rowacts">${actionsHtml(i)}</div></td>
+   <td class="c2 nowrapc"><div class="chipsc">${chips(i.mots)}</div></td><td class="c3 nowrapc"><div class="chipsc">${chips(i.kw)}</div></td>
+   <td class="c4">${clampTxt(i.id, i.concepts)}</td><td class="c5">${clampTxt(i.id, i.objet)}</td><td class="c6">${clampTxt(i.id, i.opinion)}</td>
+   <td class="c7">${clampTxt(i.id, i.controverse)}</td><td class="c8">${clampTxt(i.id, i.libre)}</td><td class="c9"></td></tr>`;
+}
+
+function artCard(g) {
+  const i = g[0], k = cleArt(i), open = artOuvert(k);
+  return `<article class="cardc art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}">
+   <div>${badgesArticle(g)}</div>
+   <h3><span class="chev" aria-hidden="true"></span>${esc(i.titre)}</h3>${lienHtml(i)}
+   <div class="meta">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
+   <div class="chipsc" style="max-height:none">${resumeFiches(g)}</div>
+   <div class="sect"><b>Référence APA</b>${apaCell(i)}</div>
+   ${propHtml(i)}<div class="acts">${actionsArticle(i)}</div>
+  </article>`;
+}
+
+function cardHtml(i) {
   const c = esc(i.couleur);
   const prog = i.statut === "En cours";
   const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b>${clampTxt(i.id, v)}</div>` : "";
-  return `<article class="cardc ${prog ? "prog" : ""} ${sub ? "ssan" : ""} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
-   <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeAnalyses(i, sub)}${badgeNouveau(i)}</div>
-   <h3><span class="chev" aria-hidden="true"></span>${esc(i.titre)}</h3>${lienHtml(i)}
-   <div class="meta short">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
-   <div class="meta full">${infosHtml(i)}</div>
+  return `<article class="cardc fiche ${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
+   <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeNouveau(i)}</div>
+   <h3><span class="chev" aria-hidden="true"></span>Fiche de lecture de ${esc(i.etudiant)}</h3>
    ${motsListe(i.mots).length || motsListe(i.kw).length ? `<div class="chipsc">${chips(i.mots)}${chips(i.kw)}</div>` : ""}
    ${sect("Concepts en sciences infirmières", i.concepts)}${sect("Objet / sujet principal", i.objet)}${sect("Opinion de l’auteur", i.opinion)}${sect("Controverse", i.controverse)}${sect("Libre", i.libre)}
-   <div class="sect"><b>Référence APA</b>${apaCell(i)}</div>
-   ${propHtml(i, sub)}<div class="acts">${actionsHtml(i, sub)}</div>
+   <div class="acts">${actionsHtml(i)}</div>
   </article>`;
 }
 
@@ -1194,7 +1236,7 @@ function filtered() {
   l.sort((a, b) => F.sort === "ajoute"
     ? String(b.ajoute).localeCompare(a.ajoute)
     : String(a[F.sort] || "").localeCompare(String(b[F.sort] || ""), "fr"));
-  // Les analyses d'un même article se suivent, à la place de la première.
+  // Les fiches de lecture d'un même document se suivent, à la place de la première.
   const parArt = new Map();
   l.forEach(i => { const k = i.article_id || i.id; if (!parArt.has(k)) parArt.set(k, []); parArt.get(k).push(i); });
   return [...parArt.values()].flat();
@@ -1208,20 +1250,26 @@ function renderTable() {
   $("tablewrap").classList.toggle("hidden", cartes);
   $("cards").classList.toggle("hidden", !cartes);
   // La vue inutilisée est vidée, pas seulement masquée : rien ne peut réapparaître en dessous si une feuille de style périmée est en cache.
-  if (cartes) { $("rows").innerHTML = ""; $("cards").innerHTML = l.length ? l.map((i, n) => cardHtml(i, n > 0 && l[n - 1].article_id === i.article_id)).join("") : `<div class="empty">${vide}</div>`; }
-  else { $("cards").innerHTML = ""; $("rows").innerHTML = l.length ? l.map((i, n) => cells(i, n > 0 && l[n - 1].article_id === i.article_id)).join("") : `<tr><td colspan="9" class="empty">${vide}</td></tr>`; }
+  const groupes = groupesArticles(l);
+  if (cartes) {
+    $("rows").innerHTML = "";
+    $("cards").innerHTML = groupes.length ? groupes.map(g => `<div class="artgrp ${artOuvert(cleArt(g[0])) ? "open" : ""}">${artCard(g)}<div class="fiches">${g.map(cardHtml).join("")}</div></div>`).join("") : `<div class="empty">${vide}</div>`;
+  } else {
+    $("cards").innerHTML = "";
+    $("rows").innerHTML = groupes.length ? groupes.map(g => artRow(g) + g.map(cells).join("")).join("") : `<tr><td colspan="9" class="empty">${vide}</td></tr>`;
+  }
   applyCols();
   const nbres = $("nbres");
-  if (nbres) nbres.textContent = (F.q || F.who || F.st || F.type || F.kw) ? `${l.length} / ${items.length} lectures` : "";
+  if (nbres) nbres.textContent = (F.q || F.who || F.st || F.type || F.kw) ? `${l.length} / ${items.length} fiches de lecture` : "";
   $("stats").innerHTML = students().map(s => {
     const n = items.filter(i => i.etudiant === s.prenom);
-    return `<span class="badge" style="--c:${esc(s.couleur)}">${esc(s.prenom)} : ${n.length} lecture${n.length > 1 ? "s" : ""} (${n.filter(i => i.statut === "En cours").length} en cours)</span>`;
+    return `<span class="badge" style="--c:${esc(s.couleur)}">${esc(s.prenom)} : ${n.length} fiche${n.length > 1 ? "s" : ""} de lecture (${n.filter(i => i.statut === "En cours").length} en cours)</span>`;
   }).join("");
 }
 
 function majBoutonDeplier() {
   const b = $("expall");
-  if (b) b.textContent = openRows.size ? "⇱ Tout replier" : "⇲ Tout déplier";
+  if (b) b.textContent = openRows.size || openArts.size ? "⇱ Tout replier" : "⇲ Tout déplier";
 }
 
 function toggleOpen(id, host) {
@@ -1233,8 +1281,17 @@ function toggleOpen(id, host) {
   majBoutonDeplier();
 }
 
+function toggleArt(k) {
+  if (artOuvert(k)) { openArts.delete(k); fermesArts.add(k); } else { openArts.add(k); fermesArts.delete(k); }
+  renderTable();
+  majBoutonDeplier();
+  const h = [...document.querySelectorAll("tr.art, .cardc.art")].find(x => x.dataset.art === k);
+  if (h) { try { h.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
+}
+
 function toutDeplier() {
-  if (openRows.size) openRows.clear(); else filtered().forEach(i => openRows.add(i.id));
+  if (openRows.size || openArts.size) { openRows.clear(); openArts.clear(); if (filtreActif()) filtered().forEach(i => fermesArts.add(cleArt(i))); }
+  else { fermesArts.clear(); filtered().forEach(i => { openRows.add(i.id); openArts.add(cleArt(i)); }); }
   renderTable();
   majBoutonDeplier();
 }
@@ -1244,6 +1301,8 @@ const onAction = e => {
   if (!b) {
     // Clic ailleurs que sur un bouton, un lien ou un commentaire : on déplie / replie la ligne (sauf sélection de texte en cours).
     if (e.target.closest("a, input, select, textarea, label") || (window.getSelection && String(window.getSelection()).length)) return;
+    const a = e.target.closest("tr.art, .cardc.art");
+    if (a) return toggleArt(a.dataset.art);
     const h = e.target.closest("tr[data-id], .cardc[data-id]");
     if (h) toggleOpen(h.dataset.id, h);
     return;
@@ -1282,9 +1341,9 @@ const onDraft = e => { if (e.target.dataset.cm) drafts[e.target.dataset.cm] = e.
 $("rows").onclick = $("cards").onclick = $("cmbody").onclick = onAction;
 $("rows").oninput = $("cards").oninput = $("cmbody").oninput = onDraft;
 $("rows").onkeydown = $("cards").onkeydown = e => {
-  if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("tr[data-id], .cardc[data-id]")) {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("tr[data-id], .cardc[data-id], tr.art, .cardc.art")) {
     e.preventDefault();
-    toggleOpen(e.target.dataset.id, e.target);
+    if (e.target.dataset.art) toggleArt(e.target.dataset.art); else toggleOpen(e.target.dataset.id, e.target);
   }
 };
 
@@ -1292,7 +1351,7 @@ $("rows").onkeydown = $("cards").onkeydown = e => {
 
 const B = { who: "", enCours: false };
 
-// Une référence par article, même s'il porte plusieurs analyses.
+// Une référence par article, même s'il porte plusieurs fiches de lecture.
 const parArticle = l => { const vu = new Set(); return l.filter(i => { const k = i.article_id || i.id; if (vu.has(k)) return false; vu.add(k); return true; }); };
 
 function biblioListe() {
@@ -1853,7 +1912,7 @@ function blocGroupes() {
       ${e.promos.map(p => promoBloc(e, p)).join("") || '<div class="meta">Aucune promo : ajoutez-en une ci-dessus.</div>'}
     </details>`;
   return `<h3>🏫 Établissements, promos et groupes</h3>
-    <div class="note">Établissement → promo → groupe. Un étudiant n’est que dans un groupe par promo ; un formateur peut être rattaché à plusieurs groupes (il ne voit que ceux-là, et les analyses terminées de leur promo). Renommer un établissement ou une promo met à jour tous ses groupes. On ne supprime un établissement qu’une fois ses promos supprimées, une promo qu’une fois ses groupes supprimés. Supprimer un groupe conserve ses fiches dans le Google Sheet mais ne les affiche plus.</div>
+    <div class="note">Établissement → promo → groupe. Un étudiant n’est que dans un groupe par promo ; un formateur peut être rattaché à plusieurs groupes (il ne voit que ceux-là, et les fiches de lecture terminées de leur promo). Renommer un établissement ou une promo met à jour tous ses groupes. On ne supprime un établissement qu’une fois ses promos supprimées, une promo qu’une fois ses groupes supprimés. Supprimer un groupe conserve ses fiches dans le Google Sheet mais ne les affiche plus.</div>
     <div class="grow" style="margin:8px 0"><input id="ne_nom" maxlength="60" placeholder="Nouvel établissement (ex. IFSI Saint-Nazaire)"><button type="button" class="btn sm" data-s="etab_create">＋ Ajouter l’établissement</button></div>
     ${structureAdmin.map(etabBloc).join("") || '<div class="meta">Aucun établissement pour l’instant.</div>'}`;
 }

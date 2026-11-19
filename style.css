@@ -226,11 +226,19 @@ tr.open .rowacts{display:block}
 .nogroup #ctxbar{display:none}
 @media print{.ctxbar{display:none!important}}
 
-/* Analyses supplémentaires d'un même article : retrait et filet à gauche */
-tr.ssan > td.first, .cardc.ssan { padding-left: 28px; }
-tr.ssan { border-top: 0; }
-.cardc.ssan { margin-left: 18px; border-left-style: dashed; }
-tr.ssan .short, tr.ssan .full { display: none; }
+/* Documents (une ligne) et leurs fiches de lecture (dépliables dessous) */
+tr.art > td { border-top: 2px solid var(--bd); background: var(--card, transparent); }
+tr.art { cursor: pointer; }
+tr.art:focus-visible, .cardc.art:focus-visible { outline: 2px solid var(--pri); outline-offset: -2px; }
+.artacts { margin-top: 8px; }
+.artres .badge { margin: 2px 4px 2px 0; }
+tr.fiche { display: none; }
+tr.fiche.show { display: table-row; }
+tr.fiche > td.first { padding-left: 28px; }
+.cardc.art { cursor: pointer; }
+.artgrp .fiches { display: none; margin-left: 18px; }
+.artgrp.open .fiches { display: block; }
+.cardc.fiche { border-left-style: dashed; }
 
 /* Suivi de projet : rétroplanning (frise, jalons) et comptes rendus */
 .barre{height:8px;border-radius:4px;background:var(--bd);overflow:hidden;margin-bottom:8px}

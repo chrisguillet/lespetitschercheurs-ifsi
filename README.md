@@ -26,7 +26,7 @@ Navigateur (GitHub Pages)  ──jeton Google──▶  Apps Script (API)  ─�
 
 | Rôle | Lire | Ses lectures | Lectures des autres | Commentaires | Administration |
 |---|---|---|---|---|---|
-| **Étudiant** | oui | modifier, supprimer son analyse | ajouter **sa propre analyse** sur un article de la promo ; **proposer une correction** de la partie objective (validée par 3 étudiants) ; modification et suppression interdites | publier, modifier et supprimer les siens ; supprimer ceux des autres (modération) | oui |
+| **Étudiant** | oui | modifier, supprimer sa fiche de lecture | ajouter **sa propre fiche de lecture** sur un article de la promo ; **proposer une correction** de la partie objective (validée par 3 étudiants) ; modification et suppression interdites | publier, modifier et supprimer les siens ; supprimer ceux des autres (modération) | oui |
 | **Formateur** | oui | — | — | publier, modifier et supprimer les siens | non |
 | **Administrateur** | oui | — | — | supprimer (modération) | oui, **y compris les étudiants** (prénom, couleur, rôle, adresse e-mail) et peut **supprimer** un utilisateur (plus d’accès ; ses lectures restent dans le Sheet mais ne sont plus affichées, et ses commentaires sur les lectures des autres apparaissent sous « Utilisateur supprimé ») |
 
@@ -38,18 +38,18 @@ ses lectures et ses commentaires suivent automatiquement.
 
 Tout est organisé en **établissement → promo → groupe** (par exemple *IFSI Saint-Nazaire → Promo 24-27 → Les petits chercheurs*).
 
-- **Articles et analyses.** La **partie objective** d'un article (titre, auteur, parution, type, références APA…) est **commune à la promo** ;
-  chaque étudiant y ajoute **sa propre analyse** (mots-clés, concepts, objet, opinion, controverse, colonne libre). Une analyse
+- **Documents et fiches de lecture.** La **partie objective** d'un article (titre, auteur, parution, type, références APA…) est **commune à la promo** ;
+  chaque étudiant y ajoute **sa propre fiche de lecture** (mots-clés, concepts, objet, opinion, controverse, colonne libre). Une fiche de lecture
   **« En cours »** n'est visible que de son groupe ; dès qu'elle est **« Terminée »** elle est **partagée automatiquement avec toute la promo** :
-  c'est la grande base de connaissances partagée. Le tableau montre **une ligne par article**, ses autres analyses le suivent juste dessous.
-- À l'ajout, un article déjà présent (même DOI, ou même titre) est détecté : on propose d'**ajouter son analyse** à l'article existant.
-  Une personne n'a qu'une analyse par article.
+  c'est la grande base de connaissances partagée. Le tableau liste d'abord **les documents étudiés (une ligne chacun)**, avec qui en a fait une fiche ; un clic sur le document **déplie ses fiches de lecture** en dessous (colonnes 2 à 8). Une recherche ou un filtre déplie d'office les documents trouvés.
+- À l'ajout, un article déjà présent (même DOI, ou même titre) est détecté : on propose d'**ajouter sa fiche de lecture** à l'article existant.
+  Une personne n'a qu'une fiche de lecture par article.
 - **Corriger la partie objective** : l'auteur de l'article peut la modifier directement tant qu'il est seul à l'avoir analysé ; ensuite toute
   correction est une **proposition**, appliquée quand **3 étudiants de la promo** (proposant compris) l'ont approuvée, refusée quand 3 l'ont refusée,
   expirée après 14 jours (ancienne version conservée dans `Historique`). L'administrateur corrige directement.
-- Chaque fiche a **deux fils de commentaires indépendants** : celui du **groupe** et celui de la **promo** (si l'analyse est terminée, donc partagée).
+- Chaque fiche de lecture a **deux fils de commentaires indépendants** : celui du **groupe** et celui de la **promo** (si la fiche est terminée, donc partagée).
   Rien ne passe de l'un à l'autre. Dans le fil du groupe, les étudiants du groupe peuvent supprimer un commentaire (modération) ; dans le fil
-  de la promo, seuls l'auteur et l'administrateur le peuvent. Repasser une analyse « En cours » cache les commentaires de promo, sans les perdre.
+  de la promo, seuls l'auteur et l'administrateur le peuvent. Repasser une fiche « En cours » cache les commentaires de promo, sans les perdre.
 - Le bandeau sous les onglets choisit le **groupe** (si l'on en a plusieurs, y compris dans d'autres promos) et la **vue** : *Mon groupe* ou *Toute la promo*.
   Tableau, cartes, bibliographie, synthèse et exports suivent la vue. Le choix est mémorisé.
 - Un **étudiant** n'est que dans **un groupe par promo** ; un **formateur** est rattaché par l'administrateur à un ou plusieurs groupes
@@ -151,7 +151,7 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 - Tant qu'une demande est en attente, ou refusée, aucune lecture ni aucun commentaire n'est renvoyé.
 
 
-## Migration vers « articles + analyses »
+## Migration vers « articles + fiches de lecture »
 
 Relancez `setup` après avoir collé le nouveau `Code.gs` : il crée les feuilles `Articles` et `Propositions`, rattache chaque lecture existante à un article
 (les lectures du même article dans une promo — même DOI ou même titre, personnes différentes — sont fusionnées) et recalcule le partage
@@ -159,7 +159,7 @@ Relancez `setup` après avoir collé le nouveau `Code.gs` : il crée les feuille
 
 ## Suivi de projet (onglet « 🗓️ Suivi de projet »)
 
-Propre à chaque groupe (celui choisi dans le bandeau), visible **de son groupe seulement** : ses étudiants, ses formateurs rattachés et l'administrateur. Rien n'est partagé avec le reste de la promo (contrairement aux analyses terminées).
+Propre à chaque groupe (celui choisi dans le bandeau), visible **de son groupe seulement** : ses étudiants, ses formateurs rattachés et l'administrateur. Rien n'est partagé avec le reste de la promo (contrairement aux fiches de lecture terminées).
 
 - **Réunions** : un compte rendu par réunion (date, titre, participants, **ce qui a été vu**, **ce qui est attendu**, **étapes pour la suite**), les plus récentes en premier.
 - **Rétroplanning** : des **jalons** avec échéance et statut (à faire, en cours, fait), triés par date, avec une frise (la ligne rouge est aujourd'hui),
@@ -183,7 +183,7 @@ Propre à chaque groupe (celui choisi dans le bandeau), visible **de son groupe 
     une seule demande en cours par promo, annulable). Si elle est acceptée, la personne entre dans le groupe ;
   - **créer son groupe** (nom unique dans la promo). **Un groupe d'une seule personne est accepté** : d'autres pourront demander à le rejoindre.
 - Un étudiant déjà actif peut entrer le code d'une **autre promo** depuis ce panneau (donc seulement tant qu'il n'a pas de groupe dans sa promo actuelle).
-- **Pas de « quitter mon groupe » en libre-service** : un retrait passe par le vote du groupe (ou l'administrateur), car les analyses restent rattachées au groupe d'origine.
+- **Pas de « quitter mon groupe » en libre-service** : un retrait passe par le vote du groupe (ou l'administrateur), car les fiches de lecture restent rattachées au groupe d'origine.
 - Nouvelle feuille `Inscriptions` (email, promo, date, origine : `code` ou `admin`) et nouvelles colonnes (créées par `setup`) : `Promos` (code, expiration, maximum, usages),
   `Utilisateurs` (promo et rôle demandés), `Groupes` (créé par). Après collage du code : lancer `setup`, puis créer une nouvelle version du déploiement.
 
