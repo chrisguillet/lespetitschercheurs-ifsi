@@ -18,7 +18,8 @@
       return Math.max(cur, v);
     } catch (e) { return v || 0; }
   };
-  const emoji = (ctx, e, x, y, taille) => { ctx.font = taille + "px serif"; ctx.textBaseline = "alphabetic"; ctx.fillText(e, x, y); };
+  // Les emojis suivent la transparence de la couleur de remplissage courante : on la fixe, sinon ils clignotent selon le dernier élément dessiné.
+const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.fillStyle = "#000"; ctx.font = taille + "px serif"; ctx.textBaseline = "alphabetic"; ctx.fillText(e, x, y); ctx.restore(); };
   const couleurs = () => {
     const cs = root.getComputedStyle ? root.getComputedStyle(root.document.documentElement) : null;
     const v = (n, d) => (cs && cs.getPropertyValue(n).trim()) || d;
@@ -29,7 +30,7 @@
   const SOL = 205;
   const OBSTACLES = [
     { e: "chariot", w: 44, h: 40, haut: false, nom: "chariot de soins" },
-    { e: "💧", w: 36, h: 22, haut: false, nom: "flaque" },
+    { e: "sang", w: 46, h: 14, haut: false, nom: "flaque de sang" },
     { e: "👪", w: 44, h: 44, haut: false, nom: "famille" },
     { e: "enseigne", w: 50, h: SOL - 28, haut: true, nom: "enseigne suspendue" }
   ];
@@ -44,6 +45,15 @@
     ctx.strokeStyle = "#5b6b7f"; ctx.beginPath(); ctx.moveTo(x + w, y + 3); ctx.lineTo(x + w + 6, y + 3); ctx.lineTo(x + w + 6, y + 14); ctx.stroke();   // poignée
     ctx.fillStyle = "#2b3340"; [x + 8, x + w - 8].forEach(r => { ctx.beginPath(); ctx.arc(r, y + h - 4, 4, 0, 7); ctx.fill(); });   // roulettes
   }
+  // Flaque de sang : ellipse sombre avec reflet, éclaboussures autour.
+  function flaque(ctx, x, y, w, h) {
+    ctx.fillStyle = "#9b1c1c"; ctx.beginPath(); ctx.ellipse(x + w / 2, y + h - 5, w / 2, 6, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + w * 0.3, y + h - 8, w * 0.22, 4, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#c0392b"; ctx.beginPath(); ctx.ellipse(x + w * 0.55, y + h - 6, w * 0.25, 3, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.45)"; ctx.beginPath(); ctx.ellipse(x + w * 0.62, y + h - 7, 5, 1.5, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#9b1c1c"; [[2, 3, 2.5], [w - 4, 5, 2], [w * 0.15, h - 12, 1.8]].forEach(p => { ctx.beginPath(); ctx.arc(x + p[0], y + p[1] + h - 14, p[2], 0, 7); ctx.fill(); });
+  }
+
   // Enseigne de service suspendue au plafond (impossible à sauter : il faut passer dessous).
   function enseigne(ctx, x, bas, w) {
     const h = 28, y = bas - h;
@@ -89,8 +99,8 @@
   }
 
   const course = {
-    nom: "course", titre: "🏃 La course aux transmissions",
-    aide: "Espace ou ↑ : sauter les chariots, flaques et familles · ↓ (maintenu) : se baisser sous l’enseigne suspendue. Sur écran tactile : toucher en haut pour sauter, en bas pour se baisser.",
+    nom: "course-m", unite: " m", titre: "🏃 La course aux transmissions",
+    aide: "Espace ou ↑ : sauter les chariots, flaques de sang et familles · ↓ (maintenu) : se baisser sous l’enseigne suspendue. Sur écran tactile : toucher en haut pour sauter, en bas pour se baisser.",
     fin: "Convoqué·e par la cadre de santé 📋",
     init() { return { y: SOL, vy: 0, bas: false, obs: [], dist: 0, vitesse: 280, prochain: 300, score: 0, mort: false }; },
     action(s) { if (s.y >= SOL) s.vy = -640; },
@@ -101,7 +111,7 @@
       s.vy += 1800 * dt; s.y += s.vy * dt;
       if (s.y >= SOL) { s.y = SOL; s.vy = 0; }
       s.vitesse = 280 + Math.min(320, s.dist / 40);
-      s.dist += s.vitesse * dt; s.score = Math.floor(s.dist / 12);
+      s.dist += s.vitesse * dt; s.score = Math.floor(s.dist / 50);   // en mètres
       s.obs.forEach(o => { o.x -= s.vitesse * dt; });
       s.obs = s.obs.filter(o => o.x + o.w > -10);
       s.prochain -= s.vitesse * dt;
@@ -119,13 +129,14 @@
       ctx.beginPath(); ctx.moveTo(0, SOL + 2); ctx.lineTo(W, SOL + 2); ctx.stroke();
       s.obs.forEach(o => {
         if (o.e === "chariot") chariot(ctx, o.x, o.y, o.w, o.h);
+        else if (o.e === "sang") flaque(ctx, o.x, o.y, o.w, o.h);
         else if (o.haut) enseigne(ctx, o.x, o.h, o.w);
         else emoji(ctx, o.e, o.x, o.y + o.h, o.h + 4);
       });
       const h = this.hauteur(s);
       emoji(ctx, avatar, 50, s.y, h + 4);
       ctx.fillStyle = c.texte; ctx.font = "bold 16px system-ui,sans-serif"; ctx.textAlign = "right";
-      ctx.fillText(s.score + " patients vus", W - 12, 24); ctx.textAlign = "left";
+      ctx.fillText(s.score + " m", W - 12, 24); ctx.textAlign = "left";
     }
   };
 
@@ -184,7 +195,7 @@
     if (actif.etat === "pret") centre("Espace ou toucher pour commencer", H / 2 - 20, 20);
     if (actif.etat === "fini") {
       ctx.fillStyle = "rgba(0,0,0,.28)"; ctx.fillRect(0, 0, W, H);
-      centre(jeu.fin, H / 2 - 24, 24, "#fff"); centre("Score : " + s.score + " · record : " + record(jeu.nom), H / 2 + 8, 18, "#fff"); centre("Espace ou toucher pour rejouer", H / 2 + 40, 15, "#fff");
+      centre(jeu.fin, H / 2 - 24, 24, "#fff"); centre("Score : " + s.score + (jeu.unite || "") + " · record : " + record(jeu.nom) + (jeu.unite || ""), H / 2 + 8, 18, "#fff"); centre("Espace ou toucher pour rejouer", H / 2 + 40, 15, "#fff");
     }
     if (actif.maj) actif.maj(s.score, record(jeu.nom));
   }
