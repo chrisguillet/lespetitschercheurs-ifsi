@@ -698,12 +698,25 @@ function majConnexion_(user) {
 
 // L'administrateur voit tout le monde. Un étudiant ne voit pas les adresses des autres étudiants (la promo en compte beaucoup) :
 // il garde les demandes en attente et les formateurs qu'il peut gérer.
+// Ce qu'un étudiant peut voir et gérer dans l'administration : les demandes en attente et les formateurs actifs
+// rattachés à l'un de ses groupes. Jamais les accès refusés, ni les formateurs sans lien avec ses groupes ; l'administrateur voit tout.
+function accesVisibles_(user) {
+  if (user.role === 'admin') return function () { return true; };
+  const miens = {}, voisins = {};
+  const membres = table_(FEUILLE_MEMBRES, COL_MEMBRES);
+  membres.forEach(function (m) { if (m.email === user.email) miens[m.groupe_id] = true; });
+  membres.forEach(function (m) { if (miens[m.groupe_id]) voisins[m.email] = true; });
+  return function (u) {
+    return u.role !== 'etudiant' && (u.statut === 'en_attente' || (u.statut === 'actif' && !!voisins[u.email]));
+  };
+}
+
 function listerAcces_(user) {
-  const admin = user.role === 'admin';
+  const admin = user.role === 'admin', visible = accesVisibles_(user);
   const nbL = {}, nbC = {};
   lireTable_(feuilleLectures_(), COLONNES).forEach(function (r) { nbL[r.owner] = (nbL[r.owner] || 0) + 1; });
   lireTable_(feuilleCommentaires_(), COL_COMMENTAIRES).forEach(function (r) { nbC[r.auteur_email] = (nbC[r.auteur_email] || 0) + 1; });
-  return listerUtilisateurs_().filter(function (u) { return admin || u.role !== 'etudiant'; }).map(function (u) {
+  return listerUtilisateurs_().filter(visible).map(function (u) {
     return { email: u.email, prenom: u.prenom, role: u.role, statut: u.statut, couleur: u.couleur,
       demande_le: u.demande_le, derniere_connexion: u.derniere_connexion, demande: demandeLibelle_(u), protege: u.role === 'etudiant',
       nb_lectures: nbL[u.email] || 0, nb_commentaires: nbC[u.email] || 0 };
@@ -733,6 +746,7 @@ function administrer_(user, data) {
   if (cible.role === 'etudiant' && !admin) {
     throw err_('forbidden', 'Les étudiants sont gérés par l’administrateur');
   }
+  if (!accesVisibles_(user)(cible)) throw err_('forbidden', 'Cet accès ne concerne pas vos groupes');
   const role = String(data.role || '');
   const statut = String(data.statut || '');
   const prenom = String(data.prenom === undefined || data.prenom === null ? '' : data.prenom).trim();

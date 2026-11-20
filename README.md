@@ -151,7 +151,7 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 
 - `config.js` ne contient aucun secret : l'ID client et l'URL de l'API sont publics par nature.
 - Le script refuse tout jeton dont l'audience n'est pas votre ID client, ou dont l'adresse n'est pas vérifiée.
-- Les adresses e-mail ne sont renvoyées au navigateur qu'à l'administrateur (et, pour les demandes en attente et les formateurs, aux étudiants), dans l'onglet Administration.
+- Les adresses e-mail ne sont renvoyées au navigateur qu'à l'administrateur (et, aux étudiants, uniquement pour les demandes en attente et les formateurs rattachés à leurs groupes ; les accès refusés et les formateurs sans lien avec leurs groupes restent réservés à l'administrateur, y compris côté serveur), dans l'onglet Administration.
 - L'adresse de l'administrateur n'est pas dans le dépôt : elle vit dans les propriétés du script.
 - Tant qu'une demande est en attente, ou refusée, aucune lecture ni aucun commentaire n'est renvoyé.
 
