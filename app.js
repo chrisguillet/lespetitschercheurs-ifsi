@@ -473,7 +473,9 @@ function alerteJalon(j) {
   if (fin < 0) return "retard";
   return deb <= +j.alerte_jours ? "proche" : "";
 }
-const alertesJalons = () => jalonsAll.filter(alerteJalon).sort((a, b) => debutJalon(a).localeCompare(debutJalon(b)));
+// Les alertes ne concernent que mes groupes (l'administrateur, qui voit tout, n'en reçoit pas pour les groupes des autres).
+const mesGroupesIds = () => new Set(groupes.filter(g => (g.membres || []).some(m => m.moi)).map(g => g.id));
+const alertesJalons = () => jalonsAll.filter(j => mesGroupesIds().has(j.groupe_id) && alerteJalon(j)).sort((a, b) => debutJalon(a).localeCompare(debutJalon(b)));
 let alertesMasquees = false;   // le temps de la session
 function majAlertes() {
   const zone = $("alertes"), nb = $("alertnb");
