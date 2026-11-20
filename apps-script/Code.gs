@@ -161,7 +161,15 @@ function setup() {
   migrerVersGroupes_();
   migrerVersArticles_();
   migrerVersStructure_();
+  migrerFormateursVersPromos_();
   viderCacheTables_();
+}
+
+// Reprise (idempotente, lancée par setup) : un formateur actif qui avait demandé une promo y est inscrit.
+function migrerFormateursVersPromos_() {
+  lireUtilisateurs_().forEach(function (u) {
+    if (u.statut === 'actif' && u.role === 'formateur' && u.promo_demandee) inscrire_(u.email, u.promo_demandee, 'migration');
+  });
 }
 
 // Reprise de l'existant (idempotente, lancée par setup) : un premier groupe reçoit tous les accès actifs,
@@ -413,6 +421,11 @@ function doPost(e) {
         return json_(Object.assign({ ok: true }, donnees_(user), accesSiAdmin_(user)));
       case 'member_candidates':
         return json_({ ok: true, candidats: candidats_(user, req.groupe_id) });
+      case 'formateur_candidates':
+        return json_({ ok: true, candidats: formateursInvitables_(user, req.groupe_id) });
+      case 'formateur_request':
+        muter_(function () { demanderRattachement_(user, req.groupe_id); });
+        return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'vote_propose':
         muter_(function () { proposerVote_(user, req.groupe_id, req.type, req.pid, req.nom); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
@@ -500,6 +513,7 @@ function donnees_(user) {
     votes: votesPourClient_(user, c),
     propositions: propositionsPourClient_(user, c),
     promosMoi: promosMoiPourClient_(user, c),
+    rattachements: rattachementsPourClient_(user, c),
     fichiers: fichiersPourClient_(user, c),
     reunions: suiviPourClient_(user, c, 'reunion'),
     jalons: suiviPourClient_(user, c, 'jalon'),
@@ -775,6 +789,8 @@ function administrer_(user, data) {
   if (nouvelEmail !== email) migrerEmail_(email, nouvelEmail);
   // Un étudiant validé qui avait demandé une promo y est inscrit.
   if (admin && statut === 'actif' && role === 'etudiant' && cible.promo_demandee) inscrire_(nouvelEmail, cible.promo_demandee, 'admin');
+  // Un formateur validé (par un étudiant ou l'administrateur) est inscrit à la promo demandée : il peut alors demander à rejoindre ses groupes.
+  if (statut === 'actif' && role === 'formateur' && cible.promo_demandee) inscrire_(nouvelEmail, cible.promo_demandee, admin ? 'admin' : 'etudiant');
 }
 
 function migrerEmail_(ancien, nouveau) {
@@ -1431,7 +1447,7 @@ function votesPourClient_(user, c) {
     const votes = lireVotesDe_(v);
     const proposant = parEmail[v.propose_par];
     return { id: v.id, groupe_id: v.groupe_id, type: v.type,
-      cible_pid: retrait ? pid_(v.cible) : '', cible: (retrait || v.type === 'adhesion') && parEmail[v.cible] ? parEmail[v.cible].prenom : '', valeur: v.valeur,
+      cible_pid: retrait ? pid_(v.cible) : '', cible: (retrait || v.type === 'adhesion' || TYPES_FORMATEUR.indexOf(v.type) >= 0) && parEmail[v.cible] ? parEmail[v.cible].prenom : '', valeur: v.valeur,
       propose_par: proposant ? proposant.prenom : 'Utilisateur supprimé',
       expire_le: new Date(Date.parse(v.cree_le) + VOTE_DUREE_MS).toISOString(),
       oui: etat.oui, non: etat.non, n: etat.n, besoin: etat.besoin,
@@ -1553,6 +1569,14 @@ function proposerVote_(user, gid, type, pid, nom) {
     if (votes.some(function (v) { return v.cible === cible && v.statut === 'refuse' && maintenant - Date.parse(v.clos_le) < VOTE_BLOCAGE_MS; })) {
       throw err_('invalid', 'Une proposition contre cette personne a été refusée récemment : réessayez dans quelques jours');
     }
+  } else if (type === 'formateur_invite') {
+    const f = formateursDePromo_(clePromo_(g)).filter(function (u) { return pid_(u.email) === pid; })[0];
+    if (!f) throw err_('not_found', 'Formateur introuvable dans cette promo');
+    cible = f.email;
+    verifierRattachementPossible_(g, cible, 'Ce formateur fait déjà partie du groupe', 'Une proposition est déjà en cours pour ce formateur');
+    if (votes.some(function (v) { return v.cible === cible && v.statut === 'refuse' && maintenant - Date.parse(v.clos_le) < VOTE_BLOCAGE_MS; })) {
+      throw err_('invalid', 'Une invitation de ce formateur a été refusée récemment : réessayez dans quelques jours');
+    }
   } else if (type === 'nom') {
     valeur = nomValide_(nom, 'Nom');
     if (normaliserTerme_(valeur) === normaliserTerme_(g.nom)) throw err_('invalid', 'C’est déjà le nom du groupe');
@@ -1615,6 +1639,10 @@ function evaluerVote_(v) {
         const cand = utilisateurActif_(function (x) { return x.email === v.cible; });
         if (!cand) throw err_('invalid', 'candidat introuvable');
         ajouterMembre_(groupeParId_(v.groupe_id), cand);
+      } else if (TYPES_FORMATEUR.indexOf(v.type) >= 0) {
+        const f = utilisateurActif_(function (x) { return x.email === v.cible && x.role === 'formateur'; });
+        if (!f) throw err_('invalid', 'formateur introuvable');
+        ajouterMembre_(groupeParId_(v.groupe_id), f);
       } else if (retrait) {
         // Garde-fou : on ne vide jamais un groupe de ses étudiants.
         if (electeursGroupe_(v.groupe_id).length < 2) throw err_('invalid', 'dernier étudiant');
@@ -2256,6 +2284,100 @@ function annulerAdhesionsOuvertes_(email, cle) {
     return v.type === 'adhesion' && v.statut === 'ouvert' && v.cible === email && parId[v.groupe_id] && clePromo_(parId[v.groupe_id]) === cle;
   }).forEach(function (v) {
     sh.getRange(v._row, COL_VOTES.indexOf('statut') + 1, 1, 2).setValues([['annule', new Date().toISOString()]]);
+  });
+}
+
+/* ----- Formateurs : demande de rattachement à un groupe, ou invitation par un groupe (vote des étudiants du groupe) ----- */
+
+const TYPES_FORMATEUR = ['formateur_demande', 'formateur_invite'];
+
+// Promos d'un formateur : celles où il est inscrit, plus celles de ses groupes (un formateur peut être rattaché à plusieurs groupes).
+function promosDeFormateur_(email) {
+  const out = {}, pp = promosParId_();
+  table_(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS).forEach(function (i) { if (i.email === email && pp[i.promo_id]) out[pp[i.promo_id].cle] = true; });
+  const parId = {};
+  table_(FEUILLE_GROUPES, COL_GROUPES).forEach(function (g) { parId[g.id] = g; });
+  table_(FEUILLE_MEMBRES, COL_MEMBRES).forEach(function (m) { if (m.email === email && parId[m.groupe_id]) out[clePromo_(parId[m.groupe_id])] = true; });
+  return out;
+}
+
+function formateursDePromo_(cle) {
+  return listerUtilisateurs_().filter(function (u) { return u.statut === 'actif' && u.role === 'formateur' && promosDeFormateur_(u.email)[cle]; });
+}
+
+// Refuse si le formateur est déjà dans le groupe ou si une proposition (demande ou invitation) est déjà ouverte pour lui dans ce groupe.
+function verifierRattachementPossible_(g, email, msgMembre, msgOuvert) {
+  if (table_(FEUILLE_MEMBRES, COL_MEMBRES).some(function (m) { return m.groupe_id === g.id && m.email === email; })) throw err_('invalid', msgMembre);
+  const maintenant = Date.now();
+  if (table_(FEUILLE_VOTES, COL_VOTES).some(function (v) {
+    return v.groupe_id === g.id && v.cible === email && TYPES_FORMATEUR.indexOf(v.type) >= 0 && voteOuvert_(v, maintenant);
+  })) throw err_('invalid', msgOuvert);
+}
+
+// Formateurs de la promo du groupe que ses étudiants peuvent inviter (pas déjà membres, pas de proposition ouverte).
+function formateursInvitables_(user, gid) {
+  exigerEtudiant_(user);
+  exigerMembre_(user, gid);
+  cloreExpires_();
+  const g = groupeParId_(gid);
+  const maintenant = Date.now();
+  const membres = {}, ouverts = {};
+  table_(FEUILLE_MEMBRES, COL_MEMBRES).forEach(function (m) { if (m.groupe_id === g.id) membres[m.email] = true; });
+  table_(FEUILLE_VOTES, COL_VOTES).forEach(function (v) {
+    if (v.groupe_id === g.id && TYPES_FORMATEUR.indexOf(v.type) >= 0 && voteOuvert_(v, maintenant)) ouverts[v.cible] = true;
+  });
+  return formateursDePromo_(clePromo_(g)).filter(function (u) { return !membres[u.email] && !ouverts[u.email]; })
+    .map(function (u) { return { pid: pid_(u.email), prenom: u.prenom }; })
+    .sort(function (a, b) { return a.prenom.localeCompare(b.prenom); });
+}
+
+// Un formateur demande à rejoindre un groupe de sa promo : les étudiants du groupe votent à la majorité simple.
+function demanderRattachement_(user, gid) {
+  if (user.role !== 'formateur') throw err_('forbidden', 'Réservé aux formateurs');
+  cloreExpires_();
+  const g = groupeParId_(String(gid || ''));
+  if (!promosDeFormateur_(user.email)[clePromo_(g)]) throw err_('forbidden', 'Ce groupe n’est pas dans votre promo');
+  if (!electeursGroupe_(g.id).length) throw err_('invalid', 'Ce groupe n’a aucun membre étudiant');
+  verifierRattachementPossible_(g, user.email, 'Vous faites déjà partie de ce groupe', 'Une demande ou une invitation est déjà en cours pour ce groupe');
+  const maintenant = Date.now();
+  if (table_(FEUILLE_VOTES, COL_VOTES).some(function (v) {
+    return v.groupe_id === g.id && v.cible === user.email && v.type === 'formateur_demande' && v.statut === 'refuse' && maintenant - Date.parse(v.clos_le) < VOTE_BLOCAGE_MS;
+  })) throw err_('invalid', 'Ce groupe a refusé votre demande récemment : réessayez dans quelques jours');
+  const sh = feuilleDe_(FEUILLE_VOTES, COL_VOTES);
+  const v = { id: Utilities.getUuid(), groupe_id: g.id, type: 'formateur_demande', cible: user.email, valeur: '', propose_par: user.email,
+    cree_le: new Date().toISOString(), votes: '{}', statut: 'ouvert', clos_le: '' };
+  sh.appendRow(COL_VOTES.map(function (c) { return v[c]; }));
+}
+
+// Pour un formateur : les groupes de ses promos, avec son appartenance, sa demande ouverte et les invitations reçues.
+function rattachementsPourClient_(user, c) {
+  if (user.role !== 'formateur') return [];
+  const cles = promosDeFormateur_(user.email);
+  const parEmail = {};
+  listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
+  const maintenant = Date.now();
+  const mesVotes = table_(FEUILLE_VOTES, COL_VOTES).filter(function (v) { return v.cible === user.email && TYPES_FORMATEUR.indexOf(v.type) >= 0; });
+  const parPromo = {};
+  table_(FEUILLE_GROUPES, COL_GROUPES).filter(function (g) { return cles[clePromo_(g)]; }).forEach(function (g) {
+    const etudiants = electeursGroupe_(g.id);
+    const vg = mesVotes.filter(function (v) { return v.groupe_id === g.id; });
+    const resume = function (v) {
+      const etat = etatVote_(v, etudiants);
+      return { id: v.id, oui: etat.oui, non: etat.non, n: etat.n, besoin: etat.besoin, expire_le: new Date(Date.parse(v.cree_le) + VOTE_DUREE_MS).toISOString() };
+    };
+    const demande = vg.filter(function (v) { return v.type === 'formateur_demande' && voteOuvert_(v, maintenant); })[0];
+    const invitation = vg.filter(function (v) { return v.type === 'formateur_invite' && voteOuvert_(v, maintenant); })[0];
+    const k = clePromo_(g);
+    (parPromo[k] = parPromo[k] || { titre: g.etablissement + ' · ' + g.promo, groupes: [] }).groupes.push({
+      id: g.id, nom: g.nom, membre: !!c.miens[g.id],
+      demande: demande ? resume(demande) : null, invitation: invitation ? resume(invitation) : null,
+      bloque: vg.some(function (v) { return v.type === 'formateur_demande' && v.statut === 'refuse' && maintenant - Date.parse(v.clos_le) < VOTE_BLOCAGE_MS; }),
+      membres: etudiants.filter(function (e) { return parEmail[e]; }).map(function (e) { return { prenom: parEmail[e].prenom, couleur: parEmail[e].couleur }; })
+    });
+  });
+  return Object.keys(parPromo).sort().map(function (k) {
+    parPromo[k].groupes.sort(function (a, b) { return a.nom.localeCompare(b.nom); });
+    return parPromo[k];
   });
 }
 

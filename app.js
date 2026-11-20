@@ -40,7 +40,7 @@ let token = null;
 try { token = sessionStorage.getItem("lydia_token"); } catch (e) { /* stockage indisponible */ }
 let me = null, users = [], items = [], comments = [], acces = [], pendingCount = 0;
 // items / comments = ce que montre la vue courante ; itemsAll / commentsAll = tout ce que le serveur renvoie à la personne.
-let structureAdmin = [], adminFerme = new Set(), reunionsAll = [], jalonsAll = [], groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [], promosMoi = [], fichiers = [], stockage = null, feedbacksAdmin = [];
+let structureAdmin = [], adminFerme = new Set(), reunionsAll = [], jalonsAll = [], groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [], promosMoi = [], rattachements = [], fichiers = [], stockage = null, feedbacksAdmin = [];
 const ctx = { gid: "", vue: "groupe" };          // groupe choisi, et vue : « groupe » ou « promo » (fiches partagées)
 try { ctx.gid = localStorage.getItem("lydia_groupe") || ""; ctx.vue = localStorage.getItem("lydia_portee") === "groupe" ? "groupe" : "promo"; } catch (e) { /* ignoré */ }
 let cmScope = "groupe", studentsSig = "", ctxSig = "";
@@ -139,7 +139,7 @@ function showGate(msg, retry) {
 function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
-  groupes = []; votes = []; promosMoi = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); fermerJeu(); $("fbopen")?.classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
+  groupes = []; votes = []; promosMoi = []; rattachements = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); fermerJeu(); $("fbopen")?.classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; GM.fcand = null; fermerGroupe(true);
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
@@ -201,7 +201,7 @@ function deriver() {
 // Signature des données utiles (hors « en ligne ») : une actualisation qui ne change rien ne reconstruit pas le tableau.
 let dataSig = "";
 function applyData(j) {
-  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.fichiers, j.reunions, j.jalons, j.lectures, j.commentaires, j.lus, j.enAttente]);
+  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.rattachements, j.fichiers, j.reunions, j.jalons, j.lectures, j.commentaires, j.lus, j.enAttente]);
   const change = sig !== dataSig;
   dataSig = sig;
   applyDataBrut(j);
@@ -214,6 +214,7 @@ function applyDataBrut(j) {
   groupes = j.groupes || [];
   votes = j.votes || [];
   promosMoi = j.promosMoi || [];
+  rattachements = j.rattachements || [];
   fichiers = j.fichiers || [];
   itemsAll = j.lectures;
   props = j.propositions || [];
@@ -1979,6 +1980,32 @@ function renderAccueil() {
 
 /* ---------- Étudiant sans groupe : rejoindre (vote du groupe) ou créer le sien ---------- */
 
+// Formateur : groupes de sa promo, demande de rattachement (vote des étudiants du groupe) et invitations reçues. Un formateur peut être dans plusieurs groupes.
+function rattachementsHtml(sansMembre) {
+  const grp = g => {
+    const membres = g.membres.map(m => `<span class="chip"><span class="dot" style="background:${esc(m.couleur)}"></span>${esc(m.prenom)}</span>`).join(" ");
+    const etat = x => `${x.oui} oui · ${x.non} non — ${x.besoin} oui nécessaires sur ${x.n} (jusqu’au ${esc(dateCourte(x.expire_le))})`;
+    let act;
+    if (g.membre) act = '<span class="meta">✅ Vous en faites partie</span>';
+    else if (g.demande) act = `<span class="meta">Demande en cours : ${etat(g.demande)}</span> <button type="button" class="btn sm sec del" data-frc="${esc(g.demande.id)}">Annuler ma demande</button>`;
+    else if (g.invitation) act = `<span class="meta">📨 Ce groupe vous invite : ${etat(g.invitation)}</span>`;
+    else if (g.bloque) act = '<span class="meta">Demande refusée récemment : réessayez dans quelques jours.</span>';
+    else act = `<button type="button" class="btn sm" data-fr="${esc(g.id)}">Demander à rejoindre</button>`;
+    return `<div class="gmembre"><b>${esc(g.nom)}</b> ${membres || '<span class="meta">aucun étudiant</span>'} ${act}</div>`;
+  };
+  const blocs = rattachements.map(p => ({ ...p, groupes: p.groupes.filter(g => !sansMembre || !g.membre) })).filter(p => p.groupes.length);
+  if (!blocs.length) return '<div class="meta">Aucun autre groupe à rejoindre dans votre promo pour l’instant.</div>';
+  return `<div class="meta">Rejoindre un groupe : les étudiants du groupe votent (majorité simple, 7 jours). Un groupe peut aussi vous inviter. Vous pouvez être dans plusieurs groupes.</div>`
+    + blocs.map(p => `${rattachements.length > 1 ? `<h3>🎓 ${esc(p.titre)}</h3>` : ""}${p.groupes.map(grp).join("")}`).join("");
+}
+function renderRattachements(box) {
+  const sig = JSON.stringify(rattachements);
+  if (box.dataset.sig === sig && box.innerHTML) return;
+  box.dataset.sig = sig;
+  box.innerHTML = `<b>Vous n’êtes rattaché(e) à aucun groupe pour le moment.</b>${rattachementsHtml(false)}
+    <div class="meta" style="margin-top:6px">Si vous ne voyez aucun groupe, contactez l’administrateur.</div>`;
+}
+
 function renderRejoindre(box) {
   const libres = promosMoi.filter(p => !p.mon_groupe_id);
   const sig = JSON.stringify(promosMoi);
@@ -2013,6 +2040,8 @@ $("nogroup").onclick = async e => {
     catch (err) { if (err.code === "unauthorized") sessionError(err); else alert(errLabel + " : " + err.message); }
   };
   if (d.jr) return agir(() => api("join_request", { groupe_id: d.jr }), "Demande impossible");
+  if (d.fr) return agir(() => api("formateur_request", { groupe_id: d.fr }), "Demande impossible");
+  if (d.frc) return agir(() => api("vote_cancel", { id: d.frc }), "Annulation impossible");
   if (d.jcancel) return agir(() => api("vote_cancel", { id: d.jcancel }), "Annulation impossible");
   if (d.jc) {
     const nom = box.querySelector(`[data-jn="${d.jc}"]`).value.trim();
@@ -2049,6 +2078,7 @@ function renderCtx() {
   const msg = $("nogroup");
   if (me && !g) {
     if (canWrite() && !isSuper()) renderRejoindre(msg);
+    else if (me.role === "formateur" && rattachements.length) renderRattachements(msg);
     else { msg.dataset.sig = ""; msg.textContent = isSuper() ? "Aucun groupe n’existe encore : créez-en un dans l’onglet « Administration »."
       : "Aucun groupe ne vous est affecté pour le moment : contactez l’administrateur."; }
   }
@@ -2095,11 +2125,11 @@ function changerContexte(c) {
 
 /* ----- Fenêtre « Membres et votes » ----- */
 
-const GM = { ouvert: false, cand: null };
+const GM = { ouvert: false, cand: null, fcand: null };
 
 function ouvrirGroupe() {
   if (!groupeCourant()) return;
-  GM.ouvert = true; GM.cand = null; GM.focus = document.activeElement;
+  GM.ouvert = true; GM.cand = null; GM.fcand = null; GM.focus = document.activeElement;
   renderGroupe();
   $("gclose").focus();
 }
@@ -2124,13 +2154,15 @@ const dateCourte = iso => { const d = new Date(iso); return isNaN(d) ? "" : d.to
 
 function voteHtml(v) {
   const q = v.type === "adhesion" ? `Accepter <b>${esc(v.cible)}</b> dans le groupe ?`
+    : v.type === "formateur_demande" ? `Accepter le formateur <b>${esc(v.cible)}</b> dans le groupe ?`
+    : v.type === "formateur_invite" ? `Inviter le formateur <b>${esc(v.cible)}</b> à rejoindre le groupe ?`
     : v.type === "retrait" ? `Retirer <b>${esc(v.cible)}</b> du groupe ?` : `Renommer le groupe en <b>« ${esc(v.valeur)} »</b> ?`;
   const etat = `${v.oui} oui · ${v.non} non — ${v.besoin} oui nécessaires sur ${v.n} votant${v.n > 1 ? "s" : ""}`;
   let actions = "";
   if (!canWrite()) actions = "";
   else if (!v.peut_voter) actions = '<div class="meta">Vous êtes concerné(e) par cette proposition : vous ne votez pas.</div>';
   else actions = `<div class="votes"><button type="button" class="btn sm ${v.mon_vote === 1 ? "" : "sec"}" data-vote="${esc(v.id)}" data-oui="1" aria-pressed="${v.mon_vote === 1}">👍 Oui</button><button type="button" class="btn sm ${v.mon_vote === 0 ? "" : "sec"}" data-vote="${esc(v.id)}" data-oui="0" aria-pressed="${v.mon_vote === 0}">👎 Non</button>${v.proposant ? `<button type="button" class="btn sm sec del" data-vcancel="${esc(v.id)}">Annuler ma proposition</button>` : ""}</div>`;
-  return `<div class="vote ${v.peut_voter && v.mon_vote === null ? "attente" : ""}"><div>${q}</div><div class="meta">${v.type === "adhesion" ? "Demande de" : "Proposé par"} ${esc(v.propose_par)} · ${etat} · jusqu’au ${esc(dateCourte(v.expire_le))}</div>${actions}</div>`;
+  return `<div class="vote ${v.peut_voter && v.mon_vote === null ? "attente" : ""}"><div>${q}</div><div class="meta">${v.type === "adhesion" || v.type === "formateur_demande" ? "Demande de" : "Proposé par"} ${esc(v.propose_par)} · ${etat} · jusqu’au ${esc(dateCourte(v.expire_le))}</div>${actions}</div>`;
 }
 
 function renderGroupe() {
@@ -2148,6 +2180,11 @@ function renderGroupe() {
     : GM.cand.length
       ? `<div class="grow"><select id="gcsel" aria-label="Étudiant à ajouter">${GM.cand.map(c => `<option value="${esc(c.pid)}">${esc(c.prenom)}</option>`).join("")}</select><button type="button" class="btn sm" id="gadd">Ajouter au groupe</button><button type="button" class="btn sm sec" id="gcancel">Annuler</button></div>`
       : '<div class="meta">Aucun étudiant sans groupe dans cette promo. <button type="button" class="btn sm sec" id="gcancel">Fermer</button></div>';
+  const inviter = !canWrite() ? "" : GM.fcand === null
+    ? '<button type="button" class="btn sm sec" id="gfcand">🎓 Inviter un formateur</button>'
+    : GM.fcand.length
+      ? `<div class="grow"><select id="gfsel" aria-label="Formateur à inviter">${GM.fcand.map(c => `<option value="${esc(c.pid)}">${esc(c.prenom)}</option>`).join("")}</select><button type="button" class="btn sm" id="gfadd">Proposer l’invitation</button><button type="button" class="btn sm sec" id="gfcancel">Annuler</button></div>`
+      : '<div class="meta">Aucun formateur de la promo à inviter pour le moment. <button type="button" class="btn sm sec" id="gfcancel">Fermer</button></div>';
   $("gtitle").textContent = "👥 " + g.nom;
   $("gsub").textContent = `${g.etablissement} · ${g.promo}`;
   $("gbody").innerHTML = `
@@ -2155,7 +2192,9 @@ function renderGroupe() {
       <div class="cmbox">${mesVotes.length ? mesVotes.map(voteHtml).join("") : '<div class="meta">Aucune proposition en cours.</div>'}</div></div>
     <div class="gsec"><h3>Membres (${g.membres.length})</h3>${membres}
       <div style="margin-top:8px">${ajout}</div>
+      ${inviter ? `<div style="margin-top:8px">${inviter}</div><div class="meta" style="margin-top:4px">Inviter un formateur : les étudiants du groupe votent (majorité simple). Un formateur peut être rattaché à plusieurs groupes.</div>` : ""}
       ${canWrite() ? `<div class="meta" style="margin-top:6px">Un membre peut en ajouter un autre tout de suite. Pour retirer quelqu’un, les autres étudiants du groupe votent : la majorité simple suffit (la proposition expire après 7 jours${nbEtu < 3 ? " ; à deux étudiants, le retrait passe par l’administrateur" : ""}).</div>` : ""}</div>
+    ${!canWrite() && me.role === "formateur" ? `<div class="gsec"><h3>Mes groupes</h3>${rattachementsHtml(false)}</div>` : ""}
     ${canWrite() ? `<div class="gsec"><h3>Nom du groupe</h3>
       <div class="grow"><input id="gnom" maxlength="60" placeholder="Nouveau nom du groupe" aria-label="Nouveau nom du groupe"><button type="button" class="btn sm" id="gnomok">${nbEtu > 1 ? "Proposer ce nom" : "Renommer"}</button></div>
       <div class="meta" style="margin-top:6px">${nbEtu > 1 ? "Le changement de nom est soumis au vote des étudiants du groupe (majorité simple)." : "Vous êtes seul(e) étudiant(e) dans le groupe : le changement est immédiat."}</div></div>` : ""}`;
@@ -2178,6 +2217,8 @@ $("gbody").onclick = async e => {
   const d = b.dataset;
   if (d.vote) return actionGroupe(() => api("vote_answer", { id: d.vote, oui: d.oui === "1" }), "Vote impossible");
   if (d.vcancel) return actionGroupe(() => api("vote_cancel", { id: d.vcancel }), "Annulation impossible");
+  if (d.fr) return actionGroupe(() => api("formateur_request", { groupe_id: d.fr }), "Demande impossible");
+  if (d.frc) return actionGroupe(() => api("vote_cancel", { id: d.frc }), "Annulation impossible");
   if (d.vr) {
     if (!confirm(`Proposer le retrait de ${d.nom} du groupe ?\n\nLes autres étudiants du groupe (hors ${d.nom}) voteront ; la majorité simple suffit.`)) return;
     return actionGroupe(() => api("vote_propose", { groupe_id: g.id, type: "retrait", pid: d.vr }), "Proposition impossible");
@@ -2186,6 +2227,15 @@ $("gbody").onclick = async e => {
     try { GM.cand = (await api("member_candidates", { groupe_id: g.id })).candidats; renderGroupe(); }
     catch (err) { if (err.code === "unauthorized") sessionError(err); else alert("Liste indisponible : " + err.message); }
   } else if (b.id === "gcancel") { GM.cand = null; renderGroupe(); }
+  else if (b.id === "gfcand") {
+    try { GM.fcand = (await api("formateur_candidates", { groupe_id: g.id })).candidats; renderGroupe(); }
+    catch (err) { if (err.code === "unauthorized") sessionError(err); else alert("Liste indisponible : " + err.message); }
+  } else if (b.id === "gfcancel") { GM.fcand = null; renderGroupe(); }
+  else if (b.id === "gfadd") {
+    const pid = $("gfsel").value;
+    GM.fcand = null;
+    actionGroupe(() => api("vote_propose", { groupe_id: g.id, type: "formateur_invite", pid }), "Invitation impossible");
+  }
   else if (b.id === "gadd") {
     const pid = $("gcsel").value;
     GM.cand = null;

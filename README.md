@@ -52,7 +52,7 @@ Tout est organisé en **établissement → promo → groupe** (par exemple *IFSI
   de la promo, seuls l'auteur et l'administrateur le peuvent. Repasser une fiche « En cours » cache les commentaires de promo, sans les perdre.
 - Le bandeau sous les onglets choisit le **groupe** (si l'on en a plusieurs, y compris dans d'autres promos) et la **vue** : *Mon groupe* ou *Toute la promo*.
   Tableau, cartes, bibliographie, synthèse et exports suivent la vue. Le choix est mémorisé.
-- Un **étudiant** n'est que dans **un groupe par promo** ; un **formateur** est rattaché par l'administrateur à un ou plusieurs groupes
+- Un **étudiant** n'est que dans **un groupe par promo** ; un **formateur** peut être dans **plusieurs groupes** (voir « Rattachement des formateurs » ci-dessous)
   et ne voit que ceux-là (plus les fiches partagées avec la promo de ces groupes).
 - **L'administrateur** crée, renomme, déplace et supprime les groupes, et gère les membres (onglet Administration, bloc *Groupes*).
   Supprimer un groupe conserve ses fiches dans le Sheet mais ne les affiche plus.
@@ -234,3 +234,14 @@ Lien discret « 💡 Un retour sur l'outil ? » en bas de page, pour **toute per
 ## Pause ludique (easter egg)
 
 Menu du compte (en haut à droite) → **🎮 Pause ludique** : *La course aux transmissions* (saut / se baisser) et *Flappy Seringue* (poches et potences à perfusion, gouttes à attraper pour +2, ECG en bas), dans une fenêtre. Code dans `games.js` (canvas, sans dépendance) ; avatar de la course au choix (femme, homme, neutre) et records conservés dans le navigateur. Accessible à toute personne connectée (étudiant, formateur, administrateur). Après une défaite, seul le bouton « Rejouer » relance une partie.
+
+## Rattachement des formateurs aux groupes
+
+Un formateur est lié à sa **promo** (inscrite à la validation de son accès) puis à un ou plusieurs **groupes** de cette promo, dans les deux sens :
+
+- **Il demande** à rejoindre un groupe (panneau « sans groupe », ou « Mes groupes » dans la fenêtre d'un groupe) ;
+- **Le groupe l'invite** : un étudiant du groupe propose un formateur de la promo (fenêtre du groupe → inviter un formateur).
+
+Dans les deux cas, c'est un **vote des étudiants du groupe** (majorité simple, 7 jours, comme les autres votes) ; une fois adopté, le formateur est rattaché sans autre étape. Une demande refusée ne peut pas être refaite tout de suite. La demande peut être annulée.
+L'administrateur garde le rattachement et le retrait directs. Il n'y a pas de bouton « quitter le groupe » : c'est l'administrateur qui retire.
+Après mise à jour du script, lancer `setup` une fois : il inscrit à leur promo les formateurs déjà validés.
