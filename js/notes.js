@@ -54,11 +54,11 @@ function renderNListe() {
   $("nfiltres").innerHTML = (N.liens ? `<div class="nfchip">Notes liées à ce document <button type="button" class="btn sm sec" data-nunfilter aria-label="Retirer le filtre">✕</button></div>` : "")
     + (tags.length ? `<div class="ntags">${tags.map(t => `<button type="button" class="ntag ${N.tag === t ? "on" : ""}" data-ntag="${esc(t)}" aria-pressed="${N.tag === t}">#${esc(t)}</button>`).join("")}</div>` : "");
   $("nitems").innerHTML = l.map(n => `<button type="button" class="nitem ${N.d && N.d.id === n.id ? "on" : ""}" data-nopen="${esc(n.id)}"><b>${n.epingle ? "📌 " : ""}${esc(n.titre)}</b><span class="meta">${esc(fmtD(n.date))}${n.liens.length ? " · 🔗 " + n.liens.length : ""}${(n.etiquettes || []).length ? " · " + n.etiquettes.map(t => "#" + esc(t)).join(" ") : ""}</span><span class="meta nex">${esc(n.texte.replace(/\s+/g, " ").slice(0, 90))}</span></button>`).join("")
-    || `<div class="note">${N.notes.length ? "Aucune note ne correspond." : "Aucune note pour le moment. Elles ne sont visibles que de vous."}</div>`;
+    || `<div class="note">${N.notes.length ? "Aucune note ne correspond." : "Aucune note pour le moment. Elles sont invisibles des autres membres et des formateurs."}</div>`;
 }
 function renderNEdit() {
   const d = N.d, box = $("nedit");
-  if (!d) { box.innerHTML = '<div class="note">Choisissez une note ou créez-en une. 🔒 Vos notes ne sont visibles que de vous.</div>'; return; }
+  if (!d) { box.innerHTML = '<div class="note">Choisissez une note ou créez-en une. 🔒 Vos notes sont invisibles des autres membres, des formateurs et de l’application ; seul l’administrateur du Google Sheet pourrait techniquement les lire. 🩺 N’y mettez aucune information permettant d’identifier un patient.</div>'; return; }
   const liens = d.liens.map(id => { const it = ficheLiee(id);
     return `<span class="nlien">${it ? `<button type="button" class="btn sm sec" data-ngo="${esc(id)}" title="Ouvrir cette fiche dans le tableau">📄 ${esc(it.titre)} <span class="meta">${esc(it.etudiant)}</span></button>` : '<span class="meta">📄 fiche indisponible</span>'}<button type="button" class="btn sm sec" data-nunlink="${esc(id)}" aria-label="Retirer le lien">✕</button></span>`; }).join("");
   const proposees = toutesEtiquettes().filter(t => !d.etiquettes.includes(t));

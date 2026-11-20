@@ -77,7 +77,7 @@ function renderForm() {
    <div id="apaprev" class="meta" style="margin-top:12px;padding:10px 12px;border:1px dashed var(--bd);border-radius:8px"></div>
   </details>
   ${(formFich = !modeArticle && (editing ? d.mine : true) ? { k: editing ? d.article_id : artCible || "", differe: !editing } : null) ? `<details class="sec" open><summary>Document joint (facultatif)</summary><div id="fichform">${fichiersFormHtml()}</div></details>` : ""}
-  ${modeArticle ? "" : `<details class="sec" open><summary>Colonnes 2 à 8 · Libres (à remplir comme vous voulez, modifiable à tout moment)</summary>
+  ${modeArticle ? "" : `<p class="note rgpdnote" role="note">🩺 <b>Ne saisissez jamais d’information permettant d’identifier un patient</b> (nom, âge précis, service, date, situation reconnaissable) : ces fiches sont lisibles de votre groupe et, une fois terminées, de toute la promo.</p><details class="sec" open><summary>Colonnes 2 à 8 · Libres (à remplir comme vous voulez, modifiable à tout moment)</summary>
    <div class="grid">
     ${field("f_mots", "Mots-clés", d.mots, { area: 1 })}
     <div><label for="f_kw">Mots-clés en anglais</label><textarea id="f_kw" maxlength="2500">${esc(d.kw)}</textarea>

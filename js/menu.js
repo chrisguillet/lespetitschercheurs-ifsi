@@ -30,13 +30,20 @@ function renderMe() {
       <span class="avatar" style="--c:${esc(me.couleur)}">${init}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
     <div class="colpop right acctpop">
       <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b> <button type="button" class="acctedit" id="namebtn" title="Modifier mon nom" aria-label="Modifier mon nom">✏️</button><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
-      <div class="acctgrp"><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button></div>
+      <div class="acctgrp"><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button><button type="button" class="acctitem" id="mydatabtn" title="Télécharger tout ce que l’application garde sur vous (droit d’accès)">📦 Télécharger mes données</button></div>
       <div class="acctgrp"><div class="acctlabel">Affichage</div><button type="button" class="acctitem" id="themebtn"></button></div>
       ${window.LydiaJeux ? `<div class="acctgrp"><div class="acctlabel">🎮 Pause ludique</div>${LydiaJeux.liste.filter(j => !j.admin || isSuper()).map(j => `<button type="button" class="acctitem" data-jeu="${esc(j.id)}">${esc(j.titre)}</button>`).join("")}</div>` : ""}
       <div class="acctgrp"><button type="button" class="acctitem danger" id="logout">⎋ Se déconnecter</button></div>
     </div></details>`;
   $("me").querySelectorAll("[data-jeu]").forEach(b => b.onclick = () => { b.closest("details").removeAttribute("open"); ouvrirJeu(b.dataset.jeu); });
   $("logout").onclick = logout;
+  $("mydatabtn").onclick = async () => {
+    $("me").querySelector("details").removeAttribute("open");
+    try {
+      const j = await enCours("Préparation de vos données…", () => api("mes_donnees"));
+      telecharger(new Blob([JSON.stringify(j.export, null, 2)], { type: "application/json" }), "mes-donnees-lectures-ifsi-" + new Date().toISOString().slice(0, 10) + ".json");
+    } catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Téléchargement impossible : " + e.message); }
+  };
   $("notesbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirNotes(); };
   $("namebtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirNom(); };
   $("themebtn").onclick = basculerTheme;

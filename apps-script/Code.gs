@@ -531,6 +531,11 @@ function doPost(e) {
       case 'admin_set':
         muter_(function () { administrer_(user, req.data); });
         return json_(Object.assign({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user) }, donnees_(user)));
+      case 'admin_erase':
+        muter_(function () { effacerPersonne_(user, req.email); });
+        return json_(Object.assign({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user) }, donnees_(user)));
+      case 'mes_donnees':
+        return json_({ ok: true, export: exportMesDonnees_(user) });
       case 'admin_delete':
         muter_(function () { supprimerUtilisateur_(user, req.email); });
         return json_(Object.assign({ ok: true, acces: listerAcces_(user), groupesAdmin: listerGroupesAdmin_(user) }, donnees_(user)));
@@ -794,6 +799,105 @@ function listerAcces_(user) {
 // ses lectures et commentaires restent dans le Sheet (récupérables), mais ne sont plus affichés : ses commentaires
 // sont masqués avec ses lectures ou, sur les lectures d'autrui, signés « Utilisateur supprimé ».
 // Si la même adresse est un jour revalidée, ses lectures réapparaissent.
+/* ---------- Droits RGPD : effacement et accès ---------- */
+
+function feuilleSiExiste_(nom) { return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nom); }
+
+// Supprime les lignes d'une feuille qui vérifient `test` (de bas en haut) ; renvoie le nombre de lignes retirées. Sans effet si la feuille n'existe pas encore.
+function retirerLignes_(sh, colonnes, test) {
+  if (!sh) return 0;
+  const l = lireTable_(sh, colonnes).filter(test).sort(function (a, b) { return b._row - a._row; });
+  l.forEach(function (r) { sh.deleteRow(r._row); });
+  return l.length;
+}
+// Vide une colonne (ex. « cree_par ») pour les lignes qui portent l'adresse : le contenu du groupe reste, sans lien avec la personne.
+function anonymiserColonne_(sh, colonnes, colonne, email) {
+  if (!sh) return;
+  lireTable_(sh, colonnes).filter(function (r) { return r[colonne].toLowerCase() === email; })
+    .forEach(function (r) { sh.getRange(r._row, colonnes.indexOf(colonne) + 1, 1, 1).setValue(''); });
+}
+// Retire l'adresse des bulletins de vote (JSON indexé par adresse) d'une feuille.
+function retirerBulletins_(sh, colonnes, email) {
+  if (!sh) return;
+  lireTable_(sh, colonnes).filter(function (r) { return r.votes && r.votes.indexOf('"' + email + '"') >= 0; }).forEach(function (r) {
+    try {
+      const v = JSON.parse(r.votes); delete v[email];
+      sh.getRange(r._row, colonnes.indexOf('votes') + 1, 1, 1).setValue(JSON.stringify(v));
+    } catch (e) { /* bulletins illisibles : laissés tels quels */ }
+  });
+}
+
+// Effacement complet d'une personne (droit à l'effacement) : son accès, ses fiches et leurs commentaires, ses notes, ses messages, ses retours,
+// ses appartenances, ses fichiers joints et ses votes. Ce qui appartient au groupe sans être d'elle (réunions, jalons, partie commune d'un article
+// encore utilisée par d'autres) est conservé, détaché de son adresse. Les sauvegardes du Sheet (7 jours + 8 lundis) s'effacent d'elles-mêmes.
+function effacerPersonne_(user, email) {
+  if (user.role !== 'admin') throw err_('forbidden', 'Réservé à l’administrateur');
+  email = String(email || '').trim().toLowerCase();
+  const cible = listerUtilisateurs_().filter(function (u) { return u.email === email; })[0];
+  if (!cible) throw err_('not_found', 'Adresse introuvable');
+  if (email === emailAdmin_()) throw err_('forbidden', 'Le compte administrateur ne peut pas être effacé');
+  // 1. Fiches (analyses) de la personne, leurs commentaires, leur historique. Les articles (partie commune) sont conservés, détachés de son adresse.
+  const shL = feuilleLectures_();
+  const miennes = lireTable_(shL, COLONNES).filter(function (r) { return r.owner.toLowerCase() === email; });
+  const idsL = {};
+  miennes.forEach(function (r) { idsL[r.id] = true; });
+  miennes.sort(function (a, b) { return b._row - a._row; }).forEach(function (r) { shL.deleteRow(r._row); });
+  retirerLignes_(feuilleCommentaires_(), COL_COMMENTAIRES, function (c) { return idsL[c.lecture_id] || c.auteur_email.toLowerCase() === email; });
+  retirerLignes_(feuilleSiExiste_(FEUILLE_HISTORIQUE), COL_HISTORIQUE, function (h) { return idsL[h.id]; });
+  anonymiserColonne_(feuilleArticles_(), COL_ARTICLES, 'cree_par', email);
+  // 2. Fichiers joints par la personne sur d'autres articles.
+  const shF = feuilleDe_(FEUILLE_FICHIERS, COL_FICHIERS);
+  lireTable_(shF, COL_FICHIERS).filter(function (f) { return f.cree_par.toLowerCase() === email; }).sort(function (a, b) { return b._row - a._row; }).forEach(function (f) {
+    try { DriveApp.getFileById(f.drive_id).setTrashed(true); } catch (e) { /* déjà absent */ }
+    shF.deleteRow(f._row);
+  });
+  // 3. Propositions, votes et bulletins.
+  retirerLignes_(feuillePropositions_(), COL_PROPOSITIONS, function (p) { return p.propose_par.toLowerCase() === email; });
+  retirerBulletins_(feuillePropositions_(), COL_PROPOSITIONS, email);
+  retirerLignes_(feuilleSiExiste_(FEUILLE_VOTES), COL_VOTES, function (v) { return v.propose_par.toLowerCase() === email || v.cible.toLowerCase() === email; });
+  retirerBulletins_(feuilleSiExiste_(FEUILLE_VOTES), COL_VOTES, email);
+  // 4. Données personnelles diverses.
+  retirerLignes_(feuilleSiExiste_(FEUILLE_NOTES), COL_NOTES, function (n) { return n.owner.toLowerCase() === email; });
+  retirerLignes_(feuilleSiExiste_(FEUILLE_CHAT), COL_CHAT, function (m) { return m.auteur_email.toLowerCase() === email; });
+  retirerLignes_(feuilleSiExiste_(FEUILLE_FEEDBACK), COL_FEEDBACK, function (f) { return f.auteur_email.toLowerCase() === email; });
+  retirerLignes_(feuilleLus_(false), COL_LUS, function (l) { return l.id.toLowerCase() === email; });
+  retirerLignes_(feuilleSiExiste_(FEUILLE_MEMBRES), COL_MEMBRES, function (m) { return m.email.toLowerCase() === email; });
+  retirerLignes_(feuilleSiExiste_(FEUILLE_INSCRIPTIONS), COL_INSCRIPTIONS, function (i) { return i.email.toLowerCase() === email; });
+  anonymiserColonne_(feuilleSuivi_('reunion'), COL_REUNIONS, 'cree_par', email);
+  anonymiserColonne_(feuilleSuivi_('jalon'), COL_JALONS, 'cree_par', email);
+  // 5. L'accès lui-même, en dernier.
+  feuilleUtilisateurs_().deleteRow(listerUtilisateurs_().filter(function (u) { return u.email === email; })[0]._row);
+}
+
+// Droit d'accès : tout ce que l'application garde sur la personne connectée, en un seul document (JSON).
+function exportMesDonnees_(user) {
+  const email = user.email, lui = function (v) { return String(v || '').toLowerCase() === email; };
+  const u = listerUtilisateurs_().filter(function (x) { return x.email === email; })[0] || {};
+  const table = function (nom, cols, test) { const sh = feuilleSiExiste_(nom); return sh ? lireTable_(sh, cols).filter(test).map(function (r) { const o = {}; cols.forEach(function (c) { o[c] = r[c]; }); return o; }) : []; };
+  const arts = articlesParId_();
+  const lectures = table(FEUILLE_LECTURES, COLONNES, function (r) { return lui(r.owner); }).map(function (l) {
+    const a = arts[l.article_id];   // partie objective (titre, auteur, parution…) portée par l'article
+    if (a) l.article = { titre: a.titre, auteur: a.auteur, parution: a.parution, type: a.type, source: a.source, doi: a.doi, lien: a.lien };
+    return l;
+  });
+  const ids = {}; lectures.forEach(function (l) { ids[l.id] = true; });
+  return {
+    genere_le: new Date().toISOString(),
+    compte: { email: email, prenom: u.prenom || user.prenom, role: u.role || user.role, statut: u.statut, premiere_demande: u.demande_le, derniere_connexion: u.derniere_connexion, promo_demandee: u.promo_demandee },
+    appartenances_groupes: table(FEUILLE_MEMBRES, COL_MEMBRES, function (m) { return lui(m.email); }),
+    inscriptions_promos: table(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, function (i) { return lui(i.email); }),
+    fiches_de_lecture: lectures,
+    articles_crees: table(FEUILLE_ARTICLES, COL_ARTICLES, function (a) { return lui(a.cree_par); }),
+    commentaires: table(FEUILLE_COMMENTAIRES, COL_COMMENTAIRES, function (c) { return lui(c.auteur_email); }),
+    notes_personnelles: table(FEUILLE_NOTES, COL_NOTES, function (n) { return lui(n.owner); }),
+    messages_chat: table(FEUILLE_CHAT, COL_CHAT, function (m) { return lui(m.auteur_email); }),
+    fichiers_joints: table(FEUILLE_FICHIERS, COL_FICHIERS, function (f) { return lui(f.cree_par); }).map(function (f) { return { nom: f.nom, type: f.type, taille: f.taille, depose_le: f.cree_le }; }),
+    retours_sur_l_outil: table(FEUILLE_FEEDBACK, COL_FEEDBACK, function (f) { return lui(f.auteur_email); }),
+    propositions_de_correction: table(FEUILLE_PROPOSITIONS, COL_PROPOSITIONS, function (p) { return lui(p.propose_par); }),
+    historique_de_mes_fiches: table(FEUILLE_HISTORIQUE, COL_HISTORIQUE, function (h) { return ids[h.id]; })
+  };
+}
+
 function supprimerUtilisateur_(user, email) {
   if (user.role !== 'admin') throw err_('forbidden', 'Réservé à l’administrateur');
   email = String(email || '').trim().toLowerCase();

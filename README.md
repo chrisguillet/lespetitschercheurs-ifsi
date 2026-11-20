@@ -293,6 +293,15 @@ Chaque note peut porter des **étiquettes** (filtre par `#étiquette` dans la li
 
 `node apps-script/e2e.js <JETON>` (Node 18+) interroge l'Apps Script **réellement déployé** (URL lue dans `config.js`, ou passée en premier argument). Le jeton se copie depuis la page connectée : outils de développement → Application → Session Storage → `lydia_token` (il expire au bout d'environ une heure). Le script lit les données, crée / modifie / supprime une note personnelle `[e2e] …` sur votre compte et vérifie la forme des réponses ; il ne touche à aucune lecture ni aucun groupe.
 
+## RGPD et confidentialité
+
+- `privacy.html` décrit les traitements (base légale : consentement, données, durées, sous-traitants Google et GitHub, droits). Elle affiche le responsable et le contact lus dans `config.js` : `RESPONSABLE` et `CONTACT` (à renseigner). **La mettre à jour si une fonctionnalité change les données traitées** (par exemple si `CHAT_ACTIF` est activé).
+- **Accès** : chaque personne peut télécharger toutes ses données (menu du compte, « 📦 Télécharger mes données », fichier JSON).
+- **Effacement** : dans l'administration, « 🧹 Effacer ses données » supprime fiches, commentaires, notes, messages, retours, votes, appartenances et fichiers de la personne, et anonymise ce qui doit rester (articles partagés, comptes rendus). « 🗑 Supprimer l'accès » retire seulement l'accès.
+- Les sauvegardes du Sheet (7 quotidiennes, 8 hebdomadaires) expirent seules : une donnée effacée en disparaît sous 8 semaines.
+- Avertissement affiché dans l'outil : ne jamais saisir de donnée permettant d'identifier un patient.
+- Conservation annoncée : tant que le compte est actif ; suppression après 12 mois sans connexion et au plus tard à la fin de la formation. L'administration affiche un rappel « Comptes inactifs depuis plus de 12 mois » (administrateur seulement) : y utiliser « 🧹 Effacer ses données ». L'effacement conserve les articles (partie commune), anonymisés, et supprime les fichiers joints de la personne.
+
 ## Chat de groupe et de promo
 
 **Masqué par défaut** : pour l'activer, ajouter `CHAT_ACTIF: true,` dans `config.js` (le code et le serveur sont en place).

@@ -45,7 +45,7 @@ function accesRow(a) {
     : a.statut === "en_attente"
       ? `<button class="btn sm" data-as="actif">Valider</button> <button class="btn sm sec del" data-as="refuse">Refuser</button>`
       : `<button class="btn sm" data-as="actif">Réactiver</button>`;
-  const suppr = sup ? ` <button class="btn sm sec del" data-del="1" title="Supprimer complètement cet utilisateur">🗑 Supprimer</button>` : "";
+  const suppr = sup ? ` <button class="btn sm sec del" data-del="1" title="Retire l’accès ; ses fiches et commentaires restent dans le Sheet">🗑 Supprimer l’accès</button> <button class="btn sm sec del" data-erase="1" title="Droit à l’effacement : supprime l’accès et toutes les données de cette personne">🧹 Effacer ses données</button>` : "";
   const adresse = sup ? `<td><input data-f="nouvel_email" type="email" value="${k}"></td>` : `<td>${k}</td>`;
   const couleur = sup ? `<td><input data-f="couleur" type="color" value="${esc(a.couleur)}" style="min-width:48px;padding:2px"></td>` : "";
   return `<tr data-k="${k}">${adresse}${dates}<td><input data-f="prenom" maxlength="60" value="${esc(a.prenom)}" placeholder="Prénom">${dem && (dem.promo || dem.role) ? `<div class="meta">Demande : ${esc(dem.role === "etudiant" ? "étudiant" : dem.role === "formateur" ? "formateur" : "")}${dem.promo ? " · " + esc(dem.promo) : ""}</div>` : ""}</td>${couleur}
@@ -55,6 +55,16 @@ function accesRow(a) {
 let renderedAcces = "";
 // Le rendu dépend du rôle (étudiant ou administrateur) autant que de la liste : les deux entrent dans la signature.
 const signatureAcces = l => (me ? me.role : "") + "|" + JSON.stringify([l, groupesAdmin, structureAdmin]);
+// Rappel RGPD : comptes actifs sans connexion depuis plus de 12 mois (date de demande à défaut), ou sans aucune date connue.
+const INACTIF_MOIS = 12;
+function comptesInactifs(liste) {
+  const limite = new Date(); limite.setMonth(limite.getMonth() - INACTIF_MOIS);
+  return liste.filter(a => {
+    if (a.statut !== "actif" || a.role === "admin" || (me && a.email === me.email)) return false;
+    const t = Date.parse(a.derniere_connexion || a.demande_le);
+    return !t || t < limite.getTime();
+  });
+}
 function renderAdmin() {
   renderedAcces = signatureAcces(acces) + sigFeedbacks();
   const head = `<tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th>${isSuper() ? "<th>Couleur</th>" : ""}<th>Rôle</th><th>Actions</th></tr>`;
@@ -64,6 +74,7 @@ function renderAdmin() {
   $("adminbox").innerHTML =
     bloc("⏳ Demandes en attente", acces.filter(a => a.statut === "en_attente"), "Aucune demande en attente.") +
     bloc(isSuper() ? "✅ Accès actifs" : "✅ Formateurs de vos groupes", acces.filter(a => a.statut === "actif"), "Aucun accès actif.") +
+    (isSuper() && comptesInactifs(acces).length ? `<div class="meta rgpdnote">🕓 Conservation limitée : ces comptes ne se sont pas connectés depuis plus de ${INACTIF_MOIS} mois (ou n’ont aucune date connue). Selon la politique de confidentialité, leurs données doivent être effacées ou anonymisées : « 🧹 Effacer ses données ».</div>` + bloc("🕓 Comptes inactifs depuis plus de " + INACTIF_MOIS + " mois", comptesInactifs(acces), "") : "") +
     (isSuper() ? bloc("⛔ Accès refusés", acces.filter(a => a.statut === "refuse"), "Aucun accès refusé.") : "") +
     (isSuper() ? blocGroupes() + blocFeedbacks() : "");
 }
@@ -87,6 +98,25 @@ async function supprimerUtilisateur(b) {
   }
 }
 
+// Droit à l'effacement : retire l'accès ET toutes les données de la personne (fiches, commentaires, notes, appartenances, fichiers, votes…).
+async function effacerUtilisateur(b) {
+  const email = b.closest("tr").dataset.k;
+  const a = acces.find(x => x.email === email);
+  if (!a) return;
+  const n = a.nb_lectures || 0, c = a.nb_commentaires || 0;
+  if (!confirm(`EFFACER DÉFINITIVEMENT les données de ${a.prenom || email} (${email}) ?\n\nSont supprimés : son accès, ses ${n} fiche${n > 1 ? "s" : ""} de lecture (avec les commentaires d’autres personnes dessus), ses ${c} commentaire${c > 1 ? "s" : ""}, ses notes, ses retours, ses fichiers joints, ses appartenances et ses votes.\nLes réunions et jalons du groupe restent, détachés de son adresse. Les sauvegardes du Sheet disparaissent d’elles-mêmes sous 8 semaines.\n\nCette action est irréversible.`)) return;
+  b.disabled = true;
+  try {
+    const res = await enCours("Effacement…", () => api("admin_erase", { email }));
+    acces = res.acces;
+    renderAdmin();
+    applyResult(res);
+  } catch (err) {
+    b.disabled = false;
+    if (err.code === "unauthorized") sessionError(err); else alert("Effacement impossible : " + err.message);
+  }
+}
+
 // Volets repliés / dépliés de l'arbre : mémorisés d'une mise à jour à l'autre.
 $("adminbox").addEventListener("toggle", e => {
   const k = e.target.dataset && e.target.dataset.k;
@@ -100,6 +130,8 @@ $("adminbox").onclick = async e => {
   if (gb) return actionGroupeAdmin(gb);
   const del = e.target.closest("button[data-del]");
   if (del) return supprimerUtilisateur(del);
+  const era = e.target.closest("button[data-erase]");
+  if (era) return effacerUtilisateur(era);
   const b = e.target.closest("button[data-as]");
   if (!b) return;
   const row = b.closest("tr");
