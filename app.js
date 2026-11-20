@@ -139,7 +139,7 @@ function showGate(msg, retry) {
 function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
-  groupes = []; votes = []; promosMoi = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); $("fbopen")?.classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
+  groupes = []; votes = []; promosMoi = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); fermerJeu(); $("fbopen")?.classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; fermerGroupe(true);
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
@@ -385,13 +385,35 @@ function renderMe() {
       <span class="avatar" style="--c:${esc(me.couleur)}">${esc(String(me.prenom || "?").trim().charAt(0).toUpperCase())}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
     <div class="colpop right acctpop">
       <div class="acctwho"><span class="meta">Connecté(e) :</span> <b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div>
+      ${isSuper() && window.LydiaJeux ? `<div class="acctsec"><div class="meta">🎮 Pause ludique</div>${LydiaJeux.liste.map(j => `<button type="button" class="btn sm sec" data-jeu="${esc(j.id)}">${esc(j.titre)}</button>`).join("")}</div>` : ""}
       <button type="button" class="btn sm sec" id="themebtn"></button>
       <button type="button" class="btn sm sec" id="logout">Se déconnecter</button>
     </div></details>`;
+  $("me").querySelectorAll("[data-jeu]").forEach(b => b.onclick = () => { b.closest("details").removeAttribute("open"); ouvrirJeu(b.dataset.jeu); });
   $("logout").onclick = logout;
   $("themebtn").onclick = basculerTheme;
   majLibelleTheme();
 }
+
+// Pause ludique (administrateur seulement pour l'instant) : un jeu dans une fenêtre, arrêté à la fermeture.
+let jeuOuvert = false;
+function ouvrirJeu(id) {
+  if (!isSuper() || !window.LydiaJeux || !$("jeumodal")) return;
+  const j = LydiaJeux.liste.find(x => x.id === id); if (!j) return;
+  jeuOuvert = true;
+  $("jeutitle").textContent = j.titre;
+  $("jeumodal").classList.remove("hidden"); document.body.classList.add("modalopen");
+  LydiaJeux.ouvrir(id, $("jeubody"));
+}
+function fermerJeu() {
+  if (!jeuOuvert) return;
+  jeuOuvert = false;
+  LydiaJeux.fermer();
+  $("jeubody").innerHTML = "";
+  $("jeumodal").classList.add("hidden"); document.body.classList.remove("modalopen");
+}
+$("jeuclose")?.addEventListener("click", fermerJeu);
+$("jeumodal")?.addEventListener("click", e => { if (e.target === $("jeumodal")) fermerJeu(); });
 
 function renderMeAnonyme() {
   $("me").innerHTML = '<button type="button" class="btn sm sec" id="themebtn"></button>';
@@ -750,7 +772,7 @@ $("drawerclose").onclick = () => closeDrawer();
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const ouvert = document.querySelector("details.colmenu[open]");
-  if (ouvert) ouvert.removeAttribute("open"); else if (FB.ouvert) fermerFeedback(); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
+  if (ouvert) ouvert.removeAttribute("open"); else if (jeuOuvert) fermerJeu(); else if (FB.ouvert) fermerFeedback(); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
 });
 $("addbtn").onclick = () => { editing = null; artCible = ""; modeArticle = false; forceStatut = ""; openForm(); };
 

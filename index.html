@@ -131,6 +131,15 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
       <div id="fbbody" class="cmbox"></div>
     </div>
   </div>
+  <div id="jeumodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="jeutitle">
+    <div class="modalbox">
+      <div class="modalhead">
+        <div><h2 id="jeutitle">🎮 Pause ludique</h2></div>
+        <button class="btn sm sec" id="jeuclose" type="button" aria-label="Fermer le jeu">✕ Fermer</button>
+      </div>
+      <div id="jeubody" class="cmbox" style="padding:12px 16px 16px"></div>
+    </div>
+  </div>
   <aside id="drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="ftitle">
     <div class="drawerhead"><button class="btn sm sec" id="drawerclose" type="button">← Retour à la liste</button><h2 id="ftitle">Ajouter une lecture</h2></div>
     <div class="note" id="fnote"></div>
@@ -144,6 +153,6 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
-<script>document.write('<script src="apa.js?v=' + V + '"><\/script><script src="app.js?v=' + V + '"><\/script>');</script>
+<script>document.write('<script src="apa.js?v=' + V + '"><\/script><script src="games.js?v=' + V + '"><\/script><script src="app.js?v=' + V + '"><\/script>');</script>
 </body>
 </html>

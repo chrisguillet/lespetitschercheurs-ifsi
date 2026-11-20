@@ -230,3 +230,7 @@ Lien discret « 💡 Un retour sur l'outil ? » en bas de page, pour **toute per
 - **Mes lectures** : étudiants seulement. **Suivi de projet** : toute personne ayant un groupe. **Administration** : l'administrateur, et les étudiants qui ont un groupe (jamais un formateur).
 - Le choix **Mon groupe / Toute la promo** n'apparaît que sur le tableau commun, les commentaires, la bibliographie et la synthèse ; « Mes lectures », « Suivi de projet » et « Administration » concernent toujours le groupe.
 - La recherche permet de filtrer par **groupe** quand plusieurs groupes sont visibles, et chaque document affiche, pour chaque personne qui l'a lu, son groupe.
+
+## Pause ludique (easter egg, administrateur seulement)
+
+Menu du compte (en haut à droite) → **🎮 Pause ludique** : *La course aux transmissions* (saut / se baisser) et *Flappy Seringue*, dans une fenêtre. Code dans `games.js` (canvas, sans dépendance) ; records conservés dans le navigateur. Invisible pour tout autre rôle.
