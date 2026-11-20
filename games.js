@@ -502,7 +502,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   }
 
   const couloir = {
-    nom: "couloir", titre: "🏥 Couloir", h: HC, unite: " pts", fin: "Service débordé 🚑", curseur: "crosshair",
+    nom: "couloir", titre: "🚪 Couloir", h: HC, unite: " pts", fin: "Service débordé 🚑", curseur: "crosshair",
     aide: "Cliquez sur un patient qui sort de sa chambre pour lui envoyer un calmant et le renvoyer se coucher. Un médecin passe : bouton « Dossier » (touche D) quand il est assez près, sans lui tirer dessus. Un patient agité fonce sur vous : bouton « Sécu » (touche S) pour le faire plaquer. Chaque fugue ou agité qui vous touche coûte un cœur et des points.",
     init() { return { t: 0, score: 0, vies: VIES_C, mort: false, ents: [], tirs: [], textes: [], cdTir: 0, cdSecu: 0, cdDossier: 0, secousse: 0, mx: CX, my: 150, prochainP: 0.6, prochainD: 20, prochainA: 32, rec: record("couloir") }; },
     action() { /* se joue à la souris / au doigt */ },
