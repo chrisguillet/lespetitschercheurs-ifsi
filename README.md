@@ -282,3 +282,7 @@ Menu du compte (sous votre nom) → **📝 Mes notes** : un carnet **privé** �
 ## Accueil
 
 « 🆕 Cette semaine » indique le groupe de chaque fiche ; « 💬 Derniers commentaires » liste les quatre plus récents (non lus surlignés) et un clic ouvre la discussion dans le bon groupe.
+
+## Tableau commun : lignes compactes
+
+Une ligne de document ne montre que son titre (avec un petit 🔗 collé au titre quand il y a un lien), ses références et ses pastilles. Une fois la ligne **dépliée**, un bouton discret **⋯** apparaît : il ouvre les options du document (ajouter ma fiche, À lire, corriger l'article, historique) ; les fichiers joints ne s'affichent eux aussi qu'à ce moment-là (le nombre reste visible dans la pastille 📎).

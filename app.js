@@ -1179,7 +1179,9 @@ function clampTxt(id, txt) { return `<div class="clamp">${esc(txt)}</div>`; }
 
 // Seuls les liens http(s) sont rendus cliquables (jamais javascript: ni data:), et s'ouvrent dans un nouvel onglet.
 const urlSure = u => /^https?:\/\/[^\s<>"']+$/i.test(String(u || "").trim()) ? String(u).trim() : "";
-const lienHtml = i => urlSure(i.lien)
+const lienHtml = (i, compact) => urlSure(i.lien) && compact
+  ? `<a class="lien lc" href="${esc(urlSure(i.lien))}" target="_blank" rel="noopener noreferrer" title="Ouvrir le lien : ${esc(urlSure(i.lien))}" aria-label="Ouvrir le lien">🔗</a>`
+  : urlSure(i.lien)
   ? `<a class="lien" href="${esc(urlSure(i.lien))}" target="_blank" rel="noopener noreferrer" title="${esc(urlSure(i.lien))}">🔗 Ouvrir le lien</a>` : "";
 
 // Dans la vue promo on indique le groupe d'origine ; dans la vue du groupe, une fiche partagée porte une pastille.
@@ -1685,9 +1687,9 @@ async function supprimerFichierCli(id) {
 function artRow(g) {
   const i = g[0], k = cleArt(i), open = artOuvert(k);
   return `<tr class="art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}"><td class="first"><span class="chev" aria-hidden="true"></span>${badgesArticle(g)}
-   <b>${esc(i.titre)}</b>${lienHtml(i)}
+   <b>${esc(i.titre)}</b>${lienHtml(i, true)}
    <div class="meta">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
-   ${propHtml(i)}<div class="artacts">${actionsArticle(i)}</div>${fichiersHtml(i)}</td>
+   ${propHtml(i)}<div class="artacts"><button type="button" class="btn sm sec optbtn" data-opt="1" aria-haspopup="true" aria-expanded="false" title="Options du document" aria-label="Options du document">⋯</button><div class="optmenu hidden">${actionsArticle(i)}</div></div>${fichiersHtml(i)}</td>
    <td class="artres" colspan="7"><div class="meta" style="margin-bottom:4px"><span class="hint-c">Cliquez pour déplier les fiches de lecture</span><span class="hint-o">Fiches de lecture ci-dessous</span></div>${resumeFiches(g)}</td>
    <td class="apa c9">${apaCell(i)}</td></tr>`;
 }
@@ -2011,6 +2013,9 @@ const onAction = e => {
     return;
   }
   const d = b.dataset;
+  // Menu « ⋯ » d'un document : on l'ouvre / le ferme ; choisir une option le referme.
+  if (d.opt !== undefined) { const m = b.parentElement.querySelector(".optmenu"), ouvert = m.classList.toggle("hidden") === false; b.setAttribute("aria-expanded", String(ouvert)); return; }
+  const menu = b.closest(".optmenu"); if (menu) { menu.classList.add("hidden"); const ob = menu.parentElement.querySelector(".optbtn"); if (ob) ob.setAttribute("aria-expanded", "false"); }
   if (d.e) startEdit(d.e, false);
   else if (d.fo) ouvrirFichier(d.fo);
   else if (d.an) startAnalyse(d.an);
