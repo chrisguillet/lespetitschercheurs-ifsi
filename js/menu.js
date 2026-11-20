@@ -15,7 +15,13 @@ const students = () => {
 const ROLE_NOM = { etudiant: "Étudiant", formateur: "Formateur · lecture et commentaires", admin: "Administrateur" };
 
 const themeSombre = () => (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
-function majLibelleTheme() { const b = $("themebtn"); if (b) b.textContent = themeSombre() ? "☀️ Mode clair" : "🌙 Mode sombre"; }
+// Bouton soleil / lune hors du menu : l'icône montre le mode vers lequel on bascule.
+function majLibelleTheme() {
+  const b = $("themebtn"); if (!b) return;
+  const sombre = themeSombre(), lib = sombre ? "Passer en mode clair" : "Passer en mode sombre";
+  b.textContent = sombre ? "☀️" : "🌙"; b.title = lib; b.setAttribute("aria-label", lib);
+}
+const BOUTON_THEME = '<button type="button" class="btn sm sec themebtn" id="themebtn"></button>';
 function basculerTheme() {
   const next = themeSombre() ? "light" : "dark";
   document.documentElement.dataset.theme = next;
@@ -26,12 +32,11 @@ function basculerTheme() {
 // En haut à droite : menu du compte (statut de connexion, thème, déconnexion).
 function renderMe() {
   const init = esc(String(me.prenom || "?").trim().charAt(0).toUpperCase());
-  $("me").innerHTML = `<details class="colmenu acct"><summary class="btn sm sec acctbtn" aria-label="Menu du compte : ${esc(me.prenom)}">
+  $("me").innerHTML = BOUTON_THEME + `<details class="colmenu acct"><summary class="btn sm sec acctbtn" aria-label="Menu du compte : ${esc(me.prenom)}">
       <span class="avatar" style="--c:${esc(me.couleur)}">${init}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
     <div class="colpop right acctpop">
       <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
       <div class="acctgrp"><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button><button type="button" class="acctitem" id="mydatabtn" title="Télécharger tout ce que l’application garde sur vous (droit d’accès)">📦 Télécharger mes données</button></div>
-      <div class="acctgrp"><div class="acctlabel">Affichage</div><button type="button" class="acctitem" id="themebtn"></button></div>
       ${window.LydiaJeux ? `<div class="acctgrp"><button type="button" class="acctitem" id="jeuxbtn">🎮 Pause ludique</button></div>` : ""}
       <div class="acctgrp"><button type="button" class="acctitem danger" id="logout">⎋ Se déconnecter</button></div>
     </div></details>`;
@@ -87,7 +92,7 @@ $("jeuclose")?.addEventListener("click", fermerJeu);
 $("jeumodal")?.addEventListener("click", e => { if (e.target === $("jeumodal")) fermerJeu(); });
 
 function renderMeAnonyme() {
-  $("me").innerHTML = '<button type="button" class="btn sm sec" id="themebtn"></button>';
+  $("me").innerHTML = BOUTON_THEME;
   $("themebtn").onclick = basculerTheme;
   majLibelleTheme();
 }

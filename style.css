@@ -481,3 +481,5 @@ td.menuopen { z-index: 3 }
 .jeuvign.avecvue canvas { display: block }
 .jeuicone { font-size: 38px; line-height: 1 }
 .jeuvign.avecvue .jeuicone { position: absolute; left: 8px; top: 6px; font-size: 22px; background: rgba(255,255,255,.75); border-radius: 8px; padding: 2px 4px }
+
+.themebtn { font-size: 16px; line-height: 1; padding: 6px 9px }
