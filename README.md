@@ -302,6 +302,10 @@ Chaque note peut porter des **étiquettes** (filtre par `#étiquette` dans la li
 - Avertissement affiché dans l'outil : ne jamais saisir de donnée permettant d'identifier un patient.
 - Conservation annoncée : tant que le compte est actif ; suppression après 12 mois sans connexion et au plus tard à la fin de la formation. L'administration affiche un rappel « Comptes inactifs depuis plus de 12 mois » (administrateur seulement) : y utiliser « 🧹 Effacer ses données ». L'effacement conserve les articles (partie commune), anonymisés, et supprime les fichiers joints de la personne.
 
+## Mesure d'audience (facultative)
+
+Compteur GoatCounter, sans cookie : renseigner `GOATCOUNTER: "https://<compte>.goatcounter.com/count"` dans `config.js` pour l'activer (absent = désactivé). Le script est injecté après le chargement de la page, en asynchrone, avec un délai ; s'il est lent ou injoignable, rien ne bloque. Il n'est pas chargé si le navigateur envoie « Do Not Track ». Aucune donnée de l'application n'est transmise. Décrit dans `privacy.html` et le registre.
+
 ## Chat de groupe et de promo
 
 **Masqué par défaut** : pour l'activer, ajouter `CHAT_ACTIF: true,` dans `config.js` (le code et le serveur sont en place).

@@ -8,5 +8,7 @@ window.LYDIA_CONFIG = {
   REFRESH_SECONDS: 45,
   // Affichés dans la politique de confidentialité (privacy.html).
   RESPONSABLE: "Christophe Guillet",
-  CONTACT: "guillet.ripoche@gmail.com"
+  CONTACT: "guillet.ripoche@gmail.com",
+  // Mesure d'audience GoatCounter (sans cookie, asynchrone) ; retirer la ligne pour la désactiver.
+  GOATCOUNTER: "https://chrisguillet.goatcounter.com/count"
 };

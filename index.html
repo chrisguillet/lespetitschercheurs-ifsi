@@ -192,6 +192,26 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
 <script>
+/* Mesure d'audience (GoatCounter), facultative : active seulement si GOATCOUNTER est renseigné dans config.js.
+   Chargée après la page, en asynchrone, sans jamais bloquer ni faire échouer l'application ; ignorée si le navigateur demande de ne pas être suivi.
+   Aucune donnée de l'application (adresse, prénom, contenu) n'est transmise : uniquement la page vue. */
+window.addEventListener("load", function () {
+  try {
+    var u = (window.LYDIA_CONFIG || {}).GOATCOUNTER;
+    if (!u || navigator.doNotTrack === "1" || window.doNotTrack === "1") return;
+    setTimeout(function () {
+      try {
+        var g = document.createElement("script");
+        g.async = true; g.src = "https://gc.zgo.at/count.js";
+        g.setAttribute("data-goatcounter", u);
+        g.onerror = function () { /* injoignable : sans conséquence */ };
+        document.head.appendChild(g);
+      } catch (e) { /* ignoré */ }
+    }, 1500);
+  } catch (e) { /* ignoré */ }
+});
+</script>
+<script>
 /* Scripts classiques chargés dans l'ordre : ils partagent tous la même portée globale (voir js/*.js). */
 document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "admin", "exports", "chat", "onboarding", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
 </script>
