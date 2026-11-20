@@ -321,11 +321,11 @@ h3.mysec{font-size:14px;margin:16px 0 6px}
 .hav{background:rgba(220,38,38,.10);padding:0 4px;border-radius:4px;text-decoration:line-through}
 .hap{background:rgba(22,163,74,.12);padding:0 4px;border-radius:4px}
 /* ----- Avatars, couvertures, jauges ----- */
-.avatar{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--c);color:#fff;font-size:11px;font-weight:700;margin-right:-6px;border:2px solid var(--card);text-transform:uppercase}
-.avatar.sm{width:20px;height:20px;font-size:9px;margin-right:2px;border-width:1px}
+.av{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--c);color:#fff;font-size:11px;font-weight:700;margin-right:-6px;border:2px solid var(--card);text-transform:uppercase}
+.av.sm{width:20px;height:20px;font-size:9px;margin-right:2px;border-width:1px}
 .couv{display:flex;align-items:center;justify-content:space-between;height:54px;border-radius:10px;padding:0 14px;margin:-2px -2px 8px;background:linear-gradient(135deg,var(--cv),color-mix(in srgb,var(--cv) 45%,#fff))}
 .couvico{font-size:28px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))}
-.avatars{display:flex;padding-right:6px}
+.avs{display:flex;padding-right:6px}
 .jauges{display:flex;gap:4px;margin:0 0 6px}
 .jauge{flex:1;height:5px;background:var(--bd);border-radius:3px;overflow:hidden;display:block}
 .jauge i{display:block;height:100%;border-radius:3px}
@@ -366,3 +366,6 @@ h3.mysec{font-size:14px;margin:16px 0 6px}
   .hgrid,.dgrid{grid-template-columns:1fr}
   #filters .seg #vt{display:none}
 }
+
+/* Corps des fenêtres : marges internes et défilement (groupe, retours, historique) */
+#gbody,#fbbody,#hbody{padding:14px 16px;overflow-y:auto;flex:1}

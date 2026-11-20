@@ -1257,7 +1257,7 @@ function renderHome() {
   const lectHtml = canWrite() && (lire.length || enc.length) ? `<ul class="hlist">${enc.slice(0, 3).map(i => `<li>📖 <b>${esc(i.titre)}</b> <span class="meta">en cours</span></li>`).join("")}${lire.slice(0, 3).map(i => `<li>📌 <b>${esc(i.titre)}</b> <span class="meta">${esc(PRIO[i.priorite] || "")}</span></li>`).join("")}</ul>` : "";
   // Nouveautés : fiches des autres, saisies depuis moins d'une semaine.
   const nouv = itemsAll.filter(i => !i.mine && i.statut !== "À lire" && joursDepuis(i.ajoute) !== null && joursDepuis(i.ajoute) < 7).sort((a, b) => String(b.ajoute).localeCompare(a.ajoute));
-  const nouvHtml = nouv.length ? `<ul class="hlist">${nouv.slice(0, 5).map(i => `<li><span class="avatar sm" style="--c:${esc(i.couleur)}">${initiales(i.etudiant)}</span> <b>${esc(i.etudiant)}</b> · ${esc(i.titre)} <span class="meta">${esc(stInfo(i.statut).lib.toLowerCase())}</span></li>`).join("")}</ul>` : "";
+  const nouvHtml = nouv.length ? `<ul class="hlist">${nouv.slice(0, 5).map(i => `<li><span class="av sm" style="--c:${esc(i.couleur)}">${initiales(i.etudiant)}</span> <b>${esc(i.etudiant)}</b> · ${esc(i.titre)} <span class="meta">${esc(stInfo(i.statut).lib.toLowerCase())}</span></li>`).join("")}</ul>` : "";
   const attente = isSuper() && pendingCount ? `<div>${pendingCount} demande${pendingCount > 1 ? "s" : ""} d’accès en attente.</div>` : "";
   const blocs = [
     bloc("⏰ Rétroplanning", jalHtml, aller("suivi", "Ouvrir le suivi de projet")),
@@ -1311,7 +1311,7 @@ function renderDash() {
     const pct = r.jal.length ? Math.round(100 * r.faits / r.jal.length) : null;
     return `<article class="dcard ${etat[0]}">
      <div class="dhead"><h3>${esc(g.nom)}</h3><span class="meta">${esc(g.etablissement)} · ${esc(g.promo)}</span><span class="dflag ${etat[0]}">${esc(etat[1])}</span></div>
-     <div class="dmembres">${r.etudiants.map(m => `<span class="avatar" style="--c:${esc(m.couleur)}" title="${esc(m.prenom)}">${initiales(m.prenom)}</span>`).join("")}<span class="meta">${r.etudiants.map(m => esc(m.prenom)).join(", ") || "aucun étudiant"}</span></div>
+     <div class="dmembres">${r.etudiants.map(m => `<span class="av" style="--c:${esc(m.couleur)}" title="${esc(m.prenom)}">${initiales(m.prenom)}</span>`).join("")}<span class="meta">${r.etudiants.map(m => esc(m.prenom)).join(", ") || "aucun étudiant"}</span></div>
      <div class="dstats"><span title="Fiches terminées">✅ ${r.fin}</span><span title="En cours de lecture">📖 ${r.enc}</span><span title="File d’attente">📌 ${r.lire}</span></div>
      <div class="drow"><b>Jalons</b> ${r.jal.length ? `${r.faits}/${r.jal.length} faits${pct !== null ? `<span class="jauge wide"><i style="width:${pct}%"></i></span>` : ""}` : '<span class="meta">aucun jalon</span>'}
        ${r.retard.length ? `<div class="late">${r.retard.slice(0, 3).map(j => `${esc(j.titre)} (${-ecartJours(j.echeance)} j)`).join(" · ")}</div>` : ""}
@@ -1575,10 +1575,10 @@ const avancement = i => Math.round(100 * COL_ANALYSE.filter(k => String(i[k] || 
 function artCard(g) {
   const i = g[0], k = cleArt(i), open = artOuvert(k);
   const [ico, col] = couverture(i);
-  const avatars = g.map(x => `<span class="avatar" style="--c:${esc(x.couleur)}" title="${esc(x.etudiant)} · ${esc(stInfo(x.statut).long)}">${initiales(x.etudiant)}</span>`).join("");
+  const avatars = g.map(x => `<span class="av" style="--c:${esc(x.couleur)}" title="${esc(x.etudiant)} · ${esc(stInfo(x.statut).long)}">${initiales(x.etudiant)}</span>`).join("");
   const jauges = g.filter(x => x.statut !== "À lire").map(x => `<span class="jauge" title="Fiche de ${esc(x.etudiant)} : ${avancement(x)} % renseignée"><i style="width:${avancement(x)}%;background:${esc(x.couleur)}"></i></span>`).join("");
   return `<article class="cardc art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}">
-   <div class="couv" style="--cv:${col}"><span class="couvico" aria-hidden="true">${ico}</span><span class="avatars">${avatars}</span></div>
+   <div class="couv" style="--cv:${col}"><span class="couvico" aria-hidden="true">${ico}</span><span class="avs">${avatars}</span></div>
    ${jauges ? `<div class="jauges">${jauges}</div>` : ""}
    <div>${badgesArticle(g)}</div>
    <h3><span class="chev" aria-hidden="true"></span>${esc(i.titre)}</h3>${lienHtml(i)}
@@ -1596,7 +1596,7 @@ function cardHtml(i) {
   return `<article class="cardc fiche ${prog} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
    <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}</div>
    <h3><span class="chev" aria-hidden="true"></span>Fiche de lecture de ${esc(i.etudiant)}</h3>
-   ${motsListe(i.mots).length || motsListe(i.kw).length ? `<div class="chipsc">${chips(i.mots)}${chips(i.kw)}</div>` : ""}
+   ${motsListe(i.mots).length ? `<div class="sect"><b>Mots-clés</b><div class="chipsc">${chips(i.mots)}</div></div>` : ""}${motsListe(i.kw).length ? `<div class="sect"><b>Keywords (EN)</b><div class="chipsc">${chips(i.kw)}</div></div>` : ""}
    ${sect("Concepts en sciences infirmières", i.concepts)}${sect("Objet / sujet principal", i.objet)}${sect("Opinion de l’auteur", i.opinion)}${sect("Controverse", i.controverse)}${sect("Libre", i.libre)}
    <div class="acts">${actionsHtml(i)}</div>
   </article>`;
