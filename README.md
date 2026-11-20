@@ -293,6 +293,12 @@ Chaque note peut porter des **étiquettes** (filtre par `#étiquette` dans la li
 
 `node apps-script/e2e.js <JETON>` (Node 18+) interroge l'Apps Script **réellement déployé** (URL lue dans `config.js`, ou passée en premier argument). Le jeton se copie depuis la page connectée : outils de développement → Application → Session Storage → `lydia_token` (il expire au bout d'environ une heure). Le script lit les données, crée / modifie / supprime une note personnelle `[e2e] …` sur votre compte et vérifie la forme des réponses ; il ne touche à aucune lecture ni aucun groupe.
 
+## Chat de groupe et de promo
+
+Bouton **💬 Chat** en bas à droite (replié par défaut, pastille rouge quand il y a des messages non lus), avec deux salons : **👥 Groupe** (membres du groupe et administrateur) et **🌐 Promo** (toute la promo du groupe affiché). Texte simple et smileys (sélecteur 😀). Entrée envoie, Maj+Entrée passe à la ligne ; chacun peut retirer ses messages, l'administrateur n'importe lequel.
+
+Règles pour que la feuille `Chat` (créée au premier usage) ne grossisse pas, appliquées **par le serveur** (constantes `CHAT_*` en tête de la partie Chat de `Code.gs`) : **1 message par minute** et par personne (tous salons confondus), **500 caractères** par message, **1000 messages** au plus par salon, **7 jours** de conservation. Le nettoyage se fait à chaque envoi. Le panneau ouvert se met à jour toutes les 15 s, replié toutes les 60 s (uniquement onglet visible) ; il n'affiche que les 100 derniers messages, avec un bouton pour remonter. Ce n'est pas une messagerie instantanée ni un espace confidentiel : le contenu est lisible dans le Sheet par son administrateur.
+
 ## Accueil
 
 « 🆕 Cette semaine » indique le groupe de chaque fiche ; « 💬 Derniers commentaires » liste les quatre plus récents (non lus surlignés) et un clic ouvre la discussion dans le bon groupe.
@@ -303,4 +309,4 @@ Une ligne de document ne montre que son titre (avec un petit 🔗 collé au titr
 
 ## Organisation du code côté navigateur
 
-L'ancien `app.js` (2 800 lignes) est découpé en scripts classiques dans `js/` : `core` (configuration, API, connexion), `menu`, `notes`, `suivi`, `lectures`, `tableau`, `accueil`, `historique`, `feedback`, `fichiers`, `lignes`, `commentaires`, `filtres`, `biblio`, `admin`, `exports`, `onboarding`, `groupes`, `demarrage`. Ils partagent la même portée globale et se chargent **dans l'ordre déclaré dans `index.html`** (la liste est lue aussi par les tests). Pour ajouter un fichier : le créer dans `js/` et l'ajouter à cette liste, à sa place dans l'ordre.
+L'ancien `app.js` (2 800 lignes) est découpé en scripts classiques dans `js/` : `core` (configuration, API, connexion), `menu`, `notes`, `suivi`, `lectures`, `tableau`, `accueil`, `historique`, `feedback`, `fichiers`, `lignes`, `commentaires`, `filtres`, `biblio`, `admin`, `exports`, `chat`, `onboarding`, `groupes`, `demarrage`. Ils partagent la même portée globale et se chargent **dans l'ordre déclaré dans `index.html`** (la liste est lue aussi par les tests). Pour ajouter un fichier : le créer dans `js/` et l'ajouter à cette liste, à sa place dans l'ordre.

@@ -35,6 +35,7 @@ const FEUILLE_ARTICLES = 'Articles';
 const FEUILLE_PROPOSITIONS = 'Propositions';
 const FEUILLE_REUNIONS = 'Reunions';
 const FEUILLE_NOTES = 'Notes';
+const FEUILLE_CHAT = 'Chat';
 const FEUILLE_ETABLISSEMENTS = 'Etablissements';
 const FEUILLE_PROMOS = 'Promos';
 const FEUILLE_INSCRIPTIONS = 'Inscriptions';
@@ -56,6 +57,9 @@ const PROP_SEUIL = 3;
 const PROP_DUREE_MS = 14 * 24 * 3600 * 1000;
 // Suivi de projet d'un groupe : comptes rendus de réunion et jalons du rétroplanning (visibles du groupe, de ses formateurs
 // rattachés et de l'administrateur ; modifiables par les étudiants du groupe).
+// canal : « g:<id du groupe> » ou « p:<clé de la promo> ». Messages courts, conservés au plus CHAT_JOURS jours et CHAT_MAX par canal.
+const COL_CHAT = ['id', 'canal', 'auteur_email', 'auteur', 'date', 'texte'];
+const CHAT_MAX = 1000, CHAT_JOURS = 7, CHAT_DELAI_S = 60, CHAT_TEXTE_MAX = 500, CHAT_AFFICHES = 100;
 const COL_NOTES = ['id', 'owner', 'titre', 'date', 'texte', 'liens', 'cree_le', 'modifie_le', 'etiquettes', 'epingle'];
 const COL_REUNIONS = ['id', 'groupe_id', 'date', 'titre', 'participants', 'vu', 'attendu', 'suite',
   'cree_par', 'cree_le', 'modifie_le', 'modifie_par'];
@@ -159,6 +163,7 @@ function setup() {
   preparer_(ss, FEUILLE_PROPOSITIONS, COL_PROPOSITIONS);
   preparer_(ss, FEUILLE_REUNIONS, COL_REUNIONS);
   preparer_(ss, FEUILLE_NOTES, COL_NOTES);
+  preparer_(ss, FEUILLE_CHAT, COL_CHAT);
   preparer_(ss, FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS);
   preparer_(ss, FEUILLE_PROMOS, COL_PROMOS);
   preparer_(ss, FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS);
@@ -447,6 +452,14 @@ function doPost(e) {
       case 'note_delete':
         muter_(function () { supprimerNote_(user, req.id); }, ['Notes']);
         return json_({ ok: true, notes: notesDe_(user) });
+      case 'chat_list':
+        return json_(chatPour_(user, req));
+      case 'chat_send':
+        muter_(function () { envoyerChat_(user, req); }, ['Chat']);
+        return json_(chatPour_(user, req));
+      case 'chat_delete':
+        muter_(function () { supprimerChat_(user, req.id); }, ['Chat']);
+        return json_(chatPour_(user, req));
       case 'profile_update': {
         const nom = muter_(function () { return changerNom_(user, req.data); }, ['Utilisateurs']);
         return json_(Object.assign({ ok: true, me: { prenom: nom, role: user.role, couleur: user.couleur } }, donnees_(Object.assign({}, user, { prenom: nom }))));
@@ -836,7 +849,7 @@ function administrer_(user, data) {
 function migrerEmail_(ancien, nouveau) {
   const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleArticles_(), COL_ARTICLES, 'cree_par'], [feuillePropositions_(), COL_PROPOSITIONS, 'propose_par'], [feuilleSuivi_('reunion'), COL_REUNIONS, 'cree_par'], [feuilleSuivi_('jalon'), COL_JALONS, 'cree_par'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
   if (feuilleLus_(false)) tables.push([feuilleLus_(false), COL_LUS, 'id']);
-  [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, 'email'], [FEUILLE_FICHIERS, COL_FICHIERS, 'cree_par'], [FEUILLE_FEEDBACK, COL_FEEDBACK, 'auteur_email'], [FEUILLE_NOTES, COL_NOTES, 'owner'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
+  [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, 'email'], [FEUILLE_FICHIERS, COL_FICHIERS, 'cree_par'], [FEUILLE_FEEDBACK, COL_FEEDBACK, 'auteur_email'], [FEUILLE_NOTES, COL_NOTES, 'owner'], [FEUILLE_CHAT, COL_CHAT, 'auteur_email'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
     .forEach(function (t) {
       const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(t[0]);
       if (sh) tables.push([sh, t[1], t[2]]);
@@ -2301,6 +2314,88 @@ function supprimerNote_(user, id) {
   const n = lireTable_(sh, COL_NOTES).filter(function (r) { return r.id === String(id) && r.owner === user.email; })[0];
   if (!n) throw err_('not_found', 'Note introuvable');
   sh.deleteRow(n._row);
+}
+
+/* ---------- Chat de groupe et de promo ----------
+   Deux salons par groupe : « groupe » (ses membres, l'administrateur) et « promo » (toutes les personnes de la promo).
+   Limites : un message par minute et par personne, CHAT_TEXTE_MAX caractères, CHAT_MAX messages par salon, CHAT_JOURS jours. La feuille est créée au premier usage. */
+
+function feuilleChat_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheetByName(FEUILLE_CHAT) || preparer_(ss, FEUILLE_CHAT, COL_CHAT);
+}
+
+// Salon demandé (type « groupe » ou « promo », rattaché à un groupe de la personne) : renvoie sa clé ou lève une erreur d'accès.
+function canalChat_(user, type, gid) {
+  const c = contexte_(user), g = c.groupesParId[String(gid)];
+  if (!g) throw err_('not_found', 'Groupe introuvable');
+  if (type === 'promo') {
+    if (!c.promos[clePromo_(g)]) throw err_('forbidden', 'Vous ne faites pas partie de cette promo');
+    return 'p:' + clePromo_(g);
+  }
+  if (!c.miens[g.id] && !c.admin) throw err_('forbidden', 'Vous ne faites pas partie de ce groupe');
+  return 'g:' + g.id;
+}
+
+function chatCoupure_() { return new Date(Date.now() - CHAT_JOURS * 86400000).toISOString(); }
+
+// Messages du salon demandé (les `limite` derniers), nombre de nouveaux messages d'autrui dans chaque salon (depuis `vu`) et délai restant avant de pouvoir écrire.
+function chatPour_(user, req) {
+  const type = req.type === 'promo' ? 'promo' : 'groupe';
+  const canal = canalChat_(user, type, req.groupe_id);
+  const limite = Math.min(Math.max(parseInt(req.limite, 10) || CHAT_AFFICHES, 1), CHAT_MAX);
+  const coupe = chatCoupure_();
+  const toutes = lireTable_(feuilleChat_(), COL_CHAT).filter(function (m) { return m.date >= coupe; });
+  const parEmail = {};
+  listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
+  const clesChaqueSalon = {};
+  ['groupe', 'promo'].forEach(function (t) { try { clesChaqueSalon[t] = canalChat_(user, t, req.groupe_id); } catch (e) { clesChaqueSalon[t] = ''; } });
+  const vu = req.vu && typeof req.vu === 'object' ? req.vu : {};
+  const nouveaux = {};
+  ['groupe', 'promo'].forEach(function (t) {
+    nouveaux[t] = !clesChaqueSalon[t] ? 0 : toutes.filter(function (m) { return m.canal === clesChaqueSalon[t] && m.auteur_email !== user.email && m.date > String(vu[t] || ''); }).length;
+  });
+  const duSalon = toutes.filter(function (m) { return m.canal === canal; }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  const mesDerniers = toutes.filter(function (m) { return m.auteur_email === user.email; }).map(function (m) { return m.date; }).sort().pop();
+  const restant = mesDerniers ? Math.max(0, Math.ceil(CHAT_DELAI_S - (Date.now() - Date.parse(mesDerniers)) / 1000)) : 0;
+  return {
+    ok: true, total: duSalon.length, restant: restant, nouveaux: nouveaux,
+    messages: duSalon.slice(-limite).map(function (m) {
+      const u = parEmail[m.auteur_email];
+      return { id: m.id, auteur: u ? u.prenom : m.auteur, couleur: u ? u.couleur : '#888888', date: m.date, texte: m.texte, moi: m.auteur_email === user.email };
+    })
+  };
+}
+
+function envoyerChat_(user, req) {
+  const type = req.type === 'promo' ? 'promo' : 'groupe';
+  const canal = canalChat_(user, type, req.groupe_id);
+  const texte = String(req.texte === undefined || req.texte === null ? '' : req.texte).replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (!texte) throw err_('invalid', 'Message vide');
+  if (texte.length > CHAT_TEXTE_MAX) throw err_('invalid', 'Message trop long (' + CHAT_TEXTE_MAX + ' caractères maximum)');
+  const sh = feuilleChat_(), coupe = chatCoupure_();
+  const toutes = lireTable_(sh, COL_CHAT);
+  const mesDerniers = toutes.filter(function (m) { return m.auteur_email === user.email; }).map(function (m) { return m.date; }).sort().pop();
+  if (mesDerniers) {
+    const attente = Math.ceil(CHAT_DELAI_S - (Date.now() - Date.parse(mesDerniers)) / 1000);
+    if (attente > 0) throw err_('rate', 'Un message par minute au maximum : encore ' + attente + ' s');
+  }
+  sh.appendRow([Utilities.getUuid(), canal, user.email, user.prenom, new Date().toISOString(), texte]);
+  // Nettoyage : messages trop anciens, puis excédent du salon (les plus anciens d'abord). Suppression de bas en haut pour garder les numéros de ligne valables.
+  const aSupprimer = {};
+  toutes.forEach(function (m) { if (m.date < coupe) aSupprimer[m._row] = true; });
+  const restants = toutes.filter(function (m) { return m.canal === canal && !aSupprimer[m._row]; }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  restants.slice(0, Math.max(0, restants.length + 1 - CHAT_MAX)).forEach(function (m) { aSupprimer[m._row] = true; });
+  Object.keys(aSupprimer).map(Number).sort(function (a, b) { return b - a; }).forEach(function (r) { sh.deleteRow(r); });
+}
+
+// Chacun peut retirer ses messages ; l'administrateur peut retirer n'importe lequel.
+function supprimerChat_(user, id) {
+  const sh = feuilleChat_();
+  const m = lireTable_(sh, COL_CHAT).filter(function (r) { return r.id === String(id); })[0];
+  if (!m) throw err_('not_found', 'Message introuvable');
+  if (m.auteur_email !== user.email && user.role !== 'admin') throw err_('forbidden', 'Vous ne pouvez retirer que vos messages');
+  sh.deleteRow(m._row);
 }
 
 // Chacun peut changer son nom affiché (unique, pour que les filtres et les mentions restent sans ambiguïté).
