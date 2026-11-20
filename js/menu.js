@@ -118,15 +118,59 @@ function renderPending() {
   el.classList.toggle("hidden", !(canAdmin() && pendingCount));
 }
 
+// Navigation à deux niveaux : cinq sections, chacune avec ses pages. Les pages gardent leur identifiant (data-t) ; la section d'une page se déduit de lui.
+// « Administration » est la gestion des accès : pour un étudiant elle concerne son groupe, pour l'administrateur c'est du pilotage.
+const SECTION_DE = { home: "home", mine: "mine", all: "lectures", cmts: "lectures", biblio: "lectures", synth: "lectures", suivi: "groupe", glossaire: "groupe", dash: "pilotage" };
+const sectionDe = t => t === "admin" ? (isSuper() ? "pilotage" : "groupe") : SECTION_DE[t];
+let section = "lectures";
+const derniereDeSection = { lectures: "all", groupe: "suivi", pilotage: "dash" };
+const ongletVisible = t => !document.querySelector(`.tab[data-t="${t}"]`).classList.contains("hidden");
+const ordreOnglets = () => [...document.querySelectorAll("#subtabs .tab")].map(b => b.dataset.t);
+
+function majSections() {
+  const adm = document.querySelector('.tab[data-t="admin"]');
+  $("adminlbl").textContent = isSuper() ? "👥 Administration" : "👥 Membres et accès";
+  adm.dataset.g = sectionDe("admin");
+  document.querySelectorAll("#subtabs .tab").forEach(b => b.classList.toggle("hors", sectionDe(b.dataset.t) !== section));
+  const pages = ordreOnglets().filter(t => sectionDe(t) === section && ongletVisible(t));
+  $("subtabs").classList.toggle("hidden", pages.length < 2);
+  document.querySelectorAll(".gtab").forEach(b => {
+    const g = b.dataset.g, on = g === section;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", String(on));
+    b.classList.toggle("hidden", !ordreOnglets().some(t => sectionDe(t) === g && ongletVisible(t)));
+  });
+  majPastillesSections();
+}
+// Les pastilles des pages (commentaires non lus, alertes du rétroplanning, demandes en attente) remontent sur leur section.
+function majPastillesSections() {
+  document.querySelectorAll(".gtab").forEach(b => {
+    const n = ordreOnglets().filter(t => sectionDe(t) === b.dataset.g)
+      .reduce((s, t) => { const c = document.querySelector(`.tab[data-t="${t}"] .count:not(.hidden)`); return s + (c ? parseInt(c.textContent, 10) || 0 : 0); }, 0);
+    const c = b.querySelector(".gcount");
+    if (c) { c.textContent = n || ""; c.classList.toggle("hidden", !n); }
+  });
+}
+new MutationObserver(majPastillesSections).observe($("subtabs"), { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class"] });
+document.querySelectorAll(".gtab").forEach(b => b.onclick = () => {
+  const g = b.dataset.g;
+  if (g === "home" || g === "mine") return setTab(g);
+  const prefere = derniereDeSection[g];
+  setTab(prefere && sectionDe(prefere) === g && ongletVisible(prefere) ? prefere : ordreOnglets().find(t => sectionDe(t) === g && ongletVisible(t)));
+});
+
 const ONGLETS = ["home", "all", "mine", "cmts", "suivi", "glossaire", "biblio", "synth", "dash", "admin"];
 function setTab(t) {
   tab = t;
+  section = sectionDe(t);
+  if (derniereDeSection[section] !== undefined) derniereDeSection[section] = t;
   document.querySelectorAll(".tab").forEach(b => {
     const on = b.dataset.t === t;
     b.classList.toggle("on", on);
     b.setAttribute("aria-selected", String(on));
   });
   ONGLETS.forEach(x => $(x).classList.toggle("hidden", t !== x));
+  majSections();
   if (me) renderCtx();
   if (t === "admin" && canAdmin()) loadAdmin();
   if (t === "cmts") renderComments();

@@ -226,6 +226,10 @@ Lien discret « 💡 Un retour sur l'outil ? » en bas de page, pour **toute per
 - **Lecture** : l'administrateur les voit dans l'onglet Administration (plus récents d'abord, avec l'auteur). Chacun ne voit que ses retours du jour. Pour les exploiter plus tard : feuille `Feedback` du Sheet, avec une colonne `statut` (`nouveau` par défaut) à changer à la main (traité, refusé…).
 - Mise en route : relancer `setup` (crée la feuille `Feedback`) et redéployer.
 
+## Navigation : cinq sections, des pages dessous
+
+Accueil · 📖 Lectures (Tableau commun, Commentaires, Bibliographie, Synthèse) · ✍️ Mes lectures · 🗓️ Mon groupe (Suivi de projet, Glossaire, et « Membres et accès » pour un étudiant) · ⚙️ Pilotage (Tableau de bord ; « Administration » pour l'administrateur). Une section sans page visible disparaît ; une section à page unique n'affiche pas de sous-menu ; « Mon groupe » et « Lectures » rouvrent la dernière page utilisée. Les pastilles (commentaires non lus, alertes du rétroplanning, demandes en attente) remontent sur leur section. Les pages gardent leur identifiant `data-t` (le code les ouvre toujours par `setTab("suivi")`, etc.) ; la table `SECTION_DE` de `js/menu.js` dit à quelle section appartient chacune : **y ajouter toute nouvelle page**.
+
 ## Onglets et filtres selon la personne
 
 - **Accueil** (page d'arrivée, pour tous) : résumé du jour — jalons en retard ou proches, votes à donner, commentaires non lus, mes lectures, nouveautés de la semaine, demandes d'accès pour l'administrateur. **Tableau de bord** : formateurs et administrateur seulement (voir plus bas).

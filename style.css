@@ -12,8 +12,13 @@ main{max-width:1400px;margin:auto;padding:12px 16px 40px}
 .me{display:flex;gap:8px;align-items:center;margin:0;flex-shrink:0}
 .who{border:2px solid var(--c);border-radius:999px;padding:4px 14px;background:var(--c);color:#fff}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--bd);margin-top:8px}
-.tab{background:none;border:0;padding:10px 16px;font:inherit;color:var(--mut);cursor:pointer;border-bottom:3px solid transparent}
-.tab.on{color:var(--tx);border-color:var(--pri);font-weight:600}
+.tab,.gtab{background:none;border:0;padding:10px 16px;font:inherit;color:var(--mut);cursor:pointer;border-bottom:3px solid transparent}
+.tab.on,.gtab.on{color:var(--tx);border-color:var(--pri);font-weight:600}
+.tab.hors{display:none}
+.gtabs{margin-bottom:0}
+.subtabs{margin-top:0;background:var(--card)}
+.subtabs .tab{padding:7px 14px;font-size:14px}
+.gcount{margin-left:4px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin:14px 0}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
 label{display:block;font-size:12px;font-weight:600;color:var(--mut);margin-bottom:3px}
@@ -73,7 +78,7 @@ td.apa{min-width:280px;white-space:normal}
 :focus-visible{outline:3px solid var(--pri);outline-offset:2px}
 .btn.sm{min-height:30px}
 .tabs{overflow-x:auto;scrollbar-width:thin}
-.tab{white-space:nowrap}
+.tab,.gtab{white-space:nowrap}
 
 /* ---------- Tableau : en-tête et première colonne figés, textes repliés ---------- */
 .wrap.tall{max-height:calc(100vh - 230px);overflow:auto}
@@ -362,7 +367,7 @@ h3.mysec{font-size:14px;margin:16px 0 6px}
 @media (prefers-reduced-motion:reduce){.fete{display:none}}
 /* ----- Téléphone : onglets défilables, tableau remplacé par la liste ----- */
 @media (max-width:700px){
-  .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}.tab{white-space:nowrap}
+  .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}.tab,.gtab{white-space:nowrap}
   .hgrid,.dgrid{grid-template-columns:1fr}
   #filters .seg #vt{display:none}
 }

@@ -18,17 +18,26 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
     <div class="sub" id="sub">Outil partagé de suivi des lectures de mémoire</div></div>
     <div class="rightbar"><div id="online"></div><div class="me" id="me"></div></div>
   </div>
-  <div class="tabs hidden" id="tabs" role="tablist">
-    <button class="tab" data-t="home" role="tab" aria-selected="false">🏠 Accueil</button>
-    <button class="tab on" data-t="all" role="tab" aria-selected="true">📊 Tableau commun</button>
-    <button class="tab" data-t="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
-    <button class="tab" data-t="cmts" role="tab" aria-selected="false">💬 Commentaires <span id="cmtcount" class="count hidden"></span></button>
-    <button class="tab hidden" data-t="suivi" role="tab" aria-selected="false">🗓️ Suivi de projet <span id="alertnb" class="count alertnb hidden" title="Jalons à surveiller"></span></button>
-    <button class="tab hidden" data-t="glossaire" role="tab" aria-selected="false">📚 Glossaire</button>
-    <button class="tab" data-t="biblio" role="tab" aria-selected="false">📖 Bibliographie</button>
-    <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
-    <button class="tab hidden" data-t="dash" role="tab" aria-selected="false">🧭 Tableau de bord</button>
-    <button class="tab hidden" data-t="admin" role="tab" aria-selected="false">👥 Administration <span id="pending" class="count hidden"></span></button>
+  <div id="tabs" class="hidden">
+    <div class="tabs gtabs" role="tablist" aria-label="Sections">
+      <button class="gtab" data-g="home" role="tab" aria-selected="false">🏠 Accueil</button>
+      <button class="gtab" data-g="lectures" role="tab" aria-selected="false">📖 Lectures <span class="count gcount hidden"></span></button>
+      <button class="gtab" data-g="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
+      <button class="gtab" data-g="groupe" role="tab" aria-selected="false">🗓️ Mon groupe <span class="count gcount hidden"></span></button>
+      <button class="gtab" data-g="pilotage" role="tab" aria-selected="false">⚙️ Pilotage <span class="count gcount hidden"></span></button>
+    </div>
+    <div class="tabs subtabs hidden" id="subtabs" role="tablist" aria-label="Pages de la section">
+      <button class="tab" data-t="home" role="tab" aria-selected="false">🏠 Accueil</button>
+      <button class="tab" data-t="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
+      <button class="tab on" data-t="all" role="tab" aria-selected="true">📊 Tableau commun</button>
+      <button class="tab" data-t="cmts" role="tab" aria-selected="false">💬 Commentaires <span id="cmtcount" class="count hidden"></span></button>
+      <button class="tab" data-t="biblio" role="tab" aria-selected="false">📖 Bibliographie</button>
+      <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
+      <button class="tab hidden" data-t="suivi" role="tab" aria-selected="false">🗓️ Suivi de projet <span id="alertnb" class="count alertnb hidden" title="Jalons à surveiller"></span></button>
+      <button class="tab hidden" data-t="glossaire" role="tab" aria-selected="false">📚 Glossaire</button>
+      <button class="tab hidden" data-t="dash" role="tab" aria-selected="false">🧭 Tableau de bord</button>
+      <button class="tab hidden" data-t="admin" role="tab" aria-selected="false"><span id="adminlbl">👥 Administration</span> <span id="pending" class="count hidden"></span></button>
+    </div>
   </div>
   <div class="ctxbar hidden" id="ctxbar"></div>
 </header>

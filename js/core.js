@@ -289,6 +289,7 @@ function majOnglets() {
   const vis = { mine: canWrite(), dash: !!me && (me.role === "formateur" || isSuper()), suivi: !!groupeCourant(), glossaire: !!groupeCourant(), admin: canAdmin() && (isSuper() || !!groupeCourant()) };
   Object.keys(vis).forEach(t => document.querySelector(`.tab[data-t="${t}"]`).classList.toggle("hidden", !vis[t]));
   if (vis[tab] === false) setTab("all");
+  majSections();
 }
 function majBarres() {
   majOnglets();
