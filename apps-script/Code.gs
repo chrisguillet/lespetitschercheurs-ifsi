@@ -2314,15 +2314,19 @@ function promosMoiPourClient_(user, c) {
 function fichiersPourClient_(user, c) {
   const fichiers = table_(FEUILLE_FICHIERS, COL_FICHIERS);
   if (!fichiers.length) return [];
-  const visibles = {};
-  lireTable_(feuilleLectures_(), COLONNES).forEach(function (r) { if (r.article_id && lectureVisible_(c, r)) visibles[r.article_id] = true; });
+  const visibles = {}, miens = {};
+  lireTable_(feuilleLectures_(), COLONNES).forEach(function (r) {
+    if (!r.article_id) return;
+    if (lectureVisible_(c, r)) visibles[r.article_id] = true;
+    if (r.owner === user.email) miens[r.article_id] = true;
+  });
   const parEmail = {};
   listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u; });
   return fichiers.filter(function (f) { return visibles[f.article_id]; }).map(function (f) {
     const u = parEmail[f.cree_par];
     return { id: f.id, article_id: f.article_id, nom: f.nom, type: f.type, taille: Number(f.taille) || 0,
       par: u ? u.prenom : 'Utilisateur supprimé', cree_le: f.cree_le,
-      supprimable: f.cree_par === user.email || user.role === 'admin' };
+      supprimable: f.cree_par === user.email || user.role === 'admin' || !!miens[f.article_id] };
   });
 }
 
@@ -2353,8 +2357,7 @@ function ajouterFichier_(user, articleId, nom, base64) {
   if (user.role === 'etudiant') {
     if (!articleModifiable_(user, c, art)) throw err_('forbidden', 'Réservé aux étudiants de la promo');
     // Le fichier se joint depuis sa propre fiche de lecture : il faut en avoir une sur cet article.
-    const aUneFiche = lireTable_(feuilleLectures_(), COLONNES).some(function (r) { return r.article_id === art.id && r.owner === user.email; });
-    if (!aUneFiche) throw err_('forbidden', 'Joignez le fichier depuis votre fiche de lecture de cet article');
+    if (!aFicheSurArticle_(user, art.id)) throw err_('forbidden', 'Joignez le fichier depuis votre fiche de lecture de cet article');
   }
   const b64 = String(base64 || '');
   if (!b64) throw err_('invalid', 'Fichier vide');
@@ -2391,9 +2394,16 @@ function lireFichier_(user, id) {
   return { nom: f.nom, type: f.type, data: Utilities.base64Encode(octets) };
 }
 
+// Vrai si la personne est propriétaire d'une fiche de lecture sur cet article.
+function aFicheSurArticle_(user, articleId, lectures) {
+  return (lectures || lireTable_(feuilleLectures_(), COLONNES)).some(function (r) { return r.article_id === articleId && r.owner === user.email; });
+}
+
 function supprimerFichier_(user, id) {
   const f = fichierVisible_(user, id);
-  if (f.cree_par !== user.email && user.role !== 'admin') throw err_('forbidden', 'Seul celui qui a déposé le fichier (ou l’administrateur) peut le supprimer');
+  // Le fichier appartient à l'article : tout propriétaire d'une fiche sur cet article peut le gérer (supprimer, donc remplacer),
+  // quel que soit celui qui l'a déposé ; l'administrateur aussi.
+  if (user.role !== 'admin' && f.cree_par !== user.email && !aFicheSurArticle_(user, f.article_id)) throw err_('forbidden', 'Réservé aux auteurs d’une fiche de lecture sur ce document (ou à l’administrateur)');
   try { DriveApp.getFileById(f.drive_id).setTrashed(true); } catch (e) { /* déjà absent du Drive */ }
   feuilleDe_(FEUILLE_FICHIERS, COL_FICHIERS).deleteRow(f._row);
 }
