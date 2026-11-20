@@ -391,3 +391,4 @@ h3.mysec{font-size:14px;margin:16px 0 6px}
 .hcom.fresh{border-left:3px solid var(--pri);padding-left:8px}
 .hgrp{display:inline-block;font-size:11px;border:1px solid var(--bd);border-radius:999px;padding:0 7px;color:var(--mut)}
 button.hcom{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--bd);border-radius:0;color:inherit;font:inherit;cursor:pointer}
+.acctedit{background:none;border:0;padding:0 4px;cursor:pointer;font-size:14px;line-height:1;opacity:.7;border-radius:6px}.acctedit:hover,.acctedit:focus-visible{opacity:1;background:var(--bd)}

@@ -263,7 +263,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     }
   };
 
-  /* ---------- 3. Urgences (réservé aux administrateurs pour l'instant) ---------- */
+  /* ---------- 3. Urgences ---------- */
   const HU = 440, VIES = 3;
   const SOINS = {
     constantes: { e: "🌡️", nom: "Constantes" }, ecg: { e: "📈", nom: "ECG" }, oxygene: { e: "💨", nom: "Oxygène" }, perfusion: { e: "💧", nom: "Perfusion" },
@@ -282,19 +282,21 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     { m: "Douleur abdominale aiguë", g: 3, bloc: true, s: [["perfusion", "À jeun + perfusion"], ["antalgique", "Antalgique IV"], ["bloc", "Appendicectomie au bloc"], ["constantes", "Surveillance post-opératoire"]] }
   ];
   const VISAGES = ["👵", "👴", "👩", "👨", "🧒", "👧", "🧑", "👩‍🦰", "👨‍🦳"];
-  const NIVEAUX = { 3: { debut: 8, mini: 4.5 }, 6: { debut: 6, mini: 3.4 }, 9: { debut: 4.6, mini: 2.6 } };
+  // Plus de lits = plus d'arrivées (plus vite) et des patients qui se dégradent un peu plus vite : le service doit rester plus difficile à gérer.
+  const NIVEAUX = { 3: { debut: 8, mini: 4.8, usure: 1, depart: 1 }, 6: { debut: 6, mini: 3.6, usure: 1.05, depart: 2 }, 9: { debut: 4.6, mini: 3, usure: 1.1, depart: 2 } };
   const DUREE_BLOC = 7, PATIENCE = 40;
   const niveauLits = () => { try { const v = +localStorage.getItem("lydia_jeu_lits"); return NIVEAUX[v] ? v : 3; } catch (e) { return 3; } };
   // Disposition : lits à gauche (3 colonnes), bloc et salle d'attente à droite, fiche du patient puis plateau de soins en bas.
-  const lit = (s, i) => { const lignes = Math.ceil(s.lits / 3), h = lignes === 1 ? 170 : lignes === 2 ? 150 : 100; return { x: 8 + (i % 3) * 160, y: 38 + Math.floor(i / 3) * (h + 6), w: 154, h }; };
-  const BLOC = { x: 490, y: 38, w: 142, h: 150 }, ATTENTE = { x: 490, y: 194, w: 142, h: 156 };
-  const outils = () => SOINS_ORDRE.map((k, i) => ({ k, x: 8 + i * 78.5, y: 398, w: 74, h: 38 }));
+  const lit = (s, i) => { const lignes = Math.ceil(s.lits / 3), h = lignes === 1 ? 126 : lignes === 2 ? 118 : 100, pas = h + 6, haut = lignes * pas - 6, y0 = 38 + Math.max(0, (312 - haut) / 2); return { x: 8 + (i % 3) * 160, y: y0 + Math.floor(i / 3) * pas, w: 154, h }; };
+  const BTN_BLOC = { x: 490, y: 356, w: 142, h: 36 }, BLOC = { x: 490, y: 38, w: 142, h: 150 }, ATTENTE = { x: 490, y: 194, w: 142, h: 156 };
+  const outils = () => SOINS_ORDRE.map((k, i) => ({ k, x: 8 + i * 78.5, y: 398, w: 74, h: 40 }));
   const dedans = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
   function nouveauPatient(s) {
+    const usure = NIVEAUX[s.lits].usure;
     const gros = Math.random() < Math.min(0.45, 0.12 + s.t / 400);
     const choix = PATHOS.filter(p => !!p.bloc === gros), p = choix[Math.floor(Math.random() * choix.length)];
-    return { motif: p.m, g: p.g, etapes: p.s.map(e => ({ k: e[0], t: e[1] })), i: 0, vie: 100, taux: 1 + 0.9 * p.g, visage: VISAGES[Math.floor(Math.random() * VISAGES.length)], vu: false, etat: "attente", patience: PATIENCE, reste: 0 };
+    return { motif: p.m, g: p.g, etapes: p.s.map(e => ({ k: e[0], t: e[1] })), i: 0, vie: 100, taux: (1 + 0.9 * p.g) * usure, visage: VISAGES[Math.floor(Math.random() * VISAGES.length)], vu: false, etat: "attente", patience: PATIENCE, reste: 0 };
   }
   const libre = s => { for (let i = 0; i < s.lits; i++) if (!s.lit[i]) return i; return -1; };
   function perdre(s, txt, x, y) {
@@ -326,7 +328,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     p.etat = "bloc"; p.reste = DUREE_BLOC; s.bloc = p; s.sel = null; return true;
   }
   function clic(s, x, y) {
-    if (dedans(BLOC, x, y)) return versBloc(s);
+    if (dedans(BTN_BLOC, x, y)) return versBloc(s);
     for (let i = 0; i < s.lits; i++) if (dedans(lit(s, i), x, y)) { const p = s.lit[i]; if (p && p.etat === "lit") { s.sel = p; p.vu = true; } return true; }
     const o = outils().find(o => dedans(o, x, y)); if (o) return appliquer(s, o.k);
     return false;
@@ -334,10 +336,12 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   const humeur = v => v > 66 ? "🙂" : v > 33 ? "😟" : "😣";
 
   const urgences = {
-    nom: "urgences", titre: "🏥 Urgences", admin: true, h: HU, unite: " soignés", cle: s => "urgences" + s.lits, niveaux: [3, 6, 9], niveau: niveauLits,
-    aide: "Cliquez un patient pour savoir ce dont il a besoin, puis cliquez le bon soin en bas (ou touches 1 à 8). Les cas critiques passent au bloc (un seul patient à la fois) : cliquez le bloc quand le patient en a besoin. Trois décès ou départs et c'est fini.",
+    nom: "urgences", titre: "🏥 Urgences", h: HU, unite: " soignés", cle: s => "urgences" + s.lits, niveaux: [3, 6, 9], niveau: niveauLits,
+    aide: "Cliquez un patient pour savoir ce dont il a besoin, puis cliquez le bon soin en bas (ou touches 1 à 8). Les cas critiques passent au bloc (un seul patient à la fois) : bouton « Envoyer au bloc » (ou touche B) quand c'est leur tour. Trois décès ou départs et c'est fini.",
     fin: "Service débordé 🚑",
-    init() { const lits = niveauLits(); return { lits, lit: new Array(lits).fill(null), attente: [], bloc: null, sel: null, t: 0, prochain: 1, score: 0, morts: 0, mort: false, textes: [], msg: null, rec: record("urgences" + lits) }; },
+    init() { const lits = niveauLits(); const s0 = { lits, lit: new Array(lits).fill(null), attente: [], bloc: null, sel: null, t: 0, prochain: 1, score: 0, morts: 0, mort: false, textes: [], msg: null, rec: record("urgences" + lits) };
+      for (let i = 0; i < NIVEAUX[lits].depart; i++) { const p = nouveauPatient(s0); p.etat = "lit"; s0.lit[i] = p; }   // le service n'est pas vide au départ
+      return s0; },
     action() { /* le jeu se joue à la souris / au doigt */ },
     bas() { /* inutilisé */ },
     clic,
@@ -370,39 +374,49 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     },
     draw(ctx, s, c) {
       const txt = (t, x, y, taille, coul, gras, al) => { ctx.fillStyle = coul || c.texte; ctx.font = (gras ? "bold " : "") + taille + "px system-ui,sans-serif"; ctx.textAlign = al || "left"; ctx.fillText(t, x, y); ctx.textAlign = "left"; };
+      const court = (t, w, taille) => { ctx.font = taille + "px system-ui,sans-serif"; if (ctx.measureText(t).width <= w) return t; while (t.length > 1 && ctx.measureText(t + "…").width > w) t = t.slice(0, -1); return t + "…"; };
       const barre = (x, y, w, v, coul) => { ctx.fillStyle = "rgba(127,150,180,.25)"; bord(ctx, x, y, w, 7, 3); ctx.fill(); if (v > 0) { ctx.fillStyle = coul; bord(ctx, x, y, Math.max(4, w * v), 7, 3); ctx.fill(); } };
       const couleurVie = v => v > 66 ? "#3aa76d" : v > 33 ? "#e0a020" : "#d33a3a";
       // bandeau du haut
       txt("✔ Soignés : " + s.score, 10, 24, 16, c.texte, true);
       txt("Record : " + Math.max(s.rec, s.score), 190, 24, 13, c.doux);
       for (let i = 0; i < VIES; i++) emoji(ctx, i < VIES - s.morts ? "❤️" : "🖤", 520 + i * 28, 26, 20);
-      // lits
+      // lits : un vrai lit (tête de lit, matelas, oreiller, couverture), la tête du patient sur l'oreiller
       for (let i = 0; i < s.lits; i++) {
-        const r = lit(s, i), p = s.lit[i], critique = p && p.etat === "lit" && p.vie < 30 && Math.floor(s.t * 3) % 2 === 0;
-        ctx.fillStyle = c.fond; ctx.strokeStyle = p && s.sel === p ? "#2f7de1" : critique ? "#d33a3a" : c.trait; ctx.lineWidth = p && s.sel === p ? 3 : 2; bord(ctx, r.x, r.y, r.w, r.h, 8); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = "rgba(190,215,245,.35)"; bord(ctx, r.x + 6, r.y + r.h - 40, r.w - 12, 24, 5); ctx.fill();   // matelas
+        const r = lit(s, i), p = s.lit[i], enBloc = p && p.etat === "bloc", critique = p && !enBloc && p.vie < 30 && Math.floor(s.t * 3) % 2 === 0;
+        if (p && s.sel === p) { ctx.strokeStyle = "#2f7de1"; ctx.lineWidth = 3; bord(ctx, r.x, r.y, r.w, r.h, 10); ctx.stroke(); ctx.fillStyle = "rgba(47,125,225,.07)"; ctx.fill(); }
+        else if (critique) { ctx.strokeStyle = "#d33a3a"; ctx.lineWidth = 3; bord(ctx, r.x, r.y, r.w, r.h, 10); ctx.stroke(); }
+        const bx = r.x + 6, bw = r.w - 12, by = r.y + 24, bh = r.h - 24 - 24;
+        ctx.fillStyle = "#7f93ab"; bord(ctx, bx, by + bh * 0.02, 7, bh * 0.92, 3); ctx.fill();                                   // tête de lit
+        ctx.fillRect(bx + bw - 6, by + bh * 0.3, 5, bh * 0.64);                                                                // pied de lit
+        ctx.fillStyle = "#9fb2c8"; bord(ctx, bx + 4, by + bh * 0.52, bw - 8, bh * 0.28, 4); ctx.fill();                          // sommier
+        ctx.fillStyle = "#eaf2fb"; ctx.strokeStyle = "#a9bdd3"; ctx.lineWidth = 1.5; bord(ctx, bx + 8, by + bh * 0.3, bw - 16, bh * 0.36, 6); ctx.fill(); ctx.stroke();   // matelas
+        ctx.fillStyle = "#6f7f92"; ctx.fillRect(bx + 10, by + bh * 0.8, 4, bh * 0.2); ctx.fillRect(bx + bw - 14, by + bh * 0.8, 4, bh * 0.2);   // pieds
         txt("Lit " + (i + 1), r.x + 8, r.y + 15, 11, c.doux);
-        if (!p) { txt("libre", r.x + r.w / 2, r.y + r.h / 2, 12, c.doux, false, "center"); continue; }
-        if (p.etat === "bloc") { txt("au bloc 🏥", r.x + r.w / 2, r.y + r.h / 2, 13, c.doux, false, "center"); continue; }
-        emoji(ctx, p.visage, r.x + 10, r.y + r.h - 24, Math.min(46, r.h - 40)); emoji(ctx, humeur(p.vie), r.x + r.w - 30, r.y + 24, 20);
-        txt(p.vu ? p.motif : "À examiner (cliquez)", r.x + 8, r.y + r.h - 6 - 12, 10.5, c.doux);
-        if (p.vu) { const e = p.etapes[p.i]; emoji(ctx, e.k === "bloc" ? "🏥" : SOINS[e.k].e, r.x + r.w - 32, r.y + r.h - 26, 20); }
-        barre(r.x + 8, r.y + r.h - 12, r.w - 16, p.vie / 100, couleurVie(p.vie));
+        if (!p) { txt("libre", r.x + r.w / 2, by + bh * 0.52, 12, c.doux, false, "center"); continue; }
+        if (enBloc) { txt("au bloc 🏥", r.x + r.w / 2, by + bh * 0.52, 12, c.doux, false, "center"); continue; }
+        ctx.fillStyle = "#fff"; ctx.strokeStyle = "#cfdbe8"; bord(ctx, bx + 14, by + bh * 0.2, 36, bh * 0.3, 8); ctx.fill(); ctx.stroke();   // oreiller
+        const tete = Math.min(34, Math.round(bh * 0.62)); emoji(ctx, p.visage, bx + 32 - tete * 0.55, by + bh * 0.5, tete);
+        ctx.globalAlpha = 0.9; ctx.fillStyle = p.vie > 66 ? "#8fd1ac" : p.vie > 33 ? "#f2cf7d" : "#ef9a9a"; bord(ctx, bx + 54, by + bh * 0.26, bw - 66, bh * 0.4, 7); ctx.fill(); ctx.globalAlpha = 1;   // couverture selon l'état
+        emoji(ctx, humeur(p.vie), r.x + r.w - 24, r.y + 18, 17);
+        if (p.vu) { const e = p.etapes[p.i]; emoji(ctx, SOINS_ICONE(e), r.x + r.w - 46, r.y + 18, 17); }
+        txt(court(p.vu ? p.motif : "À examiner (cliquez)", r.w - 12, 10), r.x + 6, r.y + r.h - 13, 10, c.doux);
+        barre(r.x + 6, r.y + r.h - 9, r.w - 12, p.vie / 100, couleurVie(p.vie));
       }
       // bloc opératoire
       ctx.fillStyle = s.bloc ? "rgba(211,58,58,.12)" : c.fond; ctx.strokeStyle = s.bloc ? "#d33a3a" : c.trait; ctx.lineWidth = 2; bord(ctx, BLOC.x, BLOC.y, BLOC.w, BLOC.h, 8); ctx.fill(); ctx.stroke();
       txt("🏥 Bloc opératoire", BLOC.x + 8, BLOC.y + 18, 12, c.texte, true);
-      if (s.bloc) { emoji(ctx, s.bloc.visage, BLOC.x + 40, BLOC.y + 90, 44); barre(BLOC.x + 10, BLOC.y + 124, BLOC.w - 20, 1 - s.bloc.reste / DUREE_BLOC, "#2f7de1"); txt("opération en cours…", BLOC.x + BLOC.w / 2, BLOC.y + 116, 10.5, c.doux, false, "center"); }
+      if (s.bloc) { emoji(ctx, s.bloc.visage, BLOC.x + 50, BLOC.y + 90, 44); barre(BLOC.x + 10, BLOC.y + 124, BLOC.w - 20, 1 - s.bloc.reste / DUREE_BLOC, "#2f7de1"); txt("opération en cours…", BLOC.x + BLOC.w / 2, BLOC.y + 116, 10.5, c.doux, false, "center"); }
       else txt("libre", BLOC.x + BLOC.w / 2, BLOC.y + 86, 13, c.doux, false, "center");
       // salle d'attente
-      ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; bord(ctx, ATTENTE.x, ATTENTE.y, ATTENTE.w, ATTENTE.h, 8); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; ctx.lineWidth = 2; bord(ctx, ATTENTE.x, ATTENTE.y, ATTENTE.w, ATTENTE.h, 8); ctx.fill(); ctx.stroke();
       txt("Salle d'attente", ATTENTE.x + 8, ATTENTE.y + 18, 12, c.texte, true);
       s.attente.slice(0, 3).forEach((p, i) => { const y = ATTENTE.y + 30 + i * 41; emoji(ctx, p.visage, ATTENTE.x + 8, y + 26, 26); barre(ATTENTE.x + 44, y + 14, ATTENTE.w - 54, p.patience / PATIENCE, couleurVie(p.patience / PATIENCE * 100)); });
       if (!s.attente.length) txt("personne", ATTENTE.x + ATTENTE.w / 2, ATTENTE.y + 80, 12, c.doux, false, "center");
       // fiche du patient sélectionné
-      ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; bord(ctx, 8, 354, 624, 40, 8); ctx.fill(); ctx.stroke();
-      const p = s.sel;
-      if (s.msg) txt(s.msg.txt, 18, 379, 13, "#d33a3a", true);
+      ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; ctx.lineWidth = 2; bord(ctx, 8, 354, 474, 40, 8); ctx.fill(); ctx.stroke();
+      const p = s.sel, auBloc = p && p.etat === "lit" && p.etapes[p.i].k === "bloc";
+      if (s.msg) txt(court(s.msg.txt, 450, 13), 18, 379, 13, "#d33a3a", true);
       else if (!p) txt("Cliquez sur un patient pour voir ce dont il a besoin.", 18, 379, 13, c.doux);
       else {
         txt(p.motif, 18, 370, 12.5, c.texte, true);
@@ -412,10 +426,19 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
           else { emoji(ctx, SOINS_ICONE(e), x, 371, 15); if (i === p.i) { ctx.fillStyle = "#2f7de1"; ctx.fillRect(x, 374, 18, 2); } }
           x += 24;
         });
-        const e = p.etapes[p.i]; txt("À faire : " + SOINS_ICONE(e) + " " + e.t, 18, 388, 12, "#2f7de1", true);
+        const e = p.etapes[p.i]; txt(court("À faire : " + SOINS_ICONE(e) + " " + e.t, 450, 12), 18, 388, 12, "#2f7de1", true);
       }
-      // plateau de soins
-      outils().forEach((o, i) => { ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; ctx.lineWidth = 2; bord(ctx, o.x, o.y, o.w, o.h, 8); ctx.fill(); ctx.stroke(); emoji(ctx, SOINS[o.k].e, o.x + 6, o.y + 28, 22); txt((i + 1) + "", o.x + o.w - 11, o.y + 13, 10, c.doux, false, "center"); txt(SOINS[o.k].nom, o.x + 34, o.y + 24, 9.5, c.texte); });
+      // bouton d'envoi au bloc : actif quand le patient choisi en a besoin
+      const prêt = auBloc && !s.bloc;
+      ctx.fillStyle = prêt ? "#d33a3a" : auBloc ? "rgba(211,58,58,.25)" : "rgba(127,150,180,.15)"; bord(ctx, BTN_BLOC.x, BTN_BLOC.y, BTN_BLOC.w, BTN_BLOC.h, 8); ctx.fill();
+      txt(auBloc && s.bloc ? "Bloc occupé" : "🏥 Envoyer au bloc", BTN_BLOC.x + BTN_BLOC.w / 2, BTN_BLOC.y + 23, 13, prêt ? "#fff" : c.doux, true, "center");
+      // plateau de soins : icône au-dessus, nom dessous, numéro de touche en coin
+      outils().forEach((o, i) => {
+        ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; ctx.lineWidth = 2; bord(ctx, o.x, o.y, o.w, o.h, 8); ctx.fill(); ctx.stroke();
+        emoji(ctx, SOINS[o.k].e, o.x + o.w / 2 - 11, o.y + 22, 20);
+        txt((i + 1) + "", o.x + 8, o.y + 12, 9.5, c.doux);
+        txt(SOINS[o.k].nom, o.x + o.w / 2, o.y + 36, 10, c.texte, false, "center");
+      });
       ctx.textAlign = "center"; ctx.font = "bold 16px system-ui,sans-serif";
       s.textes.forEach(t => { ctx.globalAlpha = Math.min(1, t.vie * 2); ctx.fillStyle = t.coul; ctx.strokeStyle = c.fond; ctx.lineWidth = 3; ctx.strokeText(t.txt, t.x, t.y); ctx.fillText(t.txt, t.x, t.y); }); ctx.globalAlpha = 1; ctx.textAlign = "left";
     }
