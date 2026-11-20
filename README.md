@@ -11,7 +11,7 @@ Interface : l’accueil est le tableau commun (vue tableau ou cartes, colonnes m
 
 ```
 Navigateur (GitHub Pages)  ──jeton Google──▶  Apps Script (API)  ──▶  Google Sheet (privé)
-   index.html / app.js                         apps-script/Code.gs      Lectures · Utilisateurs · Commentaires
+   index.html / js/*.js                         apps-script/Code.gs      Lectures · Utilisateurs · Commentaires
                                                                          Historique · Lus
                                                                          Groupes · Membres · Votes
 ```
@@ -145,6 +145,7 @@ Test local : `python3 -m http.server 8080` puis ouvrir `http://localhost:8080`.
 ## Performances
 
 - Chaque requête lit chaque feuille **une seule fois**. Les feuilles de structure (`Etablissements`, `Promos`, `Inscriptions`), qui changent rarement, sont servies par le **cache du script (10 minutes)** ; il est vidé à chaque écriture faite par l'application. Si vous modifiez ces trois feuilles **à la main** dans le Sheet, la modification peut mettre jusqu'à 10 minutes à apparaître.
+- Une écriture (commentaire, marque « lu », fiche, fichier joint, réunion, jalon) ne renvoie **que les sections qu'elle a pu modifier** (`partiel: true` dans la réponse, voir `donnees_(user, sections)` dans `Code.gs`) : le serveur ne relit pas les autres feuilles et le navigateur fusionne avec son dernier état complet. Les autres actions et l'actualisation automatique renvoient tout. Pour ajouter une action à ce régime, passer la liste des sections à `donnees_`.
 - Côté navigateur, l'actualisation automatique ne reconstruit pas le tableau quand rien n'a changé, et déplier un document ne reconstruit pas non plus le tableau.
 
 ## Notes de sécurité
@@ -279,6 +280,19 @@ Menu du compte → **✏️ Modifier mon nom** : chaque utilisateur (étudiant, 
 
 Menu du compte (sous votre nom) → **📝 Mes notes** : un carnet **privé** — ni le groupe, ni les formateurs, ni l'administrateur ne peuvent le lire. Chaque note a un titre, une date, un texte libre et des **fiches de lecture liées** (recherche par titre, auteur ou mot-clé ; un clic sur une fiche liée ferme le carnet et ouvre la fiche dans le tableau commun, filtrée sur son titre). Les notes sont dans la feuille `Notes` (créée toute seule au premier usage ; filtrées sur l'adresse de la personne à chaque lecture et écriture, et absentes de toutes les autres réponses du serveur). Elles suivent un changement d'adresse mais restent dans le Sheet : l'administrateur du Sheet peut les voir en l'ouvrant directement dans Google Sheets.
 
+Chaque note peut porter des **étiquettes** (filtre par `#étiquette` dans la liste) et être **épinglée** (📌, en tête de liste). Les documents qui ont des notes liées affichent une pastille **📝 n** (visible de vous seul) qui ouvre le carnet filtré sur ces notes. Le bouton ⬇️ du carnet exporte toutes vos notes en texte.
+
+## Exports
+
+- **Tableau commun** (menu « ⬇️ Exporter ») : Excel, CSV (séparateur `;`, ouvrable directement dans Excel français) et PDF, selon les filtres en cours.
+- **Une fiche** : bouton « ⬇️ PDF » dans les actions de la fiche dépliée.
+- **Bibliographie** (onglet 📖) : copier, Word, texte, impression, en APA 7.
+- **Mes notes** : bouton ⬇️ dans le carnet.
+
+## Test de bout en bout
+
+`node apps-script/e2e.js <JETON>` (Node 18+) interroge l'Apps Script **réellement déployé** (URL lue dans `config.js`, ou passée en premier argument). Le jeton se copie depuis la page connectée : outils de développement → Application → Session Storage → `lydia_token` (il expire au bout d'environ une heure). Le script lit les données, crée / modifie / supprime une note personnelle `[e2e] …` sur votre compte et vérifie la forme des réponses ; il ne touche à aucune lecture ni aucun groupe.
+
 ## Accueil
 
 « 🆕 Cette semaine » indique le groupe de chaque fiche ; « 💬 Derniers commentaires » liste les quatre plus récents (non lus surlignés) et un clic ouvre la discussion dans le bon groupe.
@@ -286,3 +300,7 @@ Menu du compte (sous votre nom) → **📝 Mes notes** : un carnet **privé** �
 ## Tableau commun : lignes compactes
 
 Une ligne de document ne montre que son titre (avec un petit 🔗 collé au titre quand il y a un lien), ses références et ses pastilles. Une fois la ligne **dépliée**, un bouton discret **⋯** apparaît : il ouvre les options du document (ajouter ma fiche, À lire, corriger l'article, historique) ; les fichiers joints ne s'affichent eux aussi qu'à ce moment-là (le nombre reste visible dans la pastille 📎).
+
+## Organisation du code côté navigateur
+
+L'ancien `app.js` (2 800 lignes) est découpé en scripts classiques dans `js/` : `core` (configuration, API, connexion), `menu`, `notes`, `suivi`, `lectures`, `tableau`, `accueil`, `historique`, `feedback`, `fichiers`, `lignes`, `commentaires`, `filtres`, `biblio`, `admin`, `exports`, `onboarding`, `groupes`, `demarrage`. Ils partagent la même portée globale et se chargent **dans l'ordre déclaré dans `index.html`** (la liste est lue aussi par les tests). Pour ajouter un fichier : le créer dans `js/` et l'ajouter à cette liste, à sa place dans l'ordre.

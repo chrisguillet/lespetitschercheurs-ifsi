@@ -406,3 +406,12 @@ tr.art.open .fichiers { display: block; }
 .optmenu .btn { text-align: left; white-space: nowrap }
 .optmenu.hidden { display: none }
 .arttitre{margin:6px 0 2px}.arttitre b,td.first .arttitre b{display:inline;margin:0}
+
+/* Notes : étiquettes, épinglage, pastille sur les documents */
+.notebadge { cursor: pointer; border: 1px solid var(--line, #d0d7de); background: transparent; font: inherit; }
+.ntags { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.ntag { font: inherit; font-size: .8em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line, #d0d7de); background: transparent; color: inherit; cursor: pointer; }
+.ntag.on { background: var(--accent, #2563eb); color: #fff; border-color: transparent; }
+.nfchip { display: flex; align-items: center; gap: 6px; font-size: .85em; margin: 6px 0; }
+.nrow { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.nrow .chk { display: flex; align-items: center; gap: 6px; font-weight: normal; }

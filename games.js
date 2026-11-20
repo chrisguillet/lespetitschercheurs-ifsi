@@ -1,4 +1,4 @@
-/* Pause ludique : trois mini-jeux (canvas, sans dépendance), ouverts dans une fenêtre depuis le menu du compte (app.js).
+/* Pause ludique : trois mini-jeux (canvas, sans dépendance), ouverts dans une fenêtre depuis le menu du compte (js/menu.js).
    Chaque jeu expose : init(), action(bas) [saut / battement], bas(état) [se baisser], step(dt), draw(ctx). */
 (function (root) {
   "use strict";

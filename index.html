@@ -190,6 +190,9 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
-<script>document.write('<script src="apa.js?v=' + V + '"><\/script><script src="games.js?v=' + V + '"><\/script><script src="app.js?v=' + V + '"><\/script>');</script>
+<script>
+/* Scripts classiques chargés dans l'ordre : ils partagent tous la même portée globale (voir js/*.js). */
+document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "admin", "exports", "onboarding", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
+</script>
 </body>
 </html>

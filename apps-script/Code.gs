@@ -56,7 +56,7 @@ const PROP_SEUIL = 3;
 const PROP_DUREE_MS = 14 * 24 * 3600 * 1000;
 // Suivi de projet d'un groupe : comptes rendus de réunion et jalons du rétroplanning (visibles du groupe, de ses formateurs
 // rattachés et de l'administrateur ; modifiables par les étudiants du groupe).
-const COL_NOTES = ['id', 'owner', 'titre', 'date', 'texte', 'liens', 'cree_le', 'modifie_le'];
+const COL_NOTES = ['id', 'owner', 'titre', 'date', 'texte', 'liens', 'cree_le', 'modifie_le', 'etiquettes', 'epingle'];
 const COL_REUNIONS = ['id', 'groupe_id', 'date', 'titre', 'participants', 'vu', 'attendu', 'suite',
   'cree_par', 'cree_le', 'modifie_le', 'modifie_par'];
 // echeance = date fixe, ou date de fin d'une plage (debut renseigné) ; alerte_jours = nombre de jours avant la première date où
@@ -356,6 +356,10 @@ function doGet() {
   return json_({ ok: true, service: 'lydia' });
 }
 
+const SEC_LECTURES = ['lectures', 'propositions'];
+const SEC_COMMENTAIRES = ['commentaires', 'lus'];
+const SEC_SUPPRESSION = ['lectures', 'propositions', 'commentaires', 'lus', 'fichiers'];
+
 function doPost(e) {
   try {
     memo_ = {}; memoOn_ = true;
@@ -373,24 +377,24 @@ function doPost(e) {
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'add': {
         const id = muter_(function () { return ajouter_(user, req.data); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
-        return json_(Object.assign({ ok: true, id: id }, donnees_(user)));
+        return json_(Object.assign({ ok: true, id: id }, donnees_(user, SEC_LECTURES)));
       }
       case 'history_get':
         return json_({ ok: true, historique: historiqueFiche_(user, req.kind, req.id) });
       case 'update':
         muter_(function () { modifier_(user, req.id, req.data); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, SEC_LECTURES)));
       case 'article_update':
         muter_(function () { modifierArticle_(user, req.article_id, req.data); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, SEC_LECTURES)));
       case 'file_add':
         muter_(function () { ajouterFichier_(user, req.article_id, req.nom, req.data); });
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, ['fichiers'])));
       case 'file_get':
         return json_(Object.assign({ ok: true }, lireFichier_(user, req.id)));
       case 'file_delete':
         muter_(function () { supprimerFichier_(user, req.id); });
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, ['fichiers'])));
       case 'feedback_list':
         return json_(Object.assign({ ok: true }, feedbackPourClient_(user)));
       case 'feedback_save':
@@ -398,41 +402,41 @@ function doPost(e) {
         return json_(Object.assign({ ok: true }, feedbackPourClient_(user)));
       case 'reunion_save':
         muter_(function () { enregistrerSuivi_(user, 'reunion', req.groupe_id, req.id, req.data); });
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, ['reunions', 'jalons'])));
       case 'reunion_delete':
         muter_(function () { supprimerSuivi_(user, 'reunion', req.id); });
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, ['reunions', 'jalons'])));
       case 'jalon_save':
         muter_(function () { enregistrerSuivi_(user, 'jalon', req.groupe_id, req.id, req.data); });
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, ['reunions', 'jalons'])));
       case 'jalon_delete':
         muter_(function () { supprimerSuivi_(user, 'jalon', req.id); });
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, ['reunions', 'jalons'])));
       case 'article_vote':
         muter_(function () { voterArticle_(user, req.id, req.vote === true); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, SEC_LECTURES)));
       case 'article_cancel':
         muter_(function () { annulerProposition_(user, req.id); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, SEC_LECTURES)));
       case 'delete':
         muter_(function () { supprimer_(user, req.id); }, ['Lectures', 'Articles', 'Commentaires', 'Fichiers', 'Lus', 'Propositions', 'Historique']);
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, SEC_SUPPRESSION)));
       case 'comment_add': {
         const id = muter_(function () { return commenter_(user, req.lecture_id, req.texte, req.portee); }, ['Commentaires', 'Lus']);
-        return json_(Object.assign({ ok: true, id: id }, donnees_(user)));
+        return json_(Object.assign({ ok: true, id: id }, donnees_(user, SEC_COMMENTAIRES)));
       }
       case 'comment_update':
         muter_(function () { modifierCommentaire_(user, req.id, req.texte); }, ['Commentaires', 'Lus']);
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, SEC_COMMENTAIRES)));
       case 'comment_delete':
         muter_(function () { supprimerCommentaire_(user, req.id); }, ['Commentaires', 'Lus']);
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, SEC_COMMENTAIRES)));
       case 'comments_read':
         muter_(function () { marquerLus_(user, req.ids, req.tous === true); }, ['Commentaires', 'Lus']);
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, SEC_COMMENTAIRES)));
       case 'comments_unread':
         muter_(function () { marquerNonLus_(user, req.ids); }, ['Commentaires', 'Lus']);
-        return json_(Object.assign({ ok: true }, donnees_(user)));
+        return json_(Object.assign({ ok: true }, donnees_(user, SEC_COMMENTAIRES)));
       case 'bye':
         return json_({ ok: true });
       case 'notes_list':
@@ -535,25 +539,30 @@ function etudiantsActifs_(user) {
   }).map(function (u) { return { prenom: u.prenom, role: u.role, couleur: u.couleur }; });
 }
 
-function donnees_(user) {
+// Sections de l'état envoyé au client. Une écriture ne renvoie que celles qu'elle a pu changer (le client fusionne avec ce qu'il a déjà) :
+// cela évite de relire toutes les feuilles après chaque commentaire, marque « lu », etc. Sans liste : tout est renvoyé.
+function donnees_(user, sections) {
   const c = contexte_(user);
-  return {
-    utilisateurs: etudiantsActifs_(user),
-    enLigne: listerEnLigne_(user),
-    groupes: groupesPourClient_(user, c),
-    votes: votesPourClient_(user, c),
-    propositions: propositionsPourClient_(user, c),
-    promosMoi: promosMoiPourClient_(user, c),
-    rattachements: rattachementsPourClient_(user, c),
-    fichiers: fichiersPourClient_(user, c),
-    reunions: suiviPourClient_(user, c, 'reunion'),
-    jalons: suiviPourClient_(user, c, 'jalon'),
-    lectures: lister_(user),
-    commentaires: listerCommentaires_(user),
-    lus: listerLus_(user),
-    enAttente: peutGerer_(user)
-      ? listerUtilisateurs_().filter(function (u) { return u.statut === 'en_attente'; }).length : 0
+  const SEC = {
+    utilisateurs: function () { return etudiantsActifs_(user); },
+    enLigne: function () { return listerEnLigne_(user); },
+    groupes: function () { return groupesPourClient_(user, c); },
+    votes: function () { return votesPourClient_(user, c); },
+    propositions: function () { return propositionsPourClient_(user, c); },
+    promosMoi: function () { return promosMoiPourClient_(user, c); },
+    rattachements: function () { return rattachementsPourClient_(user, c); },
+    fichiers: function () { return fichiersPourClient_(user, c); },
+    reunions: function () { return suiviPourClient_(user, c, 'reunion'); },
+    jalons: function () { return suiviPourClient_(user, c, 'jalon'); },
+    lectures: function () { return lister_(user); },
+    commentaires: function () { return listerCommentaires_(user); },
+    lus: function () { return listerLus_(user); },
+    enAttente: function () { return peutGerer_(user) ? listerUtilisateurs_().filter(function (u) { return u.statut === 'en_attente'; }).length : 0; }
   };
+  const out = {};
+  Object.keys(SEC).forEach(function (k) { if (!sections || sections.indexOf(k) >= 0) out[k] = SEC[k](); });
+  if (sections) out.partiel = true;
+  return out;
 }
 
 function accesSiAdmin_(user) {
@@ -2241,18 +2250,27 @@ function prenomValide_(v) {
 /* ---------- Notes personnelles ----------
    Strictement privées : chaque lecture et écriture est filtrée sur l'adresse de la personne connectée (même l'administrateur ne lit pas celles des autres,
    et elles ne figurent dans aucune autre réponse du serveur). La feuille est créée au premier usage. Les liens sont des identifiants de fiches de lecture. */
-const NOTE_TITRE_MAX = 120, NOTE_TEXTE_MAX = 20000, NOTE_LIENS_MAX = 30;
+const NOTE_ETIQ_MAX = 30, NOTE_ETIQS_MAX = 10, NOTE_TITRE_MAX = 120, NOTE_TEXTE_MAX = 20000, NOTE_LIENS_MAX = 30;
 
 function feuilleNotes_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  return ss.getSheetByName(FEUILLE_NOTES) || preparer_(ss, FEUILLE_NOTES, COL_NOTES);
+  const sh = ss.getSheetByName(FEUILLE_NOTES);
+  if (!sh) return preparer_(ss, FEUILLE_NOTES, COL_NOTES);
+  // Feuille créée avant l'ajout des étiquettes et de l'épingle : on ajoute les colonnes manquantes (une seule fois).
+  if (sh.getMaxColumns() < COL_NOTES.length) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), COL_NOTES.length - sh.getMaxColumns());
+    sh.getRange(1, 1, sh.getMaxRows(), COL_NOTES.length).setNumberFormat('@');
+    sh.getRange(1, 1, 1, COL_NOTES.length).setValues([COL_NOTES]).setFontWeight('bold');
+  }
+  return sh;
 }
 
 function notesDe_(user) {
   return lireTable_(feuilleNotes_(), COL_NOTES).filter(function (n) { return n.owner === user.email; }).map(function (n) {
     let liens = []; try { liens = JSON.parse(n.liens || '[]'); } catch (e) { liens = []; }
-    return { id: n.id, titre: n.titre, date: n.date, texte: n.texte, liens: liens, cree_le: n.cree_le, modifie_le: n.modifie_le };
-  }).sort(function (a, b) { return b.date.localeCompare(a.date) || b.cree_le.localeCompare(a.cree_le); });
+    let etiquettes = []; try { etiquettes = JSON.parse(n.etiquettes || '[]'); } catch (e) { etiquettes = []; }
+    return { id: n.id, titre: n.titre, date: n.date, texte: n.texte, liens: liens, etiquettes: etiquettes, epingle: n.epingle === '1', cree_le: n.cree_le, modifie_le: n.modifie_le };
+  }).sort(function (a, b) { return (b.epingle ? 1 : 0) - (a.epingle ? 1 : 0) || b.date.localeCompare(a.date) || b.cree_le.localeCompare(a.cree_le); });
 }
 
 function enregistrerNote_(user, data) {
@@ -2264,13 +2282,17 @@ function enregistrerNote_(user, data) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(Date.parse(date))) throw err_('invalid', 'Date invalide');
   const liens = (Array.isArray(data.liens) ? data.liens : []).map(String).filter(function (x, i, t) { return x && x.length <= 64 && t.indexOf(x) === i; });
   if (liens.length > NOTE_LIENS_MAX) throw err_('invalid', 'Trop de fiches liées');
+  const etiquettes = (Array.isArray(data.etiquettes) ? data.etiquettes : []).map(function (x) { return String(x).trim().replace(/\s+/g, ' '); })
+    .filter(function (x, i, t) { return x && x.length <= NOTE_ETIQ_MAX && t.map(function (y) { return y.toLowerCase(); }).indexOf(x.toLowerCase()) === i; });
+  if (etiquettes.length > NOTE_ETIQS_MAX) throw err_('invalid', 'Trop d’étiquettes');
+  const epingle = data.epingle ? '1' : '';
   const sh = feuilleNotes_(), maintenant = new Date().toISOString();
   if (data.id) {
     const n = lireTable_(sh, COL_NOTES).filter(function (r) { return r.id === String(data.id) && r.owner === user.email; })[0];
     if (!n) throw err_('not_found', 'Note introuvable');
-    sh.getRange(n._row, 3, 1, 6).setValues([[titre, date, texte, JSON.stringify(liens), n.cree_le, maintenant]]);
+    sh.getRange(n._row, 3, 1, 8).setValues([[titre, date, texte, JSON.stringify(liens), n.cree_le, maintenant, JSON.stringify(etiquettes), epingle]]);
   } else {
-    sh.appendRow([Utilities.getUuid(), user.email, titre, date, texte, JSON.stringify(liens), maintenant, '']);
+    sh.appendRow([Utilities.getUuid(), user.email, titre, date, texte, JSON.stringify(liens), maintenant, '', JSON.stringify(etiquettes), epingle]);
   }
 }
 
