@@ -42,6 +42,7 @@ const FEUILLE_INSCRIPTIONS = 'Inscriptions';
 const FEUILLE_FICHIERS = 'Fichiers';
 const DOSSIER_FICHIERS = 'Fichiers – lectures IFSI';
 const FEUILLE_JALONS = 'Jalons';
+const FEUILLE_GLOSSAIRE = 'Glossaire';
 
 const COLONNES = ['id', 'owner', 'statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'ajoute', 'modifie_le', 'modifie_par',
@@ -66,6 +67,8 @@ const COL_REUNIONS = ['id', 'groupe_id', 'date', 'titre', 'participants', 'vu', 
 // echeance = date fixe, ou date de fin d'une plage (debut renseigné) ; alerte_jours = nombre de jours avant la première date où
 // l'interface signale le jalon (vide = pas d'alerte). Colonnes ajoutées en fin de feuille pour ne pas décaler les anciennes données.
 const COL_JALONS = ['id', 'groupe_id', 'titre', 'echeance', 'statut', 'note', 'cree_par', 'cree_le', 'modifie_le', 'modifie_par', 'debut', 'alerte_jours'];
+// Glossaire d'un groupe : un mot, sa définition et la référence qui la fonde (visible et modifiable comme le suivi de projet).
+const COL_GLOSSAIRE = ['id', 'groupe_id', 'mot', 'definition', 'reference', 'cree_par', 'cree_le', 'modifie_le', 'modifie_par'];
 const STATUTS_JALON = ['a_faire', 'en_cours', 'fait'];
 const OBJECTIFS = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type', 'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
 const ANALYSES = ['statut', 'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'priorite'];
@@ -170,6 +173,7 @@ function setup() {
   preparer_(ss, FEUILLE_FICHIERS, COL_FICHIERS);
   preparer_(ss, FEUILLE_FEEDBACK, COL_FEEDBACK);
   preparer_(ss, FEUILLE_JALONS, COL_JALONS);
+  preparer_(ss, FEUILLE_GLOSSAIRE, COL_GLOSSAIRE);
   const u = preparer_(ss, FEUILLE_UTILISATEURS, COL_UTILISATEURS);
   if (u.getLastRow() < 2) {
     u.getRange(2, 1, 4, 5).setValues([
@@ -417,6 +421,12 @@ function doPost(e) {
       case 'jalon_delete':
         muter_(function () { supprimerSuivi_(user, 'jalon', req.id); });
         return json_(Object.assign({ ok: true }, donnees_(user, ['reunions', 'jalons'])));
+      case 'terme_save':
+        muter_(function () { enregistrerSuivi_(user, 'terme', req.groupe_id, req.id, req.data); });
+        return json_(Object.assign({ ok: true }, donnees_(user, ['termes'])));
+      case 'terme_delete':
+        muter_(function () { supprimerSuivi_(user, 'terme', req.id); });
+        return json_(Object.assign({ ok: true }, donnees_(user, ['termes'])));
       case 'article_vote':
         muter_(function () { voterArticle_(user, req.id, req.vote === true); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
         return json_(Object.assign({ ok: true }, donnees_(user, SEC_LECTURES)));
@@ -572,6 +582,7 @@ function donnees_(user, sections) {
     fichiers: function () { return fichiersPourClient_(user, c); },
     reunions: function () { return suiviPourClient_(user, c, 'reunion'); },
     jalons: function () { return suiviPourClient_(user, c, 'jalon'); },
+    termes: function () { return suiviPourClient_(user, c, 'terme'); },
     lectures: function () { return lister_(user); },
     commentaires: function () { return listerCommentaires_(user); },
     lus: function () { return listerLus_(user); },
@@ -816,6 +827,13 @@ function anonymiserColonne_(sh, colonnes, colonne, email) {
   lireTable_(sh, colonnes).filter(function (r) { return r[colonne].toLowerCase() === email; })
     .forEach(function (r) { sh.getRange(r._row, colonnes.indexOf(colonne) + 1, 1, 1).setValue(''); });
 }
+// « modifié par <prénom> » sur les contenus partagés : le prénom de la personne effacée est retiré (un homonyme perd aussi la mention, sans conséquence).
+function anonymiserPrenom_(sh, colonnes, prenom) {
+  if (!sh || !prenom) return;
+  const i = colonnes.indexOf('modifie_par');
+  lireTable_(sh, colonnes).filter(function (r) { return String(r.modifie_par).toLowerCase() === prenom; })
+    .forEach(function (r) { sh.getRange(r._row, i + 1, 1, 1).setValue(''); });
+}
 // Retire l'adresse des bulletins de vote (JSON indexé par adresse) d'une feuille.
 function retirerBulletins_(sh, colonnes, email) {
   if (!sh) return;
@@ -865,6 +883,12 @@ function effacerPersonne_(user, email) {
   retirerLignes_(feuilleSiExiste_(FEUILLE_INSCRIPTIONS), COL_INSCRIPTIONS, function (i) { return i.email.toLowerCase() === email; });
   anonymiserColonne_(feuilleSuivi_('reunion'), COL_REUNIONS, 'cree_par', email);
   anonymiserColonne_(feuilleSuivi_('jalon'), COL_JALONS, 'cree_par', email);
+  anonymiserColonne_(feuilleSuivi_('terme'), COL_GLOSSAIRE, 'cree_par', email);
+  const prenom = String(cible.prenom || '').toLowerCase();
+  anonymiserPrenom_(feuilleArticles_(), COL_ARTICLES, prenom);
+  anonymiserPrenom_(feuilleSuivi_('reunion'), COL_REUNIONS, prenom);
+  anonymiserPrenom_(feuilleSuivi_('jalon'), COL_JALONS, prenom);
+  anonymiserPrenom_(feuilleSuivi_('terme'), COL_GLOSSAIRE, prenom);
   // 5. L'accès lui-même, en dernier.
   feuilleUtilisateurs_().deleteRow(listerUtilisateurs_().filter(function (u) { return u.email === email; })[0]._row);
 }
@@ -887,6 +911,7 @@ function exportMesDonnees_(user) {
     appartenances_groupes: table(FEUILLE_MEMBRES, COL_MEMBRES, function (m) { return lui(m.email); }),
     inscriptions_promos: table(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, function (i) { return lui(i.email); }),
     fiches_de_lecture: lectures,
+    termes_du_glossaire_crees: table(FEUILLE_GLOSSAIRE, COL_GLOSSAIRE, function (t) { return lui(t.cree_par); }),
     articles_crees: table(FEUILLE_ARTICLES, COL_ARTICLES, function (a) { return lui(a.cree_par); }),
     commentaires: table(FEUILLE_COMMENTAIRES, COL_COMMENTAIRES, function (c) { return lui(c.auteur_email); }),
     notes_personnelles: table(FEUILLE_NOTES, COL_NOTES, function (n) { return lui(n.owner); }),
@@ -951,7 +976,7 @@ function administrer_(user, data) {
 }
 
 function migrerEmail_(ancien, nouveau) {
-  const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleArticles_(), COL_ARTICLES, 'cree_par'], [feuillePropositions_(), COL_PROPOSITIONS, 'propose_par'], [feuilleSuivi_('reunion'), COL_REUNIONS, 'cree_par'], [feuilleSuivi_('jalon'), COL_JALONS, 'cree_par'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
+  const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleArticles_(), COL_ARTICLES, 'cree_par'], [feuillePropositions_(), COL_PROPOSITIONS, 'propose_par'], [feuilleSuivi_('reunion'), COL_REUNIONS, 'cree_par'], [feuilleSuivi_('jalon'), COL_JALONS, 'cree_par'], [feuilleSuivi_('terme'), COL_GLOSSAIRE, 'cree_par'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
   if (feuilleLus_(false)) tables.push([feuilleLus_(false), COL_LUS, 'id']);
   [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, 'email'], [FEUILLE_FICHIERS, COL_FICHIERS, 'cree_par'], [FEUILLE_FEEDBACK, COL_FEEDBACK, 'auteur_email'], [FEUILLE_NOTES, COL_NOTES, 'owner'], [FEUILLE_CHAT, COL_CHAT, 'auteur_email'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
     .forEach(function (t) {
@@ -2056,7 +2081,8 @@ function supprimerGroupe_(user, id) {
 
 const SUIVI = {
   reunion: { feuille: FEUILLE_REUNIONS, colonnes: COL_REUNIONS, champs: ['date', 'titre', 'participants', 'vu', 'attendu', 'suite'] },
-  jalon: { feuille: FEUILLE_JALONS, colonnes: COL_JALONS, champs: ['titre', 'echeance', 'statut', 'note', 'debut', 'alerte_jours'] }
+  jalon: { feuille: FEUILLE_JALONS, colonnes: COL_JALONS, champs: ['titre', 'echeance', 'statut', 'note', 'debut', 'alerte_jours'] },
+  terme: { feuille: FEUILLE_GLOSSAIRE, colonnes: COL_GLOSSAIRE, champs: ['mot', 'definition', 'reference'] }
 };
 
 function feuilleSuivi_(type) {
@@ -2076,6 +2102,11 @@ function validerSuivi_(type, d) {
   if (type === 'reunion') {
     if (!dateValide_(d.date)) throw err_('invalid', 'Date de réunion invalide');
     if (!d.titre && !d.vu && !d.attendu && !d.suite) throw err_('invalid', 'Renseignez au moins un titre ou un compte rendu');
+  } else if (type === 'terme') {
+    if (!d.mot) throw err_('invalid', 'Indiquez le mot ou l’expression');
+    if (d.mot.length > 120) throw err_('invalid', 'Mot trop long (120 caractères maximum)');
+    if (!d.definition) throw err_('invalid', 'Indiquez la définition');
+    if (d.reference.length > 500) throw err_('invalid', 'Référence trop longue (500 caractères maximum)');
   } else {
     if (!d.titre) throw err_('invalid', 'Le jalon doit avoir un titre');
     if (!dateValide_(d.echeance)) throw err_('invalid', 'Échéance invalide');
@@ -2110,6 +2141,13 @@ function enregistrerSuivi_(user, type, groupeId, id, data) {
   });
   if (type === 'jalon' && !d.statut) d.statut = 'a_faire';
   validerSuivi_(type, d);
+  if (type === 'terme') {
+    // Un mot n'apparaît qu'une fois par groupe (sans tenir compte de la casse ni des accents) : on modifie sa définition plutôt que d'en ajouter une seconde.
+    const cle = function (m) { return String(m).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(); };
+    if (lireTable_(sh, def.colonnes).some(function (x) { return x.groupe_id === gid && x.id !== id && cle(x.mot) === cle(d.mot); })) {
+      throw err_('duplicate', 'Ce mot est déjà dans le glossaire : modifiez sa définition.');
+    }
+  }
   const maintenant = new Date().toISOString();
   if (!existante) {
     const m = { id: Utilities.getUuid(), groupe_id: gid, cree_par: user.email, cree_le: maintenant, modifie_le: '', modifie_par: '' };

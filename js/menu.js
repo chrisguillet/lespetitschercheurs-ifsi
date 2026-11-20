@@ -118,7 +118,7 @@ function renderPending() {
   el.classList.toggle("hidden", !(canAdmin() && pendingCount));
 }
 
-const ONGLETS = ["home", "all", "mine", "cmts", "suivi", "biblio", "synth", "dash", "admin"];
+const ONGLETS = ["home", "all", "mine", "cmts", "suivi", "glossaire", "biblio", "synth", "dash", "admin"];
 function setTab(t) {
   tab = t;
   document.querySelectorAll(".tab").forEach(b => {
@@ -131,6 +131,7 @@ function setTab(t) {
   if (t === "admin" && canAdmin()) loadAdmin();
   if (t === "cmts") renderComments();
   if (t === "suivi") renderSuivi();
+  if (t === "glossaire") renderGlossaire();
   if (t === "home") renderHome();
   if (t === "dash") renderDash();
   majAlertes();

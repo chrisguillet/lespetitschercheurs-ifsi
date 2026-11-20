@@ -42,7 +42,7 @@ let token = null;
 try { token = sessionStorage.getItem("lydia_token"); } catch (e) { /* stockage indisponible */ }
 let me = null, users = [], items = [], comments = [], acces = [], pendingCount = 0;
 // items / comments = ce que montre la vue courante ; itemsAll / commentsAll = tout ce que le serveur renvoie à la personne.
-let structureAdmin = [], adminFerme = new Set(), reunionsAll = [], jalonsAll = [], groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [], promosMoi = [], rattachements = [], fichiers = [], stockage = null, feedbacksAdmin = [];
+let structureAdmin = [], adminFerme = new Set(), reunionsAll = [], jalonsAll = [], termesAll = [], groupes = [], votes = [], itemsAll = [], commentsAll = [], groupesAdmin = [], promosMoi = [], rattachements = [], fichiers = [], stockage = null, feedbacksAdmin = [];
 const ctx = { gid: "", vue: "groupe" };          // groupe choisi, et vue : « groupe » ou « promo » (fiches partagées)
 try { ctx.gid = localStorage.getItem("lydia_groupe") || ""; ctx.vue = localStorage.getItem("lydia_portee") === "groupe" ? "groupe" : "promo"; } catch (e) { /* ignoré */ }
 let cmScope = "groupe", studentsSig = "", ctxSig = "";
@@ -212,7 +212,7 @@ let dernierEtat = null;
 function applyData(j) {
   if (j.partiel) j = Object.assign({}, dernierEtat, j);
   dernierEtat = j;
-  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.rattachements, j.fichiers, j.reunions, j.jalons, j.lectures, j.commentaires, j.lus, j.enAttente]);
+  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.rattachements, j.fichiers, j.reunions, j.jalons, j.termes, j.lectures, j.commentaires, j.lus, j.enAttente]);
   const change = sig !== dataSig;
   dataSig = sig;
   applyDataBrut(j);
@@ -231,6 +231,7 @@ function applyDataBrut(j) {
   props = j.propositions || [];
   reunionsAll = j.reunions || [];
   jalonsAll = j.jalons || [];
+  termesAll = j.termes || [];
   commentsAll = j.commentaires || [];
   deriver();
   // La liste des étudiants (filtres, statistiques) dépend de la vue : on ne reconstruit les filtres que si elle change.
@@ -275,6 +276,7 @@ function renderData() {
     if (tab === "home") renderHome();
     if (tab === "dash") renderDash();
     if (tab === "suivi") renderSuivi();
+    if (tab === "glossaire") renderGlossaire();
   });
   etape("barres", majBarres);
 }
@@ -284,7 +286,7 @@ function renderData() {
 // Onglets selon la personne : « Mes lectures » réservé aux étudiants, « Suivi de projet » à qui a un groupe,
 // « Administration » à l'administrateur et aux étudiants qui ont un groupe (un formateur ne l'a jamais).
 function majOnglets() {
-  const vis = { mine: canWrite(), dash: !!me && (me.role === "formateur" || isSuper()), suivi: !!groupeCourant(), admin: canAdmin() && (isSuper() || !!groupeCourant()) };
+  const vis = { mine: canWrite(), dash: !!me && (me.role === "formateur" || isSuper()), suivi: !!groupeCourant(), glossaire: !!groupeCourant(), admin: canAdmin() && (isSuper() || !!groupeCourant()) };
   Object.keys(vis).forEach(t => document.querySelector(`.tab[data-t="${t}"]`).classList.toggle("hidden", !vis[t]));
   if (vis[tab] === false) setTab("all");
 }
@@ -354,6 +356,7 @@ async function refresh(manuel) {
     if (tab === "biblio") renderBiblio();
     if (tab === "synth") renderSynth();
     if (tab === "suivi") renderSuivi();
+    if (tab === "glossaire") renderGlossaire();
     majBarres();
     if (tab === "admin" && canAdmin()) await loadAdmin();
     clearStatus();

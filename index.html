@@ -24,6 +24,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
     <button class="tab" data-t="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
     <button class="tab" data-t="cmts" role="tab" aria-selected="false">💬 Commentaires <span id="cmtcount" class="count hidden"></span></button>
     <button class="tab hidden" data-t="suivi" role="tab" aria-selected="false">🗓️ Suivi de projet <span id="alertnb" class="count alertnb hidden" title="Jalons à surveiller"></span></button>
+    <button class="tab hidden" data-t="glossaire" role="tab" aria-selected="false">📚 Glossaire</button>
     <button class="tab" data-t="biblio" role="tab" aria-selected="false">📖 Bibliographie</button>
     <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
     <button class="tab hidden" data-t="dash" role="tab" aria-selected="false">🧭 Tableau de bord</button>
@@ -88,6 +89,17 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
           <button class="btn sm" id="addreunion" type="button">＋ Ajouter un compte rendu</button></div>
         <div id="reunionform"></div>
         <div id="reunions"></div>
+      </div>
+    </section>
+
+    <section id="glossaire" class="hidden">
+      <div class="card">
+        <div class="tools" style="justify-content:space-between"><h2 style="margin:0;font-size:16px">📚 Glossaire du groupe</h2>
+          <button class="btn sm" id="addterme" type="button">＋ Ajouter un terme</button></div>
+        <div class="meta" style="margin-top:4px">Les définitions importantes de votre mémoire, avec la référence qui les donne. Visible et modifiable par les membres du groupe.</div>
+        <div id="gloform"></div>
+        <div class="tools hidden" style="margin-top:8px"><input id="gloq" type="search" placeholder="Rechercher un mot, une définition, une référence…" aria-label="Rechercher dans le glossaire" style="max-width:420px"></div>
+        <div id="glolist"></div>
       </div>
     </section>
 
@@ -213,7 +225,7 @@ window.addEventListener("load", function () {
 </script>
 <script>
 /* Scripts classiques chargés dans l'ordre : ils partagent tous la même portée globale (voir js/*.js). */
-document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "admin", "exports", "chat", "onboarding", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
+document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "admin", "exports", "chat", "onboarding", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
 </script>
 </body>
 </html>

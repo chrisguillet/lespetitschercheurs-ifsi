@@ -459,3 +459,8 @@ td.menuopen { z-index: 3 }
 .chnote { padding: 0 12px 8px; font-size: 11px }
 @media print { #chat { display: none } }
 .rgpdnote { margin: 8px 0; font-size: 13px }
+
+/* Glossaire */
+.gloini{margin:14px 0 4px;font-size:14px;color:var(--mut);border-bottom:1px solid var(--bd)}
+.terme{padding:8px 0;border-bottom:1px solid var(--bd);display:flex;flex-direction:column;gap:4px}
+.termemot{font-size:15px}
