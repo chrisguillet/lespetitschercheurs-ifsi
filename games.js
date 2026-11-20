@@ -31,7 +31,7 @@
     { e: "chariot", w: 44, h: 40, haut: false, nom: "chariot de soins" },
     { e: "💧", w: 36, h: 22, haut: false, nom: "flaque" },
     { e: "👪", w: 44, h: 44, haut: false, nom: "famille" },
-    { e: "📞", w: 30, h: SOL - 28, haut: true, nom: "téléphone suspendu" }
+    { e: "enseigne", w: 50, h: SOL - 28, haut: true, nom: "enseigne suspendue" }
   ];
   // Chariot de soins dessiné à la main : plateau métallique, tiroirs, croix rouge, poignée et roulettes.
   function chariot(ctx, x, y, w, h) {
@@ -44,9 +44,53 @@
     ctx.strokeStyle = "#5b6b7f"; ctx.beginPath(); ctx.moveTo(x + w, y + 3); ctx.lineTo(x + w + 6, y + 3); ctx.lineTo(x + w + 6, y + 14); ctx.stroke();   // poignée
     ctx.fillStyle = "#2b3340"; [x + 8, x + w - 8].forEach(r => { ctx.beginPath(); ctx.arc(r, y + h - 4, 4, 0, 7); ctx.fill(); });   // roulettes
   }
+  // Enseigne de service suspendue au plafond (impossible à sauter : il faut passer dessous).
+  function enseigne(ctx, x, bas, w) {
+    const h = 28, y = bas - h;
+    ctx.fillStyle = "#8696aa"; ctx.fillRect(x + 6, 16, 4, y - 16); ctx.fillRect(x + w - 10, 16, 4, y - 16);   // tiges
+    ctx.fillStyle = "#c93a3a"; ctx.strokeStyle = "#8f2424"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 6) : ctx.rect(x, y, w, h); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.fillRect(x + w / 2 - 2, y + 5, 4, 18); ctx.fillRect(x + w / 2 - 9, y + 12, 18, 4);   // croix blanche
+  }
+
+  // Décor : couloir d'hôpital en défilement parallaxe (plafond et néons, mur avec portes, fenêtres, horloge, affiches, plantes, sol carrelé).
+  function decor(ctx, d) {
+    const mur = "rgba(127,150,180,", cl = (a) => mur + a + ")";
+    ctx.fillStyle = cl(".08"); ctx.fillRect(0, 16, W, SOL - 14);              // mur
+    ctx.fillStyle = cl(".22"); ctx.fillRect(0, 0, W, 16);                      // plafond
+    for (let i = -1; i <= 5; i++) { const x = i * 150 - ((d * 0.6) % 150); ctx.fillStyle = "rgba(190,215,245,.75)"; ctx.fillRect(x + 30, 4, 70, 6); }   // néons
+    ctx.fillStyle = cl(".28"); ctx.fillRect(0, 150, W, 6);                     // main courante
+    ctx.fillStyle = cl(".16"); ctx.fillRect(0, SOL - 10, W, 12);               // plinthe
+    const F = 0.35, E = 220, k0 = Math.floor(d * F / E) - 1;
+    for (let idx = k0; idx <= k0 + 5; idx++) {
+      const x = idx * E - d * F, t = ((idx % 6) + 6) % 6;
+      ctx.lineWidth = 2; ctx.strokeStyle = cl(".5");
+      if (t === 0 || t === 3) {                                                // porte de chambre avec hublot
+        ctx.fillStyle = cl(".2"); ctx.fillRect(x + 20, 46, 58, SOL - 46); ctx.strokeRect(x + 20, 46, 58, SOL - 46);
+        ctx.fillStyle = "rgba(190,215,245,.7)"; ctx.fillRect(x + 36, 58, 26, 30); ctx.strokeRect(x + 36, 58, 26, 30);
+        ctx.fillStyle = cl(".6"); ctx.fillRect(x + 68, 120, 5, 12);
+      } else if (t === 1) {                                                    // fenêtre
+        ctx.fillStyle = "rgba(170,210,245,.55)"; ctx.fillRect(x + 20, 40, 84, 70); ctx.strokeRect(x + 20, 40, 84, 70);
+        ctx.beginPath(); ctx.moveTo(x + 62, 40); ctx.lineTo(x + 62, 110); ctx.moveTo(x + 20, 75); ctx.lineTo(x + 104, 75); ctx.stroke();
+      } else if (t === 2) {                                                    // pictogramme croix verte
+        ctx.fillStyle = cl(".2"); ctx.fillRect(x + 30, 50, 60, 60); ctx.strokeRect(x + 30, 50, 60, 60);
+        ctx.fillStyle = "#3aa76d"; ctx.fillRect(x + 56, 62, 8, 36); ctx.fillRect(x + 42, 76, 36, 8);
+      } else if (t === 4) {                                                    // horloge
+        ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.beginPath(); ctx.arc(x + 60, 66, 20, 0, 7); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + 60, 66); ctx.lineTo(x + 60, 54); ctx.moveTo(x + 60, 66); ctx.lineTo(x + 70, 70); ctx.stroke();
+      } else {                                                                 // plante
+        emoji(ctx, "🪴", x + 40, SOL - 4, 44);
+      }
+    }
+    ctx.fillStyle = cl(".12"); ctx.fillRect(0, SOL + 2, W, H - SOL);           // sol
+    ctx.strokeStyle = cl(".25"); ctx.lineWidth = 1;
+    for (let i = -1; i <= 12; i++) { const x = i * 64 - (d % 64); ctx.beginPath(); ctx.moveTo(x, SOL + 2); ctx.lineTo(x - 22, H); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(0, SOL + 28); ctx.lineTo(W, SOL + 28); ctx.stroke();
+  }
+
   const course = {
     nom: "course", titre: "🏃 La course aux transmissions",
-    aide: "Espace ou ↑ : sauter les chariots, flaques et familles · ↓ (maintenu) : se baisser sous le téléphone suspendu. Sur écran tactile : toucher en haut pour sauter, en bas pour se baisser.",
+    aide: "Espace ou ↑ : sauter les chariots, flaques et familles · ↓ (maintenu) : se baisser sous l’enseigne suspendue. Sur écran tactile : toucher en haut pour sauter, en bas pour se baisser.",
     fin: "Convoqué·e par la cadre de santé 📋",
     init() { return { y: SOL, vy: 0, bas: false, obs: [], dist: 0, vitesse: 280, prochain: 300, score: 0, mort: false }; },
     action(s) { if (s.y >= SOL) s.vy = -640; },
@@ -70,16 +114,13 @@
       if (s.obs.some(o => chevauche(moi, o, 6))) s.mort = true;
     },
     draw(ctx, s, c) {
+      decor(ctx, s.dist);
       ctx.strokeStyle = c.trait; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(0, SOL + 2); ctx.lineTo(W, SOL + 2); ctx.stroke();
-      ctx.setLineDash([10, 14]); ctx.lineDashOffset = -(s.dist % 24);
-      ctx.beginPath(); ctx.moveTo(0, SOL + 14); ctx.lineTo(W, SOL + 14); ctx.stroke(); ctx.setLineDash([]);
       s.obs.forEach(o => {
         if (o.e === "chariot") chariot(ctx, o.x, o.y, o.w, o.h);
-        else if (o.haut) {   // téléphone au bout d'un fil : on ne peut pas sauter par-dessus, il faut passer dessous
-          ctx.strokeStyle = c.doux; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(o.x + o.w / 2, 0); ctx.lineTo(o.x + o.w / 2, o.h - 26); ctx.stroke();
-          emoji(ctx, o.e, o.x, o.h, 30);
-        } else emoji(ctx, o.e, o.x, o.y + o.h, o.h + 4);
+        else if (o.haut) enseigne(ctx, o.x, o.h, o.w);
+        else emoji(ctx, o.e, o.x, o.y + o.h, o.h + 4);
       });
       const h = this.hauteur(s);
       emoji(ctx, avatar, 50, s.y, h + 4);
@@ -175,7 +216,7 @@
     if (nom === "course") {
       avatar = lireAvatar();
       const bar = doc.createElement("div"); bar.className = "jeuavatar"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
-      bar.innerHTML = '<span class="meta">Mon avatar :</span>' + AVATARS.map(a => '<button type="button" class="btn sm sec" data-avatar="' + a.e + '" aria-label="' + a.nom + '" aria-pressed="' + (a.e === avatar) + '" style="' + (a.e === avatar ? "outline:2px solid var(--pri)" : "") + '">' + a.e + " " + a.nom + "</button>").join("");
+      bar.innerHTML = AVATARS.map(a => '<button type="button" class="btn sm sec" data-avatar="' + a.e + '" aria-label="' + a.nom + '" aria-pressed="' + (a.e === avatar) + '" title="' + a.nom + '" style="font-size:20px;line-height:1;' + (a.e === avatar ? "outline:2px solid var(--pri)" : "") + '">' + a.e + "</button>").join("");
       bar.addEventListener("click", e => {
         const b = e.target.closest("[data-avatar]"); if (!b) return;
         avatar = b.dataset.avatar; try { localStorage.setItem("lydia_jeu_avatar", avatar); } catch (x) { /* ignoré */ }
