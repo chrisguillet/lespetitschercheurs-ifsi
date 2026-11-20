@@ -186,11 +186,16 @@ tr.open .rowacts{display:block}
 /* ---------- Menu du compte (en haut à droite) ---------- */
 .avatar{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--c);color:#fff;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-right:6px;vertical-align:middle}
 .acctbtn{display:inline-flex;align-items:center;min-height:34px}
-.acctpop{display:flex;flex-direction:column;gap:10px;min-width:300px;padding:14px;top:42px}
-.acctpop .btn{justify-content:flex-start;text-align:left;padding:8px 12px}
-.acctsec{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd)}
-.acctsec .meta{font-weight:600}
-.acctwho{padding-bottom:6px;border-bottom:1px solid var(--bd)}
+.colpop.acctpop{display:flex;flex-direction:column;gap:0;width:max-content;min-width:290px;max-width:92vw;padding:6px;top:42px}
+.acctpop .acctwho{display:flex;align-items:center;gap:12px;padding:12px 12px 14px;border-bottom:1px solid var(--bd);margin-bottom:6px}
+.acctpop .acctwho b{font-size:15px}
+.avatar.big{width:40px;height:40px;font-size:18px;margin:0;flex:none}
+.acctgrp{display:flex;flex-direction:column;gap:2px;padding:6px 0;border-bottom:1px solid var(--bd)}
+.acctgrp:last-child{border-bottom:0;padding-bottom:2px}
+.acctlabel{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);padding:4px 10px 2px}
+.acctitem{display:block;width:100%;text-align:left;white-space:nowrap;background:transparent;border:0;border-radius:8px;padding:9px 10px;font:inherit;font-size:14px;color:var(--tx);cursor:pointer}
+.acctitem:hover,.acctitem:focus-visible{background:var(--bg,rgba(127,127,127,.14))}
+.acctitem.danger{color:var(--bad,#b42318)}
 @media (max-width:520px){.acctname{display:none}}
 
 /* ---------- Attente de connexion ---------- */

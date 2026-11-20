@@ -381,13 +381,14 @@ function basculerTheme() {
 
 // En haut à droite : menu du compte (statut de connexion, thème, déconnexion).
 function renderMe() {
+  const init = esc(String(me.prenom || "?").trim().charAt(0).toUpperCase());
   $("me").innerHTML = `<details class="colmenu acct"><summary class="btn sm sec acctbtn" aria-label="Menu du compte : ${esc(me.prenom)}">
-      <span class="avatar" style="--c:${esc(me.couleur)}">${esc(String(me.prenom || "?").trim().charAt(0).toUpperCase())}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
+      <span class="avatar" style="--c:${esc(me.couleur)}">${init}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
     <div class="colpop right acctpop">
-      <div class="acctwho"><span class="meta">Connecté(e) :</span> <b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div>
-      ${isSuper() && window.LydiaJeux ? `<div class="acctsec"><div class="meta">🎮 Pause ludique</div>${LydiaJeux.liste.map(j => `<button type="button" class="btn sm sec" data-jeu="${esc(j.id)}">${esc(j.titre)}</button>`).join("")}</div>` : ""}
-      <button type="button" class="btn sm sec" id="themebtn"></button>
-      <button type="button" class="btn sm sec" id="logout">Se déconnecter</button>
+      <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
+      ${isSuper() && window.LydiaJeux ? `<div class="acctgrp"><div class="acctlabel">🎮 Pause ludique</div>${LydiaJeux.liste.map(j => `<button type="button" class="acctitem" data-jeu="${esc(j.id)}">${esc(j.titre)}</button>`).join("")}</div>` : ""}
+      <div class="acctgrp"><div class="acctlabel">Affichage</div><button type="button" class="acctitem" id="themebtn"></button></div>
+      <div class="acctgrp"><button type="button" class="acctitem danger" id="logout">⎋ Se déconnecter</button></div>
     </div></details>`;
   $("me").querySelectorAll("[data-jeu]").forEach(b => b.onclick = () => { b.closest("details").removeAttribute("open"); ouvrirJeu(b.dataset.jeu); });
   $("logout").onclick = logout;
