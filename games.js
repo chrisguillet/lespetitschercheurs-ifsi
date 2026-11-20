@@ -1,5 +1,4 @@
-/* Pause ludique : deux mini-jeux (canvas, sans dépendance), ouverts dans une fenêtre.
-   Réservés pour l'instant à l'administrateur (voir le menu du compte dans app.js).
+/* Pause ludique : deux mini-jeux (canvas, sans dépendance), ouverts dans une fenêtre depuis le menu du compte (app.js).
    Chaque jeu expose : init(), action(bas) [saut / battement], bas(état) [se baisser], step(dt), draw(ctx). */
 (function (root) {
   "use strict";
@@ -282,8 +281,8 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     const centre = (txt, y, taille, coul) => { ctx.fillStyle = coul || c.texte; ctx.font = (taille >= 20 ? "bold " : "") + taille + "px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.fillText(txt, W / 2, y); ctx.textAlign = "left"; };
     if (actif.etat === "pret") centre("Espace ou toucher pour commencer", H / 2 - 20, 20);
     if (actif.etat === "fini") {
-      ctx.fillStyle = "rgba(0,0,0,.28)"; ctx.fillRect(0, 0, W, H);
-      centre(jeu.fin, H / 2 - 24, 24, "#fff"); centre("Score : " + s.score + (jeu.unite || "") + " · record : " + record(jeu.nom) + (jeu.unite || ""), H / 2 + 8, 18, "#fff"); centre("Cliquez sur « Rejouer » pour recommencer", H / 2 + 40, 15, "#fff");
+      ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(0, 0, W, H);
+      centre(jeu.fin, H / 2 - 24, 24, "#fff"); centre("Score : " + s.score + (jeu.unite || "") + " · record : " + record(jeu.nom) + (jeu.unite || ""), H / 2 + 8, 18, "#fff"); 
     }
     if (actif.maj) actif.maj(s.score, record(jeu.nom));
   }
@@ -310,7 +309,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     fermer();
     const jeu = JEUX[nom]; if (!jeu || !zone) return false;
     const doc = zone.ownerDocument;
-    zone.innerHTML = '<canvas width="' + W + '" height="' + H + '" style="width:100%;max-width:' + W + 'px;border:1px solid var(--bd);border-radius:10px;touch-action:none;background:var(--card)" tabindex="0" aria-label="' + jeu.titre + '"></canvas><div class="jeurejouer" style="display:none;margin-top:8px"><button type="button" class="btn">↻ Rejouer</button></div><div class="meta" style="margin-top:6px"></div>';
+    zone.innerHTML = '<div style="position:relative;max-width:' + W + 'px"><canvas width="' + W + '" height="' + H + '" style="display:block;width:100%;border:1px solid var(--bd);border-radius:10px;touch-action:none;background:var(--card)" tabindex="0" aria-label="' + jeu.titre + '"></canvas><div class="jeurejouer" style="display:none;position:absolute;left:50%;top:68%;transform:translateX(-50%)"><button type="button" class="btn">↻ Rejouer</button></div></div><div class="meta" style="margin-top:6px"></div>';
     const cv = zone.querySelector("canvas"); zone.querySelector(".meta").textContent = jeu.aide;
     const rej = zone.querySelector(".jeurejouer");
     if (nom === "course") {
@@ -323,7 +322,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
         bar.querySelectorAll("[data-avatar]").forEach(o => { const on = o === b; o.setAttribute("aria-pressed", String(on)); o.style.outline = on ? "2px solid var(--pri)" : ""; });
         try { cv.focus({ preventScroll: true }); } catch (x) { /* ignoré */ }
       });
-      zone.insertBefore(bar, cv);
+      zone.insertBefore(bar, zone.firstChild);
     }
     actif = { jeu, s: jeu.init(), etat: "pret", raf: 0, t0: 0, cv, ctx: cv.getContext ? cv.getContext("2d") : null, maj, rej };
     rej.querySelector("button").addEventListener("click", () => {

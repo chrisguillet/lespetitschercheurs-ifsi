@@ -231,6 +231,6 @@ Lien discret « 💡 Un retour sur l'outil ? » en bas de page, pour **toute per
 - Le choix **Mon groupe / Toute la promo** n'apparaît que sur le tableau commun, les commentaires, la bibliographie et la synthèse ; « Mes lectures », « Suivi de projet » et « Administration » concernent toujours le groupe.
 - La recherche permet de filtrer par **groupe** quand plusieurs groupes sont visibles, et chaque document affiche, pour chaque personne qui l'a lu, son groupe.
 
-## Pause ludique (easter egg, administrateur seulement)
+## Pause ludique (easter egg)
 
-Menu du compte (en haut à droite) → **🎮 Pause ludique** : *La course aux transmissions* (saut / se baisser) et *Flappy Seringue* (poches et potences à perfusion, gouttes à attraper pour +2, ECG en bas), dans une fenêtre. Code dans `games.js` (canvas, sans dépendance) ; avatar de la course au choix (femme, homme, neutre) et records conservés dans le navigateur. Invisible pour tout autre rôle.
+Menu du compte (en haut à droite) → **🎮 Pause ludique** : *La course aux transmissions* (saut / se baisser) et *Flappy Seringue* (poches et potences à perfusion, gouttes à attraper pour +2, ECG en bas), dans une fenêtre. Code dans `games.js` (canvas, sans dépendance) ; avatar de la course au choix (femme, homme, neutre) et records conservés dans le navigateur. Accessible à toute personne connectée (étudiant, formateur, administrateur). Après une défaite, seul le bouton « Rejouer » relance une partie.
