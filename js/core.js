@@ -197,7 +197,9 @@ function deriver() {
   const g = groupeCourant();
   if (!g) { items = []; comments = []; return; }
   ctx.gid = g.id;
-  items = ctx.vue === "promo" ? itemsAll.filter(i => i.portee === "promo" && memePromo(i, g)) : itemsAll.filter(i => i.groupe_id === g.id);
+  // Vue promo : les fiches terminées de toute la promo, plus celles (même en cours) du groupe affiché, déjà visibles de ses membres.
+  const monG = groupes.some(x => x.id === g.id);
+  items = ctx.vue === "promo" ? itemsAll.filter(i => (i.portee === "promo" && memePromo(i, g)) || (monG && i.groupe_id === g.id)) : itemsAll.filter(i => i.groupe_id === g.id);
   const ids = new Set(items.map(i => i.id));
   comments = commentsAll.filter(c => ids.has(c.lecture_id) && (ctx.vue === "promo" ? c.portee === "promo" : c.portee !== "promo"));
 }
