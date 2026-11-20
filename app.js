@@ -54,7 +54,7 @@ const nonLusEnvoi = new Set(); // remis en non lu ici, pas encore confirmés par
 const frais = new Set();    // commentaires qui étaient non lus à l'ouverture : surlignés tant que la discussion reste ouverte
 const CM = { nonLus: false, miennes: false };
 const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
-const F = { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute",
+const F = { q: "", who: "", grp: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute",
   view: lsGet("lydia_vue", matchMedia("(max-width:700px)").matches ? "cartes" : "tableau") };
 const masquees = new Set((() => { try { return JSON.parse(lsGet("lydia_cols", "[]")); } catch (e) { return []; } })());
 
@@ -143,7 +143,7 @@ function reinitialiserEtat() {
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
-  Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute" });
+  Object.assign(F, { q: "", who: "", grp: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute" });
   B.who = ""; B.enCours = false;
   enLigne = []; enLigneSig = "";
   tab = "all"; vuDepuis = null; renderedAcces = ""; derniereSync = null; usersChanged = false;
@@ -227,6 +227,7 @@ function applyDataBrut(j) {
   studentsSig = sig;
   // Un filtre sur un étudiant qui n'est plus dans la vue n'a plus de sens.
   if (F.who && !students().some(u => u.prenom === F.who)) F.who = "";
+  if (F.grp && !groupesListe().includes(F.grp)) F.grp = "";
   if (B.who && !students().some(u => u.prenom === B.who)) B.who = "";
   enLigne = j.enLigne || [];
   lusSet = new Set((j.lus || []).concat([...lusEnvoi]).filter(id => !nonLusEnvoi.has(id)));
@@ -265,8 +266,15 @@ function renderData() {
 
 // Onglet de suivi (selon le groupe), alertes du rétroplanning, lien de retour : à rafraîchir après CHAQUE affichage
 // (première connexion, actualisation automatique, action), pas seulement après une action.
+// Onglets selon la personne : « Mes lectures » réservé aux étudiants, « Suivi de projet » à qui a un groupe,
+// « Administration » à l'administrateur et aux étudiants qui ont un groupe (un formateur ne l'a jamais).
+function majOnglets() {
+  const vis = { mine: canWrite(), suivi: !!groupeCourant(), admin: canAdmin() && (isSuper() || !!groupeCourant()) };
+  Object.keys(vis).forEach(t => document.querySelector(`.tab[data-t="${t}"]`).classList.toggle("hidden", !vis[t]));
+  if (vis[tab] === false) setTab("all");
+}
 function majBarres() {
-  document.querySelector('.tab[data-t="suivi"]').classList.toggle("hidden", !groupeCourant());
+  majOnglets();
   etape("alertes", majAlertes);
   $("fbopen")?.classList.toggle("hidden", !me);
 }
@@ -419,6 +427,7 @@ function setTab(t) {
     b.setAttribute("aria-selected", String(on));
   });
   ONGLETS.forEach(x => $(x).classList.toggle("hidden", t !== x));
+  if (me) renderCtx();
   if (t === "admin" && canAdmin()) loadAdmin();
   if (t === "cmts") renderComments();
   if (t === "suivi") renderSuivi();
@@ -1100,7 +1109,7 @@ function infosHtml(i) {
 
 // Un document (article) par ligne ; ses fiches de lecture se déplient en dessous.
 const openArts = new Set(), fermesArts = new Set();     // documents dépliés ; documents repliés à la main malgré un filtre actif
-const filtreActif = () => !!(F.q || F.who || F.st || F.type || F.kw);
+const filtreActif = () => !!(F.q || F.who || F.grp || F.st || F.type || F.kw);
 const artOuvert = k => openArts.has(k) || (filtreActif() && !fermesArts.has(k));   // une recherche déplie les documents trouvés
 const cleArt = i => i.article_id || i.id;
 const libFiches = n => `${n} fiche${n > 1 ? "s" : ""} de lecture`;
@@ -1113,7 +1122,7 @@ function groupesArticles(l) {
 
 // Résumé d'un document : qui a fait une fiche, et où elle en est.
 function resumeFiches(g) {
-  return g.map(x => `<span class="badge ${x.statut === "En cours" ? "prog" : ""}" style="--c:${esc(x.couleur)}" title="${x.statut === "En cours" ? "En cours de lecture" : "Terminée"}">${esc(x.etudiant)} ${x.statut === "En cours" ? "📖" : "✅"}</span>`).join(" ");
+  return g.map(x => `<span class="badge ${x.statut === "En cours" ? "prog" : ""}" style="--c:${esc(x.couleur)}" title="${x.statut === "En cours" ? "En cours de lecture" : "Terminée"}">${esc(x.etudiant)} ${x.statut === "En cours" ? "📖" : "✅"}${x.groupe ? ` <span class="grpn">· ${esc(x.groupe)}</span>` : ""}</span>`).join(" ");
 }
 function badgesArticle(g) {
   const nc = g.reduce((n, x) => n + comments.filter(c => c.lecture_id === x.id).length, 0);
@@ -1442,13 +1451,14 @@ function renderFilters() {
   usersChanged = false;
   const types = [...new Set(TYPES.concat(items.map(i => i.type).filter(Boolean)))];
   const tableau = F.view !== "cartes";
-  const actifs = [["q", F.q ? `« ${F.q} »` : ""], ["who", F.who], ["st", F.st], ["type", F.type]].filter(x => x[1]);
+  const actifs = [["q", F.q ? `« ${F.q} »` : ""], ["who", F.who], ["grp", F.grp], ["st", F.st], ["type", F.type]].filter(x => x[1]);
   const nb = actifs.length + (F.kw ? 1 : 0);
   $("filters").innerHTML = `
    <details class="colmenu" id="mfilt"><summary class="btn sm sec" aria-label="Rechercher et filtrer">🔍 Rechercher / filtrer${nb ? ` <span class="count">${nb}</span>` : ""}</summary>
     <div class="colpop pop-filtres">
      <div><label for="q">Recherche</label><input id="q" placeholder="Titre, auteur, mot-clé, commentaire…" value="${esc(F.q)}"></div>
      <div><label for="who">Étudiant</label><select id="who"><option value="">Tous les étudiants</option>${students().map(s => `<option ${F.who === s.prenom ? "selected" : ""}>${esc(s.prenom)}</option>`).join("")}</select></div>
+     ${groupesListe().length > 1 ? `<div><label for="grp">Groupe</label><select id="grp"><option value="">Tous les groupes</option>${groupesListe().map(n => `<option ${F.grp === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>` : ""}
      <div><label for="st">Statut</label><select id="st"><option value="">Tous les statuts</option><option value="Terminée" ${F.st === "Terminée" ? "selected" : ""}>✅ Terminées</option><option value="En cours" ${F.st === "En cours" ? "selected" : ""}>📖 En cours</option></select></div>
      <div><label for="type">Type d’article</label><select id="type"><option value="">Tous les types</option>${types.map(t => `<option ${F.type === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
      <div><label for="sort">Tri</label><select id="sort"><option value="ajoute" ${F.sort === "ajoute" ? "selected" : ""}>Date de saisie</option><option value="etudiant" ${F.sort === "etudiant" ? "selected" : ""}>Étudiant</option><option value="titre" ${F.sort === "titre" ? "selected" : ""}>Titre</option><option value="parution" ${F.sort === "parution" ? "selected" : ""}>Date de parution</option></select></div>
@@ -1465,9 +1475,9 @@ function renderFilters() {
    ${canWrite() ? '<button type="button" class="btn sm" id="add2">＋ Ajouter une lecture</button>' : ""}
    <details class="colmenu"><summary class="btn sm sec">⬇️ Exporter ▾</summary><div class="colpop right"><button class="btn sm" id="xl" type="button">Excel</button> <button class="btn sm" id="pdf" type="button">PDF</button></div></details>`;
   $("q").oninput = e => { F.q = e.target.value; renderTable(); };
-  ["who", "st", "type", "sort"].forEach(k => $(k).onchange = e => { F[k] = e.target.value; renderTable(); });
+  ["who", "grp", "st", "type", "sort"].forEach(k => $(k) && ($(k).onchange = e => { F[k] = e.target.value; renderTable(); }));
   $("mfilt").ontoggle = () => { if ($("mfilt").open) $("q").focus(); };
-  $("reset").onclick = () => { F.q = ""; F.who = ""; F.st = ""; F.type = ""; F.kw = ""; F.kwLabel = ""; renderFilters(); renderTable(); };
+  $("reset").onclick = () => { F.q = ""; F.who = ""; F.grp = ""; F.st = ""; F.type = ""; F.kw = ""; F.kwLabel = ""; renderFilters(); renderTable(); };
   $("filters").querySelectorAll("[data-clear]").forEach(b => b.onclick = () => { F[b.dataset.clear] = ""; renderFilters(); renderTable(); });
   if ($("kwoff")) $("kwoff").onclick = () => filtrerMotCle(F.kwLabel);
   $("vt").onclick = () => changerVue("tableau");
@@ -1510,9 +1520,12 @@ function correspond(i, q) {
   return q.split(" ").every(m => texte.includes(m));
 }
 
+// Noms des groupes présents dans la vue courante (filtre « Groupe »).
+const groupesListe = () => [...new Set(items.map(i => i.groupe).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+
 function filtered() {
   const q = cleTitre(F.q);
-  const l = items.filter(i => (!F.who || i.etudiant === F.who) && (!F.st || i.statut === F.st) && (!F.type || i.type === F.type)
+  const l = items.filter(i => (!F.who || i.etudiant === F.who) && (!F.grp || i.groupe === F.grp) && (!F.st || i.statut === F.st) && (!F.type || i.type === F.type)
     && (!F.kw || motsListe(i.mots).concat(motsListe(i.kw)).some(k => cleTitre(k) === F.kw))
     && (!q || correspond(i, q)));
   l.sort((a, b) => F.sort === "ajoute"
@@ -1542,7 +1555,7 @@ function renderTable() {
   }
   applyCols();
   const nbres = $("nbres");
-  if (nbres) nbres.textContent = (F.q || F.who || F.st || F.type || F.kw) ? `${l.length} / ${items.length} fiches de lecture` : "";
+  if (nbres) nbres.textContent = (F.q || F.who || F.grp || F.st || F.type || F.kw) ? `${l.length} / ${items.length} fiches de lecture` : "";
   $("stats").innerHTML = students().map(s => {
     const n = items.filter(i => i.etudiant === s.prenom);
     return `<span class="badge" style="--c:${esc(s.couleur)}">${esc(s.prenom)} : ${n.length} fiche${n.length > 1 ? "s" : ""} de lecture (${n.filter(i => i.statut === "En cours").length} en cours)</span>`;
@@ -2020,7 +2033,8 @@ function renderCtx() {
       : `${g.etablissement} · ${g.promo} · ${g.nom} — ${g.membres.filter(m => m.role === "etudiant").map(m => m.prenom).join(", ") || "aucun étudiant"}`;
   if (!g) { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
   bar.classList.remove("hidden");
-  const sig = JSON.stringify([ctx.gid, ctx.vue, groupes.map(x => [x.id, x.nom, x.promo, x.etablissement, nonLusDe(x, "groupe")]), nonLusDe(g, "promo"), votesAFaire(g), votes.filter(v => v.groupe_id === g.id).length]);
+  const avecVue = !["mine", "suivi", "admin"].includes(tab);   // groupe / promo n'a de sens que pour tableau, commentaires, biblio, synthèse
+  const sig = JSON.stringify([avecVue, ctx.gid, ctx.vue, groupes.map(x => [x.id, x.nom, x.promo, x.etablissement, nonLusDe(x, "groupe")]), nonLusDe(g, "promo"), votesAFaire(g), votes.filter(v => v.groupe_id === g.id).length]);
   if (sig === ctxSig && bar.innerHTML) return;
   ctxSig = sig;
   const nvG = nonLusDe(g, "groupe"), nvP = nonLusDe(g, "promo"), vf = votesAFaire(g);
@@ -2029,11 +2043,10 @@ function renderCtx() {
     ? `<label class="meta" for="ctxg" style="margin:0">Groupe</label><select id="ctxg" aria-label="Choisir le groupe">${groupes.map(x => { const n = nonLusDe(x, "groupe"); return `<option value="${esc(x.id)}" ${x.id === g.id ? "selected" : ""}>${esc(x.etablissement)} · ${esc(x.promo)} — ${esc(x.nom)}${n ? " (" + n + " non lu" + (n > 1 ? "s" : "") + ")" : ""}</option>`; }).join("")}</select>`
     : `<span class="meta">${esc(g.nom)}</span>`;
   bar.innerHTML = `${choix}
-    <span class="seg"><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "" : "on"}" id="vg" aria-pressed="${ctx.vue !== "promo"}">👥 Mon groupe${ctx.vue === "promo" ? pastille(nvG) : ""}</button><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "on" : ""}" id="vp" aria-pressed="${ctx.vue === "promo"}">🌐 Toute la promo${ctx.vue === "promo" ? "" : pastille(nvP)}</button></span>
+    ${avecVue ? `<span class="seg"><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "" : "on"}" id="vg" aria-pressed="${ctx.vue !== "promo"}">👥 Mon groupe${ctx.vue === "promo" ? pastille(nvG) : ""}</button><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "on" : ""}" id="vp" aria-pressed="${ctx.vue === "promo"}">🌐 Toute la promo${ctx.vue === "promo" ? "" : pastille(nvP)}</button></span>` : ""}
     <button type="button" class="btn sm sec" id="gbtn">⚙️ Membres et votes${pastille(vf)}</button>`;
   if ($("ctxg")) $("ctxg").onchange = e => changerContexte({ gid: e.target.value });
-  $("vg").onclick = () => changerContexte({ vue: "groupe" });
-  $("vp").onclick = () => changerContexte({ vue: "promo" });
+  if ($("vg")) { $("vg").onclick = () => changerContexte({ vue: "groupe" }); $("vp").onclick = () => changerContexte({ vue: "promo" }); }
   $("gbtn").onclick = ouvrirGroupe;
 }
 
@@ -2284,10 +2297,8 @@ function renderAll() {
   renderMe();
   renderCtx();
   $("tabs").classList.remove("hidden");
-  document.querySelector('.tab[data-t="mine"]').classList.toggle("hidden", !canWrite());
-  document.querySelector('.tab[data-t="admin"]').classList.toggle("hidden", !canAdmin());
-  if ((!canWrite() && tab === "mine") || (!canAdmin() && tab === "admin")) setTab("all");
-  else setTab(tab);
+  majOnglets();
+  setTab(tab);
   if (canWrite()) renderMine();
   renderPending();
   renderComments();

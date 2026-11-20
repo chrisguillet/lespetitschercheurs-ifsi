@@ -297,3 +297,4 @@ button.calj{cursor:pointer}
 .calj.deb{margin-right:-1px;border-radius:4px 0 0 4px} .calj.mid{border-left-width:0;border-radius:0} .calj.fin{border-left-width:0;border-radius:0 4px 4px 0}
 .calj.reu{border-left-color:#7c3aed;background:rgba(124,58,237,.12)}
 @media (max-width:640px){.calc{min-height:56px}.calj{font-size:10px;padding:0 2px}}
+.badge .grpn{font-weight:400;opacity:.85}

@@ -224,3 +224,9 @@ Lien discret « 💡 Un retour sur l'outil ? » en bas de page, pour **toute per
 - **Contexte joint automatiquement** à l'envoi : onglet affiché, taille de fenêtre, navigateur (utile pour reproduire un bug). Mentionné dans `privacy.html`.
 - **Lecture** : l'administrateur les voit dans l'onglet Administration (plus récents d'abord, avec l'auteur). Chacun ne voit que ses retours du jour. Pour les exploiter plus tard : feuille `Feedback` du Sheet, avec une colonne `statut` (`nouveau` par défaut) à changer à la main (traité, refusé…).
 - Mise en route : relancer `setup` (crée la feuille `Feedback`) et redéployer.
+
+## Onglets et filtres selon la personne
+
+- **Mes lectures** : étudiants seulement. **Suivi de projet** : toute personne ayant un groupe. **Administration** : l'administrateur, et les étudiants qui ont un groupe (jamais un formateur).
+- Le choix **Mon groupe / Toute la promo** n'apparaît que sur le tableau commun, les commentaires, la bibliographie et la synthèse ; « Mes lectures », « Suivi de projet » et « Administration » concernent toujours le groupe.
+- La recherche permet de filtrer par **groupe** quand plusieurs groupes sont visibles, et chaque document affiche, pour chaque personne qui l'a lu, son groupe.
