@@ -415,3 +415,4 @@ tr.art.open .fichiers { display: block; }
 .nfchip { display: flex; align-items: center; gap: 6px; font-size: .85em; margin: 6px 0; }
 .nrow { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
 .nrow .chk { display: flex; align-items: center; gap: 6px; font-weight: normal; }
+td.menuopen { z-index: 3 }

@@ -162,7 +162,7 @@ function toutDeplier() {
 
 // Ferme tout menu « ⋯ » ouvert (clic ailleurs, défilement, redimensionnement).
 function fermerMenusOptions() {
-  document.querySelectorAll(".optmenu:not(.hidden)").forEach(m => { m.classList.add("hidden"); const ob = m.parentElement.querySelector(".optbtn"); if (ob) ob.setAttribute("aria-expanded", "false"); });
+  document.querySelectorAll(".optmenu:not(.hidden)").forEach(m => { m.classList.add("hidden"); const td = m.closest("td"); if (td) td.classList.remove("menuopen"); const ob = m.parentElement.querySelector(".optbtn"); if (ob) ob.setAttribute("aria-expanded", "false"); });
 }
 document.addEventListener("click", e => { if (!e.target.closest(".optwrap")) fermerMenusOptions(); });
 window.addEventListener("resize", fermerMenusOptions);
@@ -187,6 +187,7 @@ const onAction = e => {
     fermerMenusOptions();
     if (ouvrir) {
       m.classList.remove("hidden"); b.setAttribute("aria-expanded", "true");
+      const td = b.closest("td"); if (td) td.classList.add("menuopen");   // la cellule collante forme sa propre couche : on la passe au-dessus des lignes suivantes
       // Position fixe : le menu n'est ni coupé par le défilement du tableau, ni recouvert par la ligne suivante.
       const r = b.getBoundingClientRect(), h = m.offsetHeight, w = m.offsetWidth;
       m.style.top = Math.max(4, r.bottom + 4 + h > window.innerHeight ? r.top - h - 4 : r.bottom + 4) + "px";
@@ -194,7 +195,7 @@ const onAction = e => {
     }
     return;
   }
-  const menu = b.closest(".optmenu"); if (menu) { menu.classList.add("hidden"); const ob = menu.parentElement.querySelector(".optbtn"); if (ob) ob.setAttribute("aria-expanded", "false"); }
+  const menu = b.closest(".optmenu"); if (menu) { menu.classList.add("hidden"); const tdm = menu.closest("td"); if (tdm) tdm.classList.remove("menuopen"); const ob = menu.parentElement.querySelector(".optbtn"); if (ob) ob.setAttribute("aria-expanded", "false"); }
   if (d.e) startEdit(d.e, false);
   else if (d.fo) ouvrirFichier(d.fo);
   else if (d.an) startAnalyse(d.an);
