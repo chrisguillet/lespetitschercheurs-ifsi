@@ -1686,10 +1686,10 @@ async function supprimerFichierCli(id) {
 // Ligne du document : titre, références, qui l'a lu ; les fiches de lecture sont dessous.
 function artRow(g) {
   const i = g[0], k = cleArt(i), open = artOuvert(k);
-  return `<tr class="art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}"><td class="first"><span class="chev" aria-hidden="true"></span>${badgesArticle(g)}
-   <b>${esc(i.titre)}</b>${lienHtml(i, true)}
+  return `<tr class="art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}"><td class="first"><div class="artbadges"><span class="chev" aria-hidden="true"></span>${badgesArticle(g)}<span class="optwrap"><button type="button" class="btn sm sec optbtn" data-opt="1" aria-haspopup="true" aria-expanded="false" title="Options du document" aria-label="Options du document">⋯</button><div class="optmenu hidden">${actionsArticle(i)}</div></span></div>
+   <div class="arttitre"><b>${esc(i.titre)}</b>${lienHtml(i, true)}</div>
    <div class="meta">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
-   ${propHtml(i)}<div class="artacts"><button type="button" class="btn sm sec optbtn" data-opt="1" aria-haspopup="true" aria-expanded="false" title="Options du document" aria-label="Options du document">⋯</button><div class="optmenu hidden">${actionsArticle(i)}</div></div>${fichiersHtml(i)}</td>
+   ${propHtml(i)}${fichiersHtml(i)}</td>
    <td class="artres" colspan="7"><div class="meta" style="margin-bottom:4px"><span class="hint-c">Cliquez pour déplier les fiches de lecture</span><span class="hint-o">Fiches de lecture ci-dessous</span></div>${resumeFiches(g)}</td>
    <td class="apa c9">${apaCell(i)}</td></tr>`;
 }
