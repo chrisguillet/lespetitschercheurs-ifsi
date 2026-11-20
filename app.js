@@ -737,7 +737,7 @@ function renderForm() {
    <button class="btn" id="save" type="button">${modeArticle ? "Proposer la correction" : editing ? "Enregistrer les modifications" : artCible ? "Enregistrer ma fiche de lecture" : "Enregistrer la lecture"}</button>
    <button class="btn sec" id="cancel" type="button">Annuler</button></div>`;
   $("save").onclick = save;
-  $("trad").onclick = traduire;
+  if ($("trad")) $("trad").onclick = traduire;
   $("cancel").onclick = () => { effacerBrouillon(); closeDrawer(true); };
   formBase = JSON.stringify(snapshot());
   restaurerBrouillon();
