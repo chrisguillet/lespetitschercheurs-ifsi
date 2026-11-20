@@ -1,4 +1,4 @@
-/* Pause ludique : trois mini-jeux (canvas, sans dépendance), ouverts dans une fenêtre depuis le menu du compte (js/menu.js).
+/* Pause ludique : quatre mini-jeux (canvas, sans dépendance), ouverts dans une fenêtre depuis le menu du compte (js/menu.js).
    Chaque jeu expose : init(), action(bas) [saut / battement], bas(état) [se baisser], step(dt), draw(ctx). */
 (function (root) {
   "use strict";
@@ -445,7 +445,155 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   };
   const SOINS_ICONE = e => e.k === "bloc" ? "🏥" : SOINS[e.k].e;
 
-  const JEUX = { course, seringue, urgences };
+
+  /* ---------- 4. Le couloir ---------- */
+  // Vue en perspective d'un couloir : z va de 0 (fond) à 1 (devant nous), lx de -1 (mur gauche) à +1 (mur droit).
+  const HC = 300, HORIZON = 104, CX = W / 2, DEMI = 250, VIES_C = 5;
+  const PORTES = [0.3, 0.5, 0.7, 0.88];
+  const echelle = z => 0.07 + 0.93 * Math.pow(Math.max(0, Math.min(1, z)), 1.6);
+  const pied = z => HORIZON + (HC - HORIZON) * echelle(z);
+  const plafond = z => HORIZON - HORIZON * echelle(z);
+  const abscisse = (lx, z) => CX + lx * DEMI * echelle(z);
+  const taille = z => 118 * echelle(z);
+  const boite = e => { const t = taille(e.z), x = abscisse(e.lx, e.z); return { x: x - t * 0.36, y: pied(e.z) - t * 0.95, w: t * 0.72, h: t * 0.95 }; };
+  const BTN_DOSSIER = { x: 8, y: HC - 36, w: 150, h: 30 }, BTN_SECU = { x: 166, y: HC - 36, w: 150, h: 30 };
+  const VISAGES_CO = ["🧓", "👵", "🧑‍🦱", "👨‍🦳", "🧔", "👩‍🦰"];
+  const CD_TIR = 0.28, CD_SECU = 3, CD_DOSSIER = 0.5;
+
+  const texteC = (s, txt, x, y, coul) => s.textes.push({ x, y, txt, vie: 1.1, coul: coul || "#d33a3a" });
+  function perdreC(s, pts, coeur, txt, x, y) {
+    s.score = Math.max(0, s.score - pts);
+    if (coeur) { s.vies--; s.secousse = 0.25; if (s.vies <= 0) s.mort = true; }
+    texteC(s, txt + (pts ? " −" + pts : ""), x, y);
+  }
+  function gagnerC(s, pts, txt, x, y) { s.score += pts; texteC(s, txt + " +" + pts, x, y, "#2f9e5b"); }
+
+  function nouveauPatientC(s, porte, cote) {
+    const lc = cote === undefined ? (Math.random() < 0.5 ? -1 : 1) : cote;
+    const z = porte === undefined ? PORTES[Math.floor(Math.random() * PORTES.length)] : porte;
+    const e = { k: "p", etat: "sort", z, lx: lc * 1.0, cote: lc, cible: alea(-0.45, 0.45), visage: VISAGES_CO[Math.floor(Math.random() * VISAGES_CO.length)], t: 0 };
+    s.ents.push(e); return e;
+  }
+  const nouveauMedecin = s => { const e = { k: "d", etat: "vient", z: 0.08, lx: alea(-0.25, 0.25), t: 0 }; s.ents.push(e); return e; };
+  const nouvelAgite = s => { const e = { k: "a", etat: "fonce", z: 0.08, lx: alea(-0.35, 0.35), t: 0 }; s.ents.push(e); return e; };
+
+  function tirer(s, x, y) {
+    if (s.cdTir > 0) return;
+    s.cdTir = CD_TIR; s.tirs.push({ x, y, vie: 0.14 });
+    const cible = s.ents.filter(e => e.etat !== "retour" && e.etat !== "plaque" && chevauche({ x: x - 4, y: y - 4, w: 8, h: 8 }, boite(e))).sort((a, b) => b.z - a.z)[0];
+    if (!cible) return;
+    const b = boite(cible), cx = b.x + b.w / 2;
+    if (cible.k === "p") { cible.etat = "retour"; cible.t = 0; gagnerC(s, 10, "Retour en chambre 💤", cx, b.y); }
+    else if (cible.k === "d") { if (!cible.fache) { cible.fache = true; perdreC(s, 10, false, "Pas le médecin !", cx, b.y); } }
+    else texteC(s, "Trop agité : la sécu !", cx, b.y, "#e0a020");
+  }
+  function dossier(s) {
+    if (s.cdDossier > 0) return; s.cdDossier = CD_DOSSIER;
+    const d = s.ents.filter(e => e.k === "d" && !e.servi && e.z >= 0.4).sort((a, b) => b.z - a.z)[0];
+    if (!d) { texteC(s, "Pas de médecin à portée", CX, 130, "#e0a020"); return; }
+    d.servi = true; const b = boite(d); gagnerC(s, 15, "Dossier remis ✔", b.x + b.w / 2, b.y);
+  }
+  function secu(s) {
+    if (s.cdSecu > 0) return;
+    const cibles = s.ents.filter(e => e.k === "a" && e.etat === "fonce" && e.z >= 0.12);
+    if (!cibles.length) { s.cdSecu = 1; texteC(s, "Personne à plaquer", CX, 130, "#e0a020"); return; }
+    s.cdSecu = CD_SECU;
+    cibles.forEach(a => { a.etat = "plaque"; a.t = 0; const b = boite(a); gagnerC(s, 20, "Plaqué par la sécu 🛡️", b.x + b.w / 2, b.y); });
+  }
+
+  const couloir = {
+    nom: "couloir", titre: "🏥 Couloir", h: HC, unite: " pts", fin: "Service débordé 🚑", curseur: "crosshair",
+    aide: "Cliquez sur un patient qui sort de sa chambre pour lui envoyer un calmant et le renvoyer se coucher. Un médecin passe : bouton « Dossier » (touche D) quand il est assez près, sans lui tirer dessus. Un patient agité fonce sur vous : bouton « Sécu » (touche S) pour le faire plaquer. Chaque fugue ou agité qui vous touche coûte un cœur et des points.",
+    init() { return { t: 0, score: 0, vies: VIES_C, mort: false, ents: [], tirs: [], textes: [], cdTir: 0, cdSecu: 0, cdDossier: 0, secousse: 0, mx: CX, my: 150, prochainP: 0.6, prochainD: 20, prochainA: 32, rec: record("couloir") }; },
+    action() { /* se joue à la souris / au doigt */ },
+    bas() { /* inutilisé */ },
+    bouge(s, x, y) { s.mx = x; s.my = y; },
+    clic(s, x, y) {
+      s.mx = x; s.my = y;
+      if (chevauche({ x, y, w: 1, h: 1 }, BTN_DOSSIER)) return dossier(s);
+      if (chevauche({ x, y, w: 1, h: 1 }, BTN_SECU)) return secu(s);
+      tirer(s, x, y);
+    },
+    touche(s, key) { if (key === "d" || key === "D" || key === "2") dossier(s); else if (key === "s" || key === "S" || key === "3") secu(s); },
+    step(s, dt) {
+      s.t += dt; s.cdTir = Math.max(0, s.cdTir - dt); s.cdSecu = Math.max(0, s.cdSecu - dt); s.cdDossier = Math.max(0, s.cdDossier - dt); s.secousse = Math.max(0, s.secousse - dt);
+      // Apparitions : seulement des patients au début, puis des médecins, puis des patients agités ; le rythme monte avec le temps.
+      s.prochainP -= dt;
+      if (s.prochainP <= 0) { s.prochainP = Math.max(0.8, 2.3 - s.t * 0.02) * alea(0.8, 1.2); if (s.ents.filter(e => e.k === "p" && e.etat !== "retour").length < 8) nouveauPatientC(s); }
+      s.prochainD -= dt; if (s.prochainD <= 0) { s.prochainD = alea(12, 20); nouveauMedecin(s); }
+      s.prochainA -= dt; if (s.prochainA <= 0) { s.prochainA = Math.max(6, 14 - s.t * 0.06) * alea(0.8, 1.2); nouvelAgite(s); }
+      const vp = Math.min(0.2, 0.1 + s.t * 0.0006);
+      s.ents.forEach(e => {
+        e.t += dt;
+        if (e.k === "p") {
+          if (e.etat === "sort") { e.lx += Math.sign(e.cible - e.lx) * Math.min(Math.abs(e.cible - e.lx), 1.3 * dt); e.z -= vp * dt; if (e.z <= 0.06) { e.etat = "parti"; const b = boite(e); perdreC(s, 10, true, "Patient en fuite !", b.x + b.w / 2, b.y + 20); } }
+          else if (e.etat === "retour") { e.lx += e.cote * 2 * dt; if (e.t > 0.7) e.etat = "parti"; }
+        } else if (e.k === "d") {
+          e.z += 0.1 * dt;
+          if (e.z >= 1) { e.etat = "parti"; if (!e.servi) perdreC(s, 5, false, "Médecin sans dossier", CX, 150); }
+        } else {
+          if (e.etat === "fonce") { e.z += 0.4 * dt; if (e.z >= 1) { e.etat = "parti"; perdreC(s, 15, true, "Touché !", CX, 160); } }
+          else if (e.etat === "plaque" && e.t > 0.9) e.etat = "parti";
+        }
+      });
+      s.ents = s.ents.filter(e => e.etat !== "parti");
+      s.tirs.forEach(t => { t.vie -= dt; }); s.tirs = s.tirs.filter(t => t.vie > 0);
+      s.textes.forEach(t => { t.y -= 24 * dt; t.vie -= dt; }); s.textes = s.textes.filter(t => t.vie > 0);
+    },
+    draw(ctx, s, c) {
+      const poly = (pts, coul) => { ctx.fillStyle = coul; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); };
+      const txt = (t, x, y, tl, coul, gras, al) => { ctx.fillStyle = coul; ctx.font = (gras ? "bold " : "") + tl + "px system-ui,sans-serif"; ctx.textAlign = al || "left"; ctx.fillText(t, x, y); ctx.textAlign = "left"; };
+      ctx.save();
+      if (s.secousse > 0) ctx.translate(Math.sin(s.t * 80) * 4, 0);
+      // décor : plafond, sol, murs, porte du fond
+      const z0 = 0, s0 = echelle(z0);
+      poly([[0, 0], [W, 0], [CX + DEMI * s0, plafond(z0)], [CX - DEMI * s0, plafond(z0)]], "#dfe7ef");
+      poly([[0, HC], [W, HC], [CX + DEMI * s0, pied(z0)], [CX - DEMI * s0, pied(z0)]], "#c4ccd6");
+      poly([[0, 0], [CX - DEMI * s0, plafond(z0)], [CX - DEMI * s0, pied(z0)], [0, HC]], "#eef3f8");
+      poly([[W, 0], [CX + DEMI * s0, plafond(z0)], [CX + DEMI * s0, pied(z0)], [W, HC]], "#e4ecf4");
+      poly([[CX - DEMI * s0, plafond(z0)], [CX + DEMI * s0, plafond(z0)], [CX + DEMI * s0, pied(z0)], [CX - DEMI * s0, pied(z0)]], "#b9c6d4");
+      for (let k = 1; k < 14; k++) { const z = Math.pow(k / 14, 1.2); ctx.strokeStyle = "rgba(120,135,155,.35)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(CX - DEMI * echelle(z), pied(z)); ctx.lineTo(CX + DEMI * echelle(z), pied(z)); ctx.stroke(); }
+      PORTES.forEach(z => [-1, 1].forEach(cote => {
+        const z1 = z - 0.05, z2 = z + 0.05, h1 = (pied(z1) - plafond(z1)) * 0.62, h2 = (pied(z2) - plafond(z2)) * 0.62;
+        poly([[abscisse(cote, z1), pied(z1)], [abscisse(cote, z2), pied(z2)], [abscisse(cote, z2), pied(z2) - h2], [abscisse(cote, z1), pied(z1) - h1]], "#7d8fa6");
+      }));
+      txt("SORTIE", CX, HORIZON + 14, 9, "#e04b4b", true, "center");
+      // personnages, du plus loin au plus proche
+      s.ents.slice().sort((a, b) => a.z - b.z).forEach(e => {
+        const t = taille(e.z), x = abscisse(e.lx, e.z), y = pied(e.z);
+        ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(x, y, t * 0.3, t * 0.07, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.save();
+        if (e.etat === "retour") ctx.globalAlpha = Math.max(0.2, 1 - e.t / 0.8);
+        if (e.etat === "plaque") { ctx.translate(x, y); ctx.rotate(Math.min(1.4, e.t * 3)); ctx.translate(-x, -y); }
+        const ic = e.k === "p" ? (e.etat === "retour" ? "😴" : e.visage) : e.k === "d" ? (e.servi ? "🧑‍⚕️" : "🧑‍⚕️") : (e.etat === "plaque" ? "🛡️" : "🏃");
+        emoji(ctx, ic, x - t * 0.52, y - t * 0.1, t * 0.95);
+        ctx.restore();
+        if (e.k === "d" && !e.servi && e.z >= 0.4) { ctx.fillStyle = "#2f7de1"; ctx.font = "bold " + Math.max(10, t * 0.2) + "px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.fillText("📋 ?", x, y - t * 1.02); ctx.textAlign = "left"; }
+        if (e.k === "d" && e.servi) txt("✔", x, y - t * 1.02, Math.max(12, t * 0.25), "#2f9e5b", true, "center");
+        if (e.k === "a" && e.etat === "fonce") txt("❗", x, y - t * 1.02, Math.max(12, t * 0.3), "#d33a3a", true, "center");
+      });
+      s.tirs.forEach(t => { ctx.strokeStyle = "rgba(47,125,225," + Math.min(1, t.vie * 7) + ")"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(CX, HC - 40); ctx.lineTo(t.x, t.y); ctx.stroke(); emoji(ctx, "💉", t.x - 9, t.y + 7, 18); });
+      ctx.restore();
+      // viseur
+      ctx.strokeStyle = s.cdTir > 0 ? "rgba(224,160,32,.9)" : "rgba(211,58,58,.95)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(s.mx, s.my, 11, 0, Math.PI * 2); ctx.moveTo(s.mx - 17, s.my); ctx.lineTo(s.mx - 5, s.my); ctx.moveTo(s.mx + 5, s.my); ctx.lineTo(s.mx + 17, s.my); ctx.moveTo(s.mx, s.my - 17); ctx.lineTo(s.mx, s.my - 5); ctx.moveTo(s.mx, s.my + 5); ctx.lineTo(s.mx, s.my + 17); ctx.stroke();
+      // bandeau, cœurs, boutons
+      txt("Score : " + s.score, 10, 22, 16, "#1f2937", true);
+      txt("Record : " + Math.max(s.rec, s.score), 150, 22, 12, "#52627a");
+      for (let i = 0; i < VIES_C; i++) emoji(ctx, i < s.vies ? "❤️" : "🖤", 480 + i * 30, 26, 20);
+      const bouton = (r, lib, cd, cdMax, actif) => {
+        ctx.fillStyle = cd > 0 ? "rgba(127,150,180,.55)" : actif; bord(ctx, r.x, r.y, r.w, r.h, 8); ctx.fill();
+        if (cd > 0) { ctx.fillStyle = "rgba(255,255,255,.35)"; bord(ctx, r.x, r.y, Math.max(6, r.w * (1 - cd / cdMax)), r.h, 8); ctx.fill(); }
+        txt(lib, r.x + r.w / 2, r.y + 20, 13, "#fff", true, "center");
+      };
+      bouton(BTN_DOSSIER, "📋 Dossier (D)", s.cdDossier, CD_DOSSIER, "#2f7de1");
+      bouton(BTN_SECU, "🛡️ Sécu (S)", s.cdSecu, CD_SECU, "#d33a3a");
+      ctx.textAlign = "center"; ctx.font = "bold 15px system-ui,sans-serif";
+      s.textes.forEach(t => { ctx.globalAlpha = Math.min(1, t.vie * 2); ctx.fillStyle = t.coul; ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.strokeText(t.txt, t.x, t.y); ctx.fillText(t.txt, t.x, t.y); }); ctx.globalAlpha = 1; ctx.textAlign = "left";
+    }
+  };
+
+  const JEUX = { course, seringue, urgences, couloir };
 
   // Avatar de la course (choix mémorisé dans le navigateur).
   const AVATARS = [{ e: "👩‍⚕️", nom: "Femme" }, { e: "👨‍⚕️", nom: "Homme" }, { e: "🧑‍⚕️", nom: "Neutre" }];
@@ -539,6 +687,8 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
       if (bas && actif.etat === "jeu") jeu.bas(actif.s, true); else appuyer();
     };
     const leve = () => { if (actif) jeu.bas(actif.s, false); };
+    const vise = e => { if (!jeu.bouge || !actif) return; const r = cv.getBoundingClientRect(); jeu.bouge(actif.s, (e.clientX - r.left) * W / r.width, (e.clientY - r.top) * (jeu.h || H) / r.height); };
+    if (jeu.bouge) { cv.addEventListener("pointermove", vise); cv.style.cursor = jeu.curseur || ""; }
     doc.addEventListener("keydown", touche); doc.addEventListener("keyup", relache);
     cv.addEventListener("pointerdown", doigt); cv.addEventListener("pointerup", leve); cv.addEventListener("pointercancel", leve);
     actif.nettoyer = () => { doc.removeEventListener("keydown", touche); doc.removeEventListener("keyup", relache); };
