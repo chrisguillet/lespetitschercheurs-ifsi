@@ -144,6 +144,30 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
       <div id="hbody" class="cmbox"></div>
     </div>
   </div>
+  <div id="nmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ntitle">
+    <div class="modalbox" style="max-width:420px">
+      <div class="modalhead">
+        <div><h2 id="ntitle">✏️ Mon nom affiché</h2></div>
+        <button class="btn sm sec" id="nclose" type="button" aria-label="Fermer">✕ Fermer</button>
+      </div>
+      <form id="nbody" style="padding:14px 16px">
+        <label for="nom">Nom affiché aux autres membres</label>
+        <input id="nom" type="text" maxlength="60" autocomplete="nickname" required>
+        <div class="meta" style="margin-top:6px">Il est montré à la place de votre prénom partout dans l’outil. Les anciens commentaires et historiques gardent le nom d’origine.</div>
+        <div id="nerr" class="meta" role="alert" style="color:var(--bad,#c0392b);margin-top:6px"></div>
+        <div style="margin-top:10px"><button class="btn" type="submit">Enregistrer</button></div>
+      </form>
+    </div>
+  </div>
+  <div id="notemodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="notetitle">
+    <div class="modalbox" style="max-width:860px">
+      <div class="modalhead">
+        <div><h2 id="notetitle">📝 Mes notes</h2><div class="meta">🔒 Privées : visibles de vous seul</div></div>
+        <button class="btn sm sec" id="noteclose" type="button" aria-label="Fermer les notes">✕ Fermer</button>
+      </div>
+      <div id="notebody"></div>
+    </div>
+  </div>
   <div id="jeumodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="jeutitle">
     <div class="modalbox">
       <div class="modalhead">

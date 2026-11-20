@@ -369,3 +369,25 @@ h3.mysec{font-size:14px;margin:16px 0 6px}
 
 /* Corps des fenêtres : marges internes et défilement (groupe, retours, historique) */
 #gbody,#fbbody,#hbody{padding:14px 16px;overflow-y:auto;flex:1}
+
+/* Notes personnelles */
+.nwrap{display:grid;grid-template-columns:260px 1fr;gap:12px;padding:12px 16px;overflow-y:auto;flex:1;min-height:0}
+.nlist{display:flex;flex-direction:column;gap:6px;min-width:0}
+.nbar{display:flex;gap:6px}.nbar input{flex:1;min-width:0}
+#nitems{display:flex;flex-direction:column;gap:6px;overflow-y:auto;max-height:52vh}
+.nitem{display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;cursor:pointer;font:inherit}
+.nitem.on{border-color:var(--pri);outline:1px solid var(--pri)}
+.nitem .nex{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nedit{display:flex;flex-direction:column;gap:6px;min-width:0}
+.nedit textarea{min-height:150px}
+.nliens{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.nlien{display:inline-flex;gap:2px;margin:0 6px 4px 0}
+.nres{display:block;width:100%;text-align:left;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:6px 8px;margin-top:4px;cursor:pointer;font:inherit}
+.nacts{display:flex;gap:8px;margin-top:4px}
+@media (max-width:640px){.nwrap{grid-template-columns:1fr}#nitems{max-height:28vh}}
+/* Accueil : derniers commentaires */
+.hcom{padding:6px 0;border-bottom:1px solid var(--bd)}.hcom:last-child{border-bottom:0}
+.hcom .cmtxt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hcom.fresh{border-left:3px solid var(--pri);padding-left:8px}
+.hgrp{display:inline-block;font-size:11px;border:1px solid var(--bd);border-radius:999px;padding:0 7px;color:var(--mut)}
+button.hcom{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--bd);border-radius:0;color:inherit;font:inherit;cursor:pointer}

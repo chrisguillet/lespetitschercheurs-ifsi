@@ -34,6 +34,7 @@ const FEUILLE_VOTES = 'Votes';
 const FEUILLE_ARTICLES = 'Articles';
 const FEUILLE_PROPOSITIONS = 'Propositions';
 const FEUILLE_REUNIONS = 'Reunions';
+const FEUILLE_NOTES = 'Notes';
 const FEUILLE_ETABLISSEMENTS = 'Etablissements';
 const FEUILLE_PROMOS = 'Promos';
 const FEUILLE_INSCRIPTIONS = 'Inscriptions';
@@ -55,6 +56,7 @@ const PROP_SEUIL = 3;
 const PROP_DUREE_MS = 14 * 24 * 3600 * 1000;
 // Suivi de projet d'un groupe : comptes rendus de réunion et jalons du rétroplanning (visibles du groupe, de ses formateurs
 // rattachés et de l'administrateur ; modifiables par les étudiants du groupe).
+const COL_NOTES = ['id', 'owner', 'titre', 'date', 'texte', 'liens', 'cree_le', 'modifie_le'];
 const COL_REUNIONS = ['id', 'groupe_id', 'date', 'titre', 'participants', 'vu', 'attendu', 'suite',
   'cree_par', 'cree_le', 'modifie_le', 'modifie_par'];
 // echeance = date fixe, ou date de fin d'une plage (debut renseigné) ; alerte_jours = nombre de jours avant la première date où
@@ -156,6 +158,7 @@ function setup() {
   preparer_(ss, FEUILLE_ARTICLES, COL_ARTICLES);
   preparer_(ss, FEUILLE_PROPOSITIONS, COL_PROPOSITIONS);
   preparer_(ss, FEUILLE_REUNIONS, COL_REUNIONS);
+  preparer_(ss, FEUILLE_NOTES, COL_NOTES);
   preparer_(ss, FEUILLE_ETABLISSEMENTS, COL_ETABLISSEMENTS);
   preparer_(ss, FEUILLE_PROMOS, COL_PROMOS);
   preparer_(ss, FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS);
@@ -432,6 +435,18 @@ function doPost(e) {
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'bye':
         return json_({ ok: true });
+      case 'notes_list':
+        return json_({ ok: true, notes: notesDe_(user) });
+      case 'note_save':
+        muter_(function () { enregistrerNote_(user, req.data); }, ['Notes']);
+        return json_({ ok: true, notes: notesDe_(user) });
+      case 'note_delete':
+        muter_(function () { supprimerNote_(user, req.id); }, ['Notes']);
+        return json_({ ok: true, notes: notesDe_(user) });
+      case 'profile_update': {
+        const nom = muter_(function () { return changerNom_(user, req.data); }, ['Utilisateurs']);
+        return json_(Object.assign({ ok: true, me: { prenom: nom, role: user.role, couleur: user.couleur } }, donnees_(Object.assign({}, user, { prenom: nom }))));
+      }
       case 'member_add':
         muter_(function () { ajouterMembreDemande_(user, req.groupe_id, req.pid, req.email); });
         return json_(Object.assign({ ok: true }, donnees_(user), accesSiAdmin_(user)));
@@ -654,7 +669,7 @@ function authentifier_(token, action) {
     cache.put(cle, email, Math.max(1, Math.min(CACHE_JETON_MAX_S, restant)));
   }
   if (email === emailAdmin_()) {
-    return { _row: 0, email: email, prenom: 'Administrateur', role: 'admin', couleur: COULEUR_ADMIN,
+    return { _row: 0, email: email, prenom: PropertiesService.getScriptProperties().getProperty('NOM_ADMIN') || 'Administrateur', role: 'admin', couleur: COULEUR_ADMIN,
       statut: 'actif', demande_le: '', derniere_connexion: '' };
   }
   const user = listerUtilisateurs_().filter(function (u) { return u.email === email; })[0];
@@ -812,7 +827,7 @@ function administrer_(user, data) {
 function migrerEmail_(ancien, nouveau) {
   const tables = [[feuilleLectures_(), COLONNES, 'owner'], [feuilleArticles_(), COL_ARTICLES, 'cree_par'], [feuillePropositions_(), COL_PROPOSITIONS, 'propose_par'], [feuilleSuivi_('reunion'), COL_REUNIONS, 'cree_par'], [feuilleSuivi_('jalon'), COL_JALONS, 'cree_par'], [feuilleCommentaires_(), COL_COMMENTAIRES, 'auteur_email']];
   if (feuilleLus_(false)) tables.push([feuilleLus_(false), COL_LUS, 'id']);
-  [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, 'email'], [FEUILLE_FICHIERS, COL_FICHIERS, 'cree_par'], [FEUILLE_FEEDBACK, COL_FEEDBACK, 'auteur_email'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
+  [[FEUILLE_MEMBRES, COL_MEMBRES, 'email'], [FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, 'email'], [FEUILLE_FICHIERS, COL_FICHIERS, 'cree_par'], [FEUILLE_FEEDBACK, COL_FEEDBACK, 'auteur_email'], [FEUILLE_NOTES, COL_NOTES, 'owner'], [FEUILLE_VOTES, COL_VOTES, 'cible'], [FEUILLE_VOTES, COL_VOTES, 'propose_par']]
     .forEach(function (t) {
       const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(t[0]);
       if (sh) tables.push([sh, t[1], t[2]]);
@@ -2221,6 +2236,64 @@ function prenomValide_(v) {
   if (!p) throw err_('invalid', 'Prénom requis');
   if (p.length > PRENOM_MAX) throw err_('invalid', 'Prénom trop long');
   return p;
+}
+
+/* ---------- Notes personnelles ----------
+   Strictement privées : chaque lecture et écriture est filtrée sur l'adresse de la personne connectée (même l'administrateur ne lit pas celles des autres,
+   et elles ne figurent dans aucune autre réponse du serveur). La feuille est créée au premier usage. Les liens sont des identifiants de fiches de lecture. */
+const NOTE_TITRE_MAX = 120, NOTE_TEXTE_MAX = 20000, NOTE_LIENS_MAX = 30;
+
+function feuilleNotes_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheetByName(FEUILLE_NOTES) || preparer_(ss, FEUILLE_NOTES, COL_NOTES);
+}
+
+function notesDe_(user) {
+  return lireTable_(feuilleNotes_(), COL_NOTES).filter(function (n) { return n.owner === user.email; }).map(function (n) {
+    let liens = []; try { liens = JSON.parse(n.liens || '[]'); } catch (e) { liens = []; }
+    return { id: n.id, titre: n.titre, date: n.date, texte: n.texte, liens: liens, cree_le: n.cree_le, modifie_le: n.modifie_le };
+  }).sort(function (a, b) { return b.date.localeCompare(a.date) || b.cree_le.localeCompare(a.cree_le); });
+}
+
+function enregistrerNote_(user, data) {
+  if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
+  const titre = String(data.titre || '').trim(), texte = String(data.texte || ''), date = String(data.date || '');
+  if (!titre) throw err_('invalid', 'Titre requis');
+  if (titre.length > NOTE_TITRE_MAX) throw err_('invalid', 'Titre trop long');
+  if (texte.length > NOTE_TEXTE_MAX) throw err_('invalid', 'Note trop longue');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(Date.parse(date))) throw err_('invalid', 'Date invalide');
+  const liens = (Array.isArray(data.liens) ? data.liens : []).map(String).filter(function (x, i, t) { return x && x.length <= 64 && t.indexOf(x) === i; });
+  if (liens.length > NOTE_LIENS_MAX) throw err_('invalid', 'Trop de fiches liées');
+  const sh = feuilleNotes_(), maintenant = new Date().toISOString();
+  if (data.id) {
+    const n = lireTable_(sh, COL_NOTES).filter(function (r) { return r.id === String(data.id) && r.owner === user.email; })[0];
+    if (!n) throw err_('not_found', 'Note introuvable');
+    sh.getRange(n._row, 3, 1, 6).setValues([[titre, date, texte, JSON.stringify(liens), n.cree_le, maintenant]]);
+  } else {
+    sh.appendRow([Utilities.getUuid(), user.email, titre, date, texte, JSON.stringify(liens), maintenant, '']);
+  }
+}
+
+function supprimerNote_(user, id) {
+  const sh = feuilleNotes_();
+  const n = lireTable_(sh, COL_NOTES).filter(function (r) { return r.id === String(id) && r.owner === user.email; })[0];
+  if (!n) throw err_('not_found', 'Note introuvable');
+  sh.deleteRow(n._row);
+}
+
+// Chacun peut changer son nom affiché (unique, pour que les filtres et les mentions restent sans ambiguïté).
+// Les anciennes traces (historique, commentaires déjà écrits) gardent le nom d'origine. L'administrateur, qui n'est pas dans la feuille, garde son nom en propriété du script.
+function changerNom_(user, data) {
+  if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
+  const nom = prenomValide_(data.prenom);
+  const pris = listerUtilisateurs_().some(function (u) { return u.email !== user.email && u.prenom.toLowerCase() === nom.toLowerCase(); })
+    || (user.role !== 'admin' && nom.toLowerCase() === 'administrateur');
+  if (pris) throw err_('invalid', 'Ce nom est déjà utilisé');
+  if (user._row === 0) {
+    if (user.role !== 'admin') throw err_('forbidden', 'Modification impossible');
+    PropertiesService.getScriptProperties().setProperty('NOM_ADMIN', nom);
+  } else feuilleUtilisateurs_().getRange(user._row, 2, 1, 1).setValues([[nom]]);
+  return nom;
 }
 
 // Première connexion sans code : la demande reste en attente, validée comme avant, avec la promo et le rôle souhaités.

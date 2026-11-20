@@ -270,3 +270,15 @@ Une carte par groupe (celle des groupes rattachés pour un formateur, tous pour 
 - **Vues** du tableau commun : Tableau, **Cartes** (couverture colorée selon le type d'article, avatars des lecteurs, jauge d'avancement de chaque fiche) et **☰ Liste** compacte (vue par défaut sur téléphone ; un clic déplie le document).
 - Petite animation de confettis quand une lecture passe à « Terminée » (désactivée si le système demande de réduire les animations).
 - Sur téléphone : onglets défilables, pas de vue tableau.
+
+## Changer son nom affiché
+
+Menu du compte → **✏️ Modifier mon nom** : chaque utilisateur (étudiant, formateur, administrateur) choisit le nom montré aux autres. Il est unique (casse ignorée), de 60 caractères maximum. L'ancien nom reste sur les traces déjà écrites (historique des modifications, anciens commentaires). Le nom de l'administrateur, qui n'est pas dans la feuille « Utilisateurs », est conservé dans la propriété de script `NOM_ADMIN`.
+
+## Notes personnelles
+
+Menu du compte (sous votre nom) → **📝 Mes notes** : un carnet **privé** — ni le groupe, ni les formateurs, ni l'administrateur ne peuvent le lire. Chaque note a un titre, une date, un texte libre et des **fiches de lecture liées** (recherche par titre, auteur ou mot-clé ; un clic sur une fiche liée ferme le carnet et ouvre la fiche dans le tableau commun, filtrée sur son titre). Les notes sont dans la feuille `Notes` (créée toute seule au premier usage ; filtrées sur l'adresse de la personne à chaque lecture et écriture, et absentes de toutes les autres réponses du serveur). Elles suivent un changement d'adresse mais restent dans le Sheet : l'administrateur du Sheet peut les voir en l'ouvrant directement dans Google Sheets.
+
+## Accueil
+
+« 🆕 Cette semaine » indique le groupe de chaque fiche ; « 💬 Derniers commentaires » liste les quatre plus récents (non lus surlignés) et un clic ouvre la discussion dans le bon groupe.

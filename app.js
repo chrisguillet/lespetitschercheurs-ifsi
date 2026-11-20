@@ -140,6 +140,7 @@ function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
   groupes = []; votes = []; promosMoi = []; rattachements = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); fermerHistorique(); fermerJeu(); $("fbopen")?.classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; GM.fcand = null; fermerGroupe(true);
+  try { fermerNotes(); N.notes = []; } catch (e) { /* pas encore défini */ }
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
@@ -393,11 +394,15 @@ function renderMe() {
     <div class="colpop right acctpop">
       <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
       ${window.LydiaJeux ? `<div class="acctgrp"><div class="acctlabel">🎮 Pause ludique</div>${LydiaJeux.liste.filter(j => !j.admin || isSuper()).map(j => `<button type="button" class="acctitem" data-jeu="${esc(j.id)}">${esc(j.titre)}</button>`).join("")}</div>` : ""}
+      <div class="acctgrp"><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button></div>
+      <div class="acctgrp"><button type="button" class="acctitem" id="namebtn">✏️ Modifier mon nom</button></div>
       <div class="acctgrp"><div class="acctlabel">Affichage</div><button type="button" class="acctitem" id="themebtn"></button></div>
       <div class="acctgrp"><button type="button" class="acctitem danger" id="logout">⎋ Se déconnecter</button></div>
     </div></details>`;
   $("me").querySelectorAll("[data-jeu]").forEach(b => b.onclick = () => { b.closest("details").removeAttribute("open"); ouvrirJeu(b.dataset.jeu); });
   $("logout").onclick = logout;
+  $("notesbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirNotes(); };
+  $("namebtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirNom(); };
   $("themebtn").onclick = basculerTheme;
   majLibelleTheme();
 }
@@ -421,6 +426,127 @@ function fermerJeu() {
 }
 $("jeuclose")?.addEventListener("click", fermerJeu);
 $("jeumodal")?.addEventListener("click", e => { if (e.target === $("jeumodal")) fermerJeu(); });
+
+// Changer son nom affiché : le serveur vérifie la longueur et l'unicité ; le « vu » local (commentaires lus) suit le nouveau nom.
+function ouvrirNom() {
+  if (!me || !$("nmodal")) return;
+  $("nerr").textContent = ""; $("nom").value = me.prenom || "";
+  $("nmodal").classList.remove("hidden"); document.body.classList.add("modalopen"); $("nom").focus(); $("nom").select();
+}
+function fermerNom() { $("nmodal")?.classList.add("hidden"); document.body.classList.remove("modalopen"); }
+$("nclose")?.addEventListener("click", fermerNom);
+$("nmodal")?.addEventListener("click", e => { if (e.target === $("nmodal")) fermerNom(); });
+$("nbody")?.addEventListener("submit", async e => {
+  e.preventDefault();
+  const nom = $("nom").value.trim().replace(/\s+/g, " "), ancien = me.prenom;
+  if (!nom) { $("nerr").textContent = "Le nom ne peut pas être vide."; return; }
+  if (nom === ancien) { fermerNom(); return; }
+  try {
+    const res = await enCours("Enregistrement…", () => api("profile_update", { data: { prenom: nom } }));
+    try { const v = localStorage.getItem("lydia_vu:" + ancien); if (v !== null) localStorage.setItem("lydia_vu:" + res.me.prenom, v); } catch (x) { /* ignoré */ }
+    me = res.me; fermerNom();
+    applyResult(res); renderMe(); renderAll();
+  } catch (x) { $("nerr").textContent = (x && x.message) || "Échec de l'enregistrement."; }
+});
+
+
+/* ---------- Notes personnelles (privées : jamais visibles du groupe, ni des formateurs, ni de l'administrateur) ---------- */
+
+const N = { ouvert: false, notes: [], q: "", d: null, pq: "", err: "", foc: null, charge: false };
+const aujourdhuiISO = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+const ficheLiee = id => itemsAll.find(i => i.id === id);
+
+// Ouvre la vue de la fiche : bon groupe (ou bonne promo pour une fiche terminée d'un autre groupe), filtre sur son titre.
+function allerALecture(id) {
+  const it = ficheLiee(id); if (!it) return false;
+  const miens = groupes.map(g => g.id);
+  if (it.groupe_id && miens.includes(it.groupe_id)) changerContexte({ gid: it.groupe_id, vue: "groupe" });
+  else { const g = groupes.find(x => it.portee === "promo" && memePromo(it, x)); if (g) changerContexte({ gid: g.id, vue: "promo" }); }
+  setTab("all"); F.q = it.titre; renderFilters(); renderTable();
+  return true;
+}
+
+function ouvrirNotes() {
+  if (!me || !$("notemodal")) return;
+  N.ouvert = true; N.foc = document.activeElement; N.d = null; N.q = ""; N.err = "";
+  $("notemodal").classList.remove("hidden"); document.body.classList.add("modalopen");
+  $("notebody").innerHTML = '<div class="meta" style="padding:14px">Chargement…</div>';
+  api("notes_list").then(j => { N.notes = j.notes || []; N.charge = true; if (N.ouvert) renderNotes(); })
+    .catch(e => { if (N.ouvert) $("notebody").innerHTML = `<div class="err" style="padding:14px">Chargement impossible : ${esc(e.message)}</div>`; });
+}
+function fermerNotes() {
+  if (!N.ouvert) return;
+  N.ouvert = false; N.d = null;
+  $("notemodal").classList.add("hidden"); $("notebody").innerHTML = ""; document.body.classList.remove("modalopen");
+  if (N.foc && N.foc.focus) { try { N.foc.focus(); } catch (e) { /* ignoré */ } }
+}
+$("noteclose")?.addEventListener("click", fermerNotes);
+$("notemodal")?.addEventListener("click", e => { if (e.target === $("notemodal")) fermerNotes(); });
+
+function renderNotes() {
+  $("notebody").innerHTML = `<div class="nwrap"><div class="nlist"><div class="nbar"><input id="nq" type="search" placeholder="Rechercher dans mes notes…" aria-label="Rechercher dans mes notes" value="${esc(N.q)}"><button type="button" class="btn sm" data-nnew>＋ Nouvelle</button></div><div id="nitems"></div></div><div class="nedit" id="nedit"></div></div>`;
+  renderNListe(); renderNEdit();
+}
+function renderNListe() {
+  const q = cleTitre(N.q);
+  const l = N.notes.filter(n => !q || cleTitre(n.titre + " " + n.texte).includes(q));
+  $("nitems").innerHTML = l.map(n => `<button type="button" class="nitem ${N.d && N.d.id === n.id ? "on" : ""}" data-nopen="${esc(n.id)}"><b>${esc(n.titre)}</b><span class="meta">${esc(fmtD(n.date))}${n.liens.length ? " · 🔗 " + n.liens.length : ""}</span><span class="meta nex">${esc(n.texte.replace(/\s+/g, " ").slice(0, 90))}</span></button>`).join("")
+    || `<div class="note">${N.notes.length ? "Aucune note ne correspond." : "Aucune note pour le moment. Elles ne sont visibles que de vous."}</div>`;
+}
+function renderNEdit() {
+  const d = N.d, box = $("nedit");
+  if (!d) { box.innerHTML = '<div class="note">Choisissez une note ou créez-en une. 🔒 Vos notes ne sont visibles que de vous.</div>'; return; }
+  const liens = d.liens.map(id => { const it = ficheLiee(id);
+    return `<span class="nlien">${it ? `<button type="button" class="btn sm sec" data-ngo="${esc(id)}" title="Ouvrir cette fiche dans le tableau">📄 ${esc(it.titre)} <span class="meta">${esc(it.etudiant)}</span></button>` : '<span class="meta">📄 fiche indisponible</span>'}<button type="button" class="btn sm sec" data-nunlink="${esc(id)}" aria-label="Retirer le lien">✕</button></span>`; }).join("");
+  box.innerHTML = `<label for="nt">Titre</label><input id="nt" maxlength="120" value="${esc(d.titre)}">
+    <label for="nd">Date</label><input id="nd" type="date" value="${esc(d.date)}">
+    <label for="ntx">Note</label><textarea id="ntx" rows="9" maxlength="20000" placeholder="Vos réflexions, pistes, citations à retrouver…">${esc(d.texte)}</textarea>
+    <div class="nliens"><b>Fiches de lecture liées</b>${liens ? `<div>${liens}</div>` : '<div class="meta">Aucune pour le moment.</div>'}
+      <input id="npq" type="search" placeholder="Lier une fiche (titre, auteur, mot-clé)…" aria-label="Lier une fiche de lecture" value="${esc(N.pq)}"><div id="nres"></div></div>
+    <div id="nerr" class="meta" role="alert" style="color:var(--bad,#c0392b)">${esc(N.err)}</div>
+    <div class="nacts"><button type="button" class="btn" data-nsave>Enregistrer</button>${d.id ? ' <button type="button" class="btn sm sec" data-ndel>Supprimer</button>' : ""}</div>`;
+  renderNRes();
+}
+function renderNRes() {
+  const q = cleTitre(N.pq), res = $("nres"); if (!res) return;
+  if (q.length < 2) { res.innerHTML = ""; return; }
+  const l = itemsAll.filter(i => !N.d.liens.includes(i.id) && cleTitre([i.titre, i.etudiant, i.mots, i.kw].join(" ")).includes(q)).slice(0, 8);
+  res.innerHTML = l.map(i => `<button type="button" class="nres" data-nlink="${esc(i.id)}">${esc(i.titre)} <span class="meta">${esc(i.etudiant)} · ${esc(stInfo(i.statut).lib)}</span></button>`).join("") || '<div class="meta">Aucune fiche trouvée.</div>';
+}
+$("notebody")?.addEventListener("input", e => {
+  const id = e.target.id;
+  if (id === "nq") { N.q = e.target.value; renderNListe(); }
+  else if (id === "nt") N.d.titre = e.target.value;
+  else if (id === "nd") N.d.date = e.target.value;
+  else if (id === "ntx") N.d.texte = e.target.value;
+  else if (id === "npq") { N.pq = e.target.value; renderNRes(); }
+});
+$("notebody")?.addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.nnew !== undefined) { N.d = { id: "", titre: "", date: aujourdhuiISO(), texte: "", liens: [] }; N.pq = ""; N.err = ""; renderNListe(); renderNEdit(); $("nt").focus(); }
+  else if (b.dataset.nopen) { const n = N.notes.find(x => x.id === b.dataset.nopen); if (n) { N.d = { id: n.id, titre: n.titre, date: n.date, texte: n.texte, liens: n.liens.slice() }; N.pq = ""; N.err = ""; renderNListe(); renderNEdit(); } }
+  else if (b.dataset.nlink) { N.d.liens.push(b.dataset.nlink); N.pq = ""; renderNEdit(); $("npq").focus(); }
+  else if (b.dataset.nunlink) { N.d.liens = N.d.liens.filter(x => x !== b.dataset.nunlink); renderNEdit(); }
+  else if (b.dataset.ngo) { const id = b.dataset.ngo; fermerNotes(); allerALecture(id); }
+  else if (b.dataset.nsave !== undefined) {
+    N.d.titre = $("nt").value.trim();
+    if (!N.d.titre) { N.err = "Donnez un titre à la note."; $("nerr").textContent = N.err; return; }
+    const avant = new Set(N.notes.map(n => n.id));
+    try {
+      const j = await enCours("Enregistrement…", () => api("note_save", { data: N.d }));
+      N.notes = j.notes || []; N.err = "";
+      const n = N.d.id ? N.notes.find(x => x.id === N.d.id) : N.notes.find(x => !avant.has(x.id));
+      N.d = n ? { id: n.id, titre: n.titre, date: n.date, texte: n.texte, liens: n.liens.slice() } : null;
+      renderNListe(); renderNEdit();
+      if (N.d) $("nerr").textContent = "✔ Enregistré";
+    } catch (x) { N.err = x.message || "Échec de l'enregistrement."; if ($("nerr")) $("nerr").textContent = N.err; }
+  }
+  else if (b.dataset.ndel !== undefined) {
+    if (!confirm("Supprimer cette note ?")) return;
+    try { const j = await enCours("Suppression…", () => api("note_delete", { id: N.d.id })); N.notes = j.notes || []; N.d = null; renderNListe(); renderNEdit(); }
+    catch (x) { N.err = x.message || "Échec de la suppression."; if ($("nerr")) $("nerr").textContent = N.err; }
+  }
+});
 
 function renderMeAnonyme() {
   $("me").innerHTML = '<button type="button" class="btn sm sec" id="themebtn"></button>';
@@ -798,7 +924,7 @@ $("drawerclose").onclick = () => closeDrawer();
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const ouvert = document.querySelector("details.colmenu[open]");
-  if (ouvert) ouvert.removeAttribute("open"); else if (jeuOuvert) fermerJeu(); else if (HI.ouvert) fermerHistorique(); else if (FB.ouvert) fermerFeedback(); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
+  if (ouvert) ouvert.removeAttribute("open"); else if (jeuOuvert) fermerJeu(); else if (N.ouvert) fermerNotes(); else if (HI.ouvert) fermerHistorique(); else if (FB.ouvert) fermerFeedback(); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
 });
 $("addbtn").onclick = () => { editing = null; artCible = ""; modeArticle = false; forceStatut = ""; openForm(); };
 
@@ -1255,18 +1381,20 @@ function renderHome() {
   const voteGroupe = groupes.find(g => votesAFaire(g));
   const voteHtml = vf || pf ? `<ul class="hlist">${vf ? `<li>${vf} vote${vf > 1 ? "s" : ""} de groupe à donner</li>` : ""}${pf ? `<li>${pf} correction${pf > 1 ? "s" : ""} d’article à approuver ou refuser</li>` : ""}</ul>` : "";
   const nl = commentsAll.filter(nonLu).length;
-  const comHtml = nl ? `<div>${nl} commentaire${nl > 1 ? "s" : ""} non lu${nl > 1 ? "s" : ""}.</div>` : "";
+  const parLect = new Map(itemsAll.map(i => [i.id, i]));
+  const derniers = commentsAll.filter(c => parLect.has(c.lecture_id)).sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 4);
+  const comHtml = nl || derniers.length ? `${nl ? `<div>${nl} commentaire${nl > 1 ? "s" : ""} non lu${nl > 1 ? "s" : ""}.</div>` : ""}${derniers.map(c => { const it = parLect.get(c.lecture_id); return `<button type="button" class="hcom ${nonLu(c) ? "fresh" : ""}" data-hc="${esc(c.lecture_id)}" data-hp="${esc(c.portee === "promo" ? "promo" : "groupe")}"><b>${esc(c.auteur)}</b> <span class="meta">${esc(fmtDT(c.date))}</span> ${nomGroupe(it.groupe_id) ? `<span class="hgrp">${esc(nomGroupe(it.groupe_id))}</span>` : ""}<div class="meta">sur <b>${esc(it.titre)}</b></div><div class="cmtxt">${esc(c.texte)}</div></button>`; }).join("")}` : "";
   // Mes lectures : file d'attente et en cours.
   const miennes = itemsAll.filter(i => i.mine), lire = miennes.filter(i => i.statut === "À lire").sort((a, b) => (ORDRE_PRIO[a.priorite] ?? 1) - (ORDRE_PRIO[b.priorite] ?? 1)), enc = miennes.filter(i => i.statut === "En cours");
   const lectHtml = canWrite() && (lire.length || enc.length) ? `<ul class="hlist">${enc.slice(0, 3).map(i => `<li>📖 <b>${esc(i.titre)}</b> <span class="meta">en cours</span></li>`).join("")}${lire.slice(0, 3).map(i => `<li>📌 <b>${esc(i.titre)}</b> <span class="meta">${esc(PRIO[i.priorite] || "")}</span></li>`).join("")}</ul>` : "";
   // Nouveautés : fiches des autres, saisies depuis moins d'une semaine.
   const nouv = itemsAll.filter(i => !i.mine && i.statut !== "À lire" && joursDepuis(i.ajoute) !== null && joursDepuis(i.ajoute) < 7).sort((a, b) => String(b.ajoute).localeCompare(a.ajoute));
-  const nouvHtml = nouv.length ? `<ul class="hlist">${nouv.slice(0, 5).map(i => `<li><span class="av sm" style="--c:${esc(i.couleur)}">${initiales(i.etudiant)}</span> <b>${esc(i.etudiant)}</b> · ${esc(i.titre)} <span class="meta">${esc(stInfo(i.statut).lib.toLowerCase())}</span></li>`).join("")}</ul>` : "";
+  const nouvHtml = nouv.length ? `<ul class="hlist">${nouv.slice(0, 5).map(i => `<li><span class="av sm" style="--c:${esc(i.couleur)}">${initiales(i.etudiant)}</span> <b>${esc(i.etudiant)}</b> · ${esc(i.titre)} ${nomGroupe(i.groupe_id) ? `<span class="hgrp">${esc(nomGroupe(i.groupe_id))}</span> ` : ""}<span class="meta">${esc(stInfo(i.statut).lib.toLowerCase())}</span></li>`).join("")}</ul>` : "";
   const attente = isSuper() && pendingCount ? `<div>${pendingCount} demande${pendingCount > 1 ? "s" : ""} d’accès en attente.</div>` : "";
   const blocs = [
     bloc("⏰ Rétroplanning", jalHtml, aller("suivi", "Ouvrir le suivi de projet")),
     bloc("🗳 À voter", voteHtml, voteGroupe ? `<button type="button" class="btn sm sec" data-gv="${esc(voteGroupe.id)}">Ouvrir les votes</button>` : ""),
-    bloc("💬 Commentaires", comHtml, aller("cmts", "Les lire")),
+    bloc("💬 Derniers commentaires", comHtml, aller("cmts", "Tous les commentaires")),
     bloc("✍️ Mes lectures", lectHtml, aller("mine", "Mes lectures")),
     bloc("🆕 Cette semaine", nouvHtml, aller("all", "Voir le tableau commun")),
     bloc("👥 Accès", attente, aller("admin", "Administration"))
@@ -1276,8 +1404,17 @@ function renderHome() {
     <div class="hgrid">${blocs.length ? blocs.join("") : '<div class="hcard"><h3>✨ Tout est à jour</h3><div class="meta">Rien d’urgent aujourd’hui : jalons, votes et commentaires sont à jour.</div></div>'}</div>
     <div class="hacts">${canWrite() ? '<button type="button" class="btn" data-go="add">＋ Ajouter une lecture</button> ' : ""}${aller("all", "📊 Tableau commun")} ${dash}</div>`;
 }
+// Ouvre la discussion d'une fiche depuis l'accueil, dans le bon groupe (ou la bonne promo pour un commentaire de promo).
+function ouvrirDiscussionDe(id, portee) {
+  const it = ficheLiee(id); if (!it) return;
+  const g = portee === "promo" ? groupes.find(x => memePromo(it, x)) : groupes.find(x => x.id === it.groupe_id);
+  if (!g) return;
+  changerContexte({ gid: g.id, vue: portee });
+  ouvrirDiscussion(id, portee);
+}
 $("home").onclick = e => {
   const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.hc) { ouvrirDiscussionDe(b.dataset.hc, b.dataset.hp); return; }
   if (b.dataset.go === "add") { editing = null; artCible = ""; modeArticle = false; forceStatut = ""; openForm(); }
   else if (b.dataset.go) setTab(b.dataset.go);
   else if (b.dataset.gv) { changerContexte({ gid: b.dataset.gv }); setTab("all"); ouvrirGroupe(); }
