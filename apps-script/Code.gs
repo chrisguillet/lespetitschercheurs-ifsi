@@ -73,7 +73,7 @@ const STATUTS_JALON = ['a_faire', 'en_cours', 'fait'];
 const OBJECTIFS = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type', 'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
 const ANALYSES = ['statut', 'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'priorite'];
 // promo_demandee / role_demande : ce que la personne a indiqué à sa première connexion (informatif pour qui valide).
-const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion', 'promo_demandee', 'role_demande'];
+const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion', 'promo_demandee', 'role_demande', 'consentement_le', 'consentement_version'];
 // portee : « groupe » ou « promo » ; groupe_id : groupe de l'auteur au moment du commentaire.
 const COL_COMMENTAIRES = ['id', 'lecture_id', 'auteur_email', 'auteur', 'date', 'texte', 'modifie_le', 'portee', 'groupe_id'];
 // Structure : établissement > promo > groupe. Les groupes gardent les noms (clé de promo), ces feuilles listent aussi les promos vides.
@@ -119,6 +119,8 @@ const TYPES = ['Article scientifique', 'Article de recherche', 'Revue de littér
 const LONGUEUR_MAX = 2500;
 const COMMENTAIRE_MAX = 2000;
 const PRENOM_MAX = 60;
+// Version du texte de consentement (politique de confidentialité) : la changer redemande l'accord à tout le monde.
+const CONSENT_VERSION = '2026-11-20';
 const MAX_EN_ATTENTE = 50;
 const COULEUR_DEFAUT = '#888888';
 const DELAI_CONNEXION_MS = 10 * 60 * 1000;
@@ -380,7 +382,7 @@ function doPost(e) {
         majConnexion_(user);
         return json_(Object.assign({
           ok: true,
-          me: { prenom: user.prenom, role: user.role, couleur: user.couleur }
+          me: { prenom: user.prenom, role: user.role, couleur: user.couleur, consentement: user._row === 0 || user.consentement_version === CONSENT_VERSION, consent_version: CONSENT_VERSION }
         }, donnees_(user)));
       case 'list':
         return json_(Object.assign({ ok: true }, donnees_(user)));
@@ -470,6 +472,10 @@ function doPost(e) {
       case 'chat_delete':
         muter_(function () { supprimerChat_(user, req.id); }, ['Chat']);
         return json_(chatPour_(user, req));
+      case 'consentement': {
+        muter_(function () { enregistrerConsentement_(user, req.data); }, ['Utilisateurs']);
+        return json_({ ok: true });
+      }
       case 'profile_update': {
         const nom = muter_(function () { return changerNom_(user, req.data); }, ['Utilisateurs']);
         return json_(Object.assign({ ok: true, me: { prenom: nom, role: user.role, couleur: user.couleur } }, donnees_(Object.assign({}, user, { prenom: nom }))));
@@ -753,7 +759,9 @@ function lireUtilisateurs_() {
       demande_le: String(r[5] || ''),
       derniere_connexion: String(r[6] || ''),
       promo_demandee: String(r[7] || ''),
-      role_demande: String(r[8] || '')
+      role_demande: String(r[8] || ''),
+      consentement_le: String(r[9] || ''),
+      consentement_version: String(r[10] || '')
     };
   }).filter(function (u) { return u.email; });
 }
@@ -907,7 +915,7 @@ function exportMesDonnees_(user) {
   const ids = {}; lectures.forEach(function (l) { ids[l.id] = true; });
   return {
     genere_le: new Date().toISOString(),
-    compte: { email: email, prenom: u.prenom || user.prenom, role: u.role || user.role, statut: u.statut, premiere_demande: u.demande_le, derniere_connexion: u.derniere_connexion, promo_demandee: u.promo_demandee },
+    compte: { email: email, prenom: u.prenom || user.prenom, role: u.role || user.role, statut: u.statut, premiere_demande: u.demande_le, derniere_connexion: u.derniere_connexion, promo_demandee: u.promo_demandee, consentement_le: u.consentement_le, consentement_version: u.consentement_version },
     appartenances_groupes: table(FEUILLE_MEMBRES, COL_MEMBRES, function (m) { return lui(m.email); }),
     inscriptions_promos: table(FEUILLE_INSCRIPTIONS, COL_INSCRIPTIONS, function (i) { return lui(i.email); }),
     fiches_de_lecture: lectures,
@@ -945,7 +953,8 @@ function administrer_(user, data) {
   if (!accesVisibles_(user)(cible)) throw err_('forbidden', 'Cet accès ne concerne pas vos groupes');
   const role = String(data.role || '');
   const statut = String(data.statut || '');
-  const prenom = String(data.prenom === undefined || data.prenom === null ? '' : data.prenom).trim();
+  // Seul l'administrateur modifie un nom existant (évite les blagues) ; un formateur sans nom peut recevoir celui que lui donne la personne qui le valide.
+  const prenom = admin ? String(data.prenom === undefined || data.prenom === null ? '' : data.prenom).trim().replace(/\s+/g, ' ') : (cible.prenom || String(data.prenom === undefined || data.prenom === null ? '' : data.prenom).trim().replace(/\s+/g, ' '));
   if ((admin ? ['etudiant', 'formateur'] : ['formateur']).indexOf(role) < 0) {
     throw err_('invalid', 'Rôle invalide');
   }
@@ -2402,6 +2411,32 @@ function prenomValide_(v) {
   return p;
 }
 
+// Identité saisie à la première connexion : prénom + initiale(s) du nom de famille, affichés « Camille D. ».
+function identiteValide_(data, emailSauf) {
+  const prenom = String(data.prenom === undefined || data.prenom === null ? '' : data.prenom).trim().replace(/\s+/g, ' ');
+  const initiale = String(data.initiale === undefined || data.initiale === null ? '' : data.initiale).trim().replace(/[.\s]/g, '');
+  if (!prenom) throw err_('invalid', 'Prénom requis');
+  if (!/^[\p{L}][\p{L}'’\- ]*$/u.test(prenom) || prenom.length > 40) throw err_('invalid', 'Prénom invalide (lettres uniquement)');
+  if (!initiale) throw err_('invalid', 'Initiale du nom requise');
+  if (!/^\p{L}{1,3}$/u.test(initiale)) throw err_('invalid', 'Initiale invalide (1 à 3 lettres)');
+  const nom = prenom + ' ' + initiale.toUpperCase().split('').join('.') + '.';
+  if (nom.toLowerCase() === 'administrateur' || listerUtilisateurs_().some(function (u) { return u.email !== emailSauf && u.prenom.toLowerCase() === nom.toLowerCase(); })) {
+    throw err_('invalid', 'Ce nom est déjà utilisé : ajoutez une lettre à l’initiale');
+  }
+  return nom;
+}
+
+// Le consentement doit être un geste explicite ; il est daté et rattaché à la version du texte acceptée.
+function exigerConsentement_(data) {
+  if (!data || data.consentement !== true) throw err_('invalid', 'Le consentement est nécessaire pour utiliser l’outil');
+}
+
+function enregistrerConsentement_(user, data) {
+  if (user._row === 0) return;
+  exigerConsentement_(data);
+  feuilleUtilisateurs_().getRange(user._row, 10, 1, 2).setValues([[new Date().toISOString(), CONSENT_VERSION]]);
+}
+
 /* ---------- Notes personnelles ----------
    Strictement privées : chaque lecture et écriture est filtrée sur l'adresse de la personne connectée (même l'administrateur ne lit pas celles des autres,
    et elles ne figurent dans aucune autre réponse du serveur). La feuille est créée au premier usage. Les liens sont des identifiants de fiches de lecture. */
@@ -2545,9 +2580,10 @@ function supprimerChat_(user, id) {
   sh.deleteRow(m._row);
 }
 
-// Chacun peut changer son nom affiché (unique, pour que les filtres et les mentions restent sans ambiguïté).
+// Le nom affiché est saisi à la première connexion ; ensuite seul l'administrateur le modifie (le sien ici, ceux des autres via administrer_).
 // Les anciennes traces (historique, commentaires déjà écrits) gardent le nom d'origine. L'administrateur, qui n'est pas dans la feuille, garde son nom en propriété du script.
 function changerNom_(user, data) {
+  if (user.role !== 'admin') throw err_('forbidden', 'Le nom ne peut être modifié que par l’administrateur');
   if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
   const nom = prenomValide_(data.prenom);
   const pris = listerUtilisateurs_().some(function (u) { return u.email !== user.email && u.prenom.toLowerCase() === nom.toLowerCase(); })
@@ -2566,7 +2602,8 @@ function demanderPromo_(user, data) {
   if (!data || typeof data !== 'object') throw err_('invalid', 'Données manquantes');
   const role = String(data.role || '');
   if (['etudiant', 'formateur'].indexOf(role) < 0) throw err_('invalid', 'Rôle invalide');
-  const prenom = prenomValide_(data.prenom);
+  exigerConsentement_(data);
+  const prenom = identiteValide_(data, user.email);
   // Une seule promo ouverte : elle est choisie d'office (pas de choix à faire).
   const toutes = Object.keys(promosParId_());
   const promoId = String(data.promo_id || (toutes.length === 1 ? toutes[0] : ''));
@@ -2580,6 +2617,7 @@ function demanderPromo_(user, data) {
   const sh = feuilleUtilisateurs_();
   sh.getRange(cible._row, 2, 1, 1).setValues([[prenom]]);
   sh.getRange(cible._row, 8, 1, 2).setValues([[promoId, role]]);
+  sh.getRange(cible._row, 10, 1, 2).setValues([[new Date().toISOString(), CONSENT_VERSION]]);
 }
 
 function couleurPeuUtilisee_() {
@@ -2613,14 +2651,16 @@ function joindreAvecCode_(user, data) {
   if (!dejaInscrit && Number(p.code_usages || 0) >= Number(p.code_max || 0)) echec('Ce code a atteint son nombre maximal d’utilisations');
   const existant = listerUtilisateurs_().filter(function (u) { return u.email === user.email; })[0];
   if (!existant || existant.statut === 'en_attente') {
-    const prenom = prenomValide_(data.prenom || (existant && existant.prenom));
+    exigerConsentement_(data);
+    const prenom = identiteValide_(data, user.email);
     const maintenant = new Date().toISOString();
     if (!existant) {
-      feuilleUtilisateurs_().appendRow([user.email, prenom, 'etudiant', couleurPeuUtilisee_(), 'actif', maintenant, maintenant, p.id, 'etudiant']);
+      feuilleUtilisateurs_().appendRow([user.email, prenom, 'etudiant', couleurPeuUtilisee_(), 'actif', maintenant, maintenant, p.id, 'etudiant', maintenant, CONSENT_VERSION]);
     } else {
       const sh = feuilleUtilisateurs_();
       sh.getRange(existant._row, 2, 1, 4).setValues([[prenom, 'etudiant', couleurPeuUtilisee_(), 'actif']]);
       sh.getRange(existant._row, 8, 1, 2).setValues([[p.id, 'etudiant']]);
+      sh.getRange(existant._row, 10, 1, 2).setValues([[maintenant, CONSENT_VERSION]]);
     }
   }
   if (inscrire_(user.email, p.id, 'code')) {

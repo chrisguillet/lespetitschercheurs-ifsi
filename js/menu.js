@@ -29,7 +29,7 @@ function renderMe() {
   $("me").innerHTML = `<details class="colmenu acct"><summary class="btn sm sec acctbtn" aria-label="Menu du compte : ${esc(me.prenom)}">
       <span class="avatar" style="--c:${esc(me.couleur)}">${init}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
     <div class="colpop right acctpop">
-      <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b> <button type="button" class="acctedit" id="namebtn" title="Modifier mon nom" aria-label="Modifier mon nom">✏️</button><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
+      <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
       <div class="acctgrp"><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button><button type="button" class="acctitem" id="mydatabtn" title="Télécharger tout ce que l’application garde sur vous (droit d’accès)">📦 Télécharger mes données</button></div>
       <div class="acctgrp"><div class="acctlabel">Affichage</div><button type="button" class="acctitem" id="themebtn"></button></div>
       ${window.LydiaJeux ? `<div class="acctgrp"><div class="acctlabel">🎮 Pause ludique</div>${LydiaJeux.liste.filter(j => !j.admin || isSuper()).map(j => `<button type="button" class="acctitem" data-jeu="${esc(j.id)}">${esc(j.titre)}</button>`).join("")}</div>` : ""}
@@ -45,7 +45,6 @@ function renderMe() {
     } catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Téléchargement impossible : " + e.message); }
   };
   $("notesbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirNotes(); };
-  $("namebtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirNom(); };
   $("themebtn").onclick = basculerTheme;
   majLibelleTheme();
 }
@@ -69,29 +68,6 @@ function fermerJeu() {
 }
 $("jeuclose")?.addEventListener("click", fermerJeu);
 $("jeumodal")?.addEventListener("click", e => { if (e.target === $("jeumodal")) fermerJeu(); });
-
-// Changer son nom affiché : le serveur vérifie la longueur et l'unicité ; le « vu » local (commentaires lus) suit le nouveau nom.
-function ouvrirNom() {
-  if (!me || !$("nmodal")) return;
-  $("nerr").textContent = ""; $("nom").value = me.prenom || "";
-  $("nmodal").classList.remove("hidden"); document.body.classList.add("modalopen"); $("nom").focus(); $("nom").select();
-}
-function fermerNom() { $("nmodal")?.classList.add("hidden"); document.body.classList.remove("modalopen"); }
-$("nclose")?.addEventListener("click", fermerNom);
-$("nmodal")?.addEventListener("click", e => { if (e.target === $("nmodal")) fermerNom(); });
-$("nbody")?.addEventListener("submit", async e => {
-  e.preventDefault();
-  const nom = $("nom").value.trim().replace(/\s+/g, " "), ancien = me.prenom;
-  if (!nom) { $("nerr").textContent = "Le nom ne peut pas être vide."; return; }
-  if (nom === ancien) { fermerNom(); return; }
-  try {
-    const res = await enCours("Enregistrement…", () => api("profile_update", { data: { prenom: nom } }));
-    try { const v = localStorage.getItem("lydia_vu:" + ancien); if (v !== null) localStorage.setItem("lydia_vu:" + res.me.prenom, v); } catch (x) { /* ignoré */ }
-    me = res.me; fermerNom();
-    applyResult(res); renderMe(); renderAll();
-  } catch (x) { $("nerr").textContent = (x && x.message) || "Échec de l'enregistrement."; }
-});
-
 
 function renderMeAnonyme() {
   $("me").innerHTML = '<button type="button" class="btn sm sec" id="themebtn"></button>';

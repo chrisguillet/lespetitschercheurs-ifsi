@@ -51,7 +51,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
     <div id="accueil" class="hidden"></div>
     <div id="gatewait" class="gatewait hidden" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span id="gatewaitmsg">Connexion en cours…</span></div>
     <button class="btn sec hidden" id="retry" style="margin-top:12px">Vérifier à nouveau</button>
-    <p class="meta" style="margin-top:14px">En vous connectant, vous acceptez le traitement de vos données décrit dans la <a href="privacy.html">politique de confidentialité</a>.</p>
+    <p class="meta" style="margin-top:14px">Le traitement de vos données est décrit dans la <a href="privacy.html">politique de confidentialité</a> ; votre accord est demandé avant l’entrée dans l’outil.</p>
   </section>
 
   <input type="file" id="fup" class="hidden" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" aria-label="Choisir un fichier à joindre">
@@ -166,19 +166,17 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
       <div id="hbody" class="cmbox"></div>
     </div>
   </div>
-  <div id="nmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ntitle">
-    <div class="modalbox" style="max-width:420px">
-      <div class="modalhead">
-        <div><h2 id="ntitle">✏️ Mon nom affiché</h2></div>
-        <button class="btn sm sec" id="nclose" type="button" aria-label="Fermer">✕ Fermer</button>
+  <div id="cmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ctitle">
+    <div class="modalbox" style="max-width:520px">
+      <div class="modalhead"><div><h2 id="ctitle">🔒 Vos données et leur partage</h2></div></div>
+      <div id="cbody" style="padding:14px 16px;overflow:auto">
+        <p>Pour continuer à utiliser l’outil, merci de lire et d’accepter ce qui suit.</p>
+        <p class="meta" id="ctexte"></p>
+        <label class="rgpdcheck"><input type="checkbox" id="caccord"> <span id="ccase"></span></label>
+        <div id="cerr" class="meta" role="alert" style="color:var(--bad,#c0392b);margin-top:6px"></div>
+        <div style="margin-top:10px" class="grow"><button class="btn" type="button" id="cok">J’accepte</button><button class="btn sec" type="button" id="cno">Je refuse et me déconnecte</button></div>
+        <div class="meta" style="margin-top:8px">Si vous refusez, vous pouvez demander l’effacement de vos données à l’administrateur. Détails : <a href="privacy.html" target="_blank" rel="noopener">politique de confidentialité</a>.</div>
       </div>
-      <form id="nbody" style="padding:14px 16px">
-        <label for="nom">Nom affiché aux autres membres</label>
-        <input id="nom" type="text" maxlength="60" autocomplete="nickname" required>
-        <div class="meta" style="margin-top:6px">Il est montré à la place de votre prénom partout dans l’outil. Les anciens commentaires et historiques gardent le nom d’origine.</div>
-        <div id="nerr" class="meta" role="alert" style="color:var(--bad,#c0392b);margin-top:6px"></div>
-        <div style="margin-top:10px"><button class="btn" type="submit">Enregistrer</button></div>
-      </form>
     </div>
   </div>
   <div id="notemodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="notetitle">

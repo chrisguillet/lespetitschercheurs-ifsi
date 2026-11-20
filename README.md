@@ -276,9 +276,13 @@ Une carte par groupe (celle des groupes rattachés pour un formateur, tous pour 
 - Petite animation de confettis quand une lecture passe à « Terminée » (désactivée si le système demande de réduire les animations).
 - Sur téléphone : onglets défilables, pas de vue tableau.
 
-## Changer son nom affiché
+## Nom affiché
 
-Menu du compte → **✏️ Modifier mon nom** : chaque utilisateur (étudiant, formateur, administrateur) choisit le nom montré aux autres. Il est unique (casse ignorée), de 60 caractères maximum. L'ancien nom reste sur les traces déjà écrites (historique des modifications, anciens commentaires). Le nom de l'administrateur, qui n'est pas dans la feuille « Utilisateurs », est conservé dans la propriété de script `NOM_ADMIN`.
+Saisi à la **première connexion** : prénom + **initiale(s) du nom de famille** (1 à 3 lettres, affiché « Camille D. »), lettres seulement, unique (casse ignorée ; en cas de doublon on ajoute une lettre). Ensuite **personne ne peut le changer**, sauf l'administrateur (Administration → fiche de l'accès, champ prénom ; un formateur sans nom peut en recevoir un de celui qui le valide). Les anciens commentaires gardent le nom d'origine. Le nom de l'administrateur, qui n'est pas dans la feuille « Utilisateurs », est la propriété de script `NOM_ADMIN` (action `profile_update`, réservée à l'administrateur).
+
+## Consentement
+
+Case à cocher obligatoire à la première connexion (code d'invitation ou demande d'accès) ; le serveur refuse sans `consentement: true` et enregistre la date et la version (`CONSENT_VERSION` dans `Code.gs`, colonnes `consentement_le` et `consentement_version` de la feuille Utilisateurs : relancer `setup` après mise à jour). Les comptes déjà actifs voient une fenêtre bloquante (accepter, ou refuser = déconnexion). **Changer `CONSENT_VERSION` redemande l'accord à tout le monde** : à faire quand le texte de consentement ou `privacy.html` change sur le fond. Texte côté client : `CONSENT_TEXTE` dans `js/onboarding.js` (à garder aligné sur `privacy.html`).
 
 ## Notes personnelles
 
@@ -305,7 +309,8 @@ Chaque note peut porter des **étiquettes** (filtre par `#étiquette` dans la li
 - **Effacement** : dans l'administration, « 🧹 Effacer ses données » supprime fiches, commentaires, notes, messages, retours, votes, appartenances et fichiers de la personne, et anonymise ce qui doit rester (articles partagés, comptes rendus). « 🗑 Supprimer l'accès » retire seulement l'accès.
 - Les sauvegardes du Sheet (7 quotidiennes, 8 hebdomadaires) expirent seules : une donnée effacée en disparaît sous 8 semaines.
 - Avertissement affiché dans l'outil : ne jamais saisir de donnée permettant d'identifier un patient.
-- Conservation annoncée : tant que le compte est actif ; suppression après 12 mois sans connexion et au plus tard à la fin de la formation. L'administration affiche un rappel « Comptes inactifs depuis plus de 12 mois » (administrateur seulement) : y utiliser « 🧹 Effacer ses données ». L'effacement conserve les articles (partie commune), anonymisés, et supprime les fichiers joints de la personne.
+- Conservation annoncée : compte et e-mail jusqu'à la fin de la formation, et après 12 mois sans connexion ; notes, messages et fichiers avec le compte ; contributions partagées (prénom + initiale + promo, sans e-mail) 5 ans après la fin de la promo puis anonymisées. Ces suppressions restent manuelles (pas d'outil de clôture de promo pour l'instant). L'administration affiche un rappel « Comptes inactifs depuis plus de 12 mois » (administrateur seulement). « 🧹 Effacer ses données » (sur demande) conserve les articles (partie commune), anonymisés, et supprime les fichiers joints de la personne.
+- Le texte de consentement mentionne la version bêta de l'outil et l'objectif de base de connaissances entre promos.
 
 ## Mesure d'audience (facultative)
 

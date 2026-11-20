@@ -321,6 +321,7 @@ async function boot() {
     setTab("home");
     chargerNotes();
     startPolling();
+    if (me.consentement === false) demanderConsentement(me.consent_version);
   } catch (e) {
     if (e.code === "unauthorized") sessionError(e);
     else if (e.code === "pending") { showGate(e.message, true); afficherAccueil(); }

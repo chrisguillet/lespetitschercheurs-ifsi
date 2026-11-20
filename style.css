@@ -469,3 +469,6 @@ td.menuopen { z-index: 3 }
 .gloini{margin:14px 0 4px;font-size:14px;color:var(--mut);border-bottom:1px solid var(--bd)}
 .terme{padding:8px 0;border-bottom:1px solid var(--bd);display:flex;flex-direction:column;gap:4px}
 .termemot{font-size:15px}
+
+.rgpdcheck { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 6px; font-size: 13px; cursor: pointer }
+.rgpdcheck input { width: auto; margin-top: 3px }
