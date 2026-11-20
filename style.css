@@ -402,7 +402,7 @@ tr.art.open .fichiers { display: block; }
 .lien.lc:hover { opacity: 1 }
 .optbtn { padding: 0 8px; line-height: 1.3; opacity: .7; letter-spacing: 1px }
 .optbtn:hover, .optbtn[aria-expanded="true"] { opacity: 1 }
-.optmenu { position: absolute; right: 0; top: 100%; z-index: 20; min-width: 190px; display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin-top: 4px; padding: 6px; background: var(--card); border: 1px solid var(--bd); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25) }
+.optmenu { position: fixed; z-index: 1000; min-width: 190px; display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px; background: var(--card); border: 1px solid var(--bd); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25) }
 .optmenu .btn { text-align: left; white-space: nowrap }
 .optmenu.hidden { display: none }
 .arttitre{margin:6px 0 2px}.arttitre b,td.first .arttitre b{display:inline;margin:0}

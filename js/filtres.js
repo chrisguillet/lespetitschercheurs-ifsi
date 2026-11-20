@@ -160,6 +160,13 @@ function toutDeplier() {
   majBoutonDeplier();
 }
 
+// Ferme tout menu « ⋯ » ouvert (clic ailleurs, défilement, redimensionnement).
+function fermerMenusOptions() {
+  document.querySelectorAll(".optmenu:not(.hidden)").forEach(m => { m.classList.add("hidden"); const ob = m.parentElement.querySelector(".optbtn"); if (ob) ob.setAttribute("aria-expanded", "false"); });
+}
+document.addEventListener("click", e => { if (!e.target.closest(".optwrap")) fermerMenusOptions(); });
+window.addEventListener("resize", fermerMenusOptions);
+window.addEventListener("scroll", fermerMenusOptions, true);
 const onAction = e => {
   const b = e.target.closest("button");
   if (!b) {
@@ -175,7 +182,18 @@ const onAction = e => {
   if (d.fpdf) return exportFichePdf(d.fpdf);
   if (d.nl) return ouvrirNotes({ liens: d.nl.split(",") });
   // Menu « ⋯ » d'un document : on l'ouvre / le ferme ; choisir une option le referme.
-  if (d.opt !== undefined) { const m = b.parentElement.querySelector(".optmenu"), ouvert = m.classList.toggle("hidden") === false; b.setAttribute("aria-expanded", String(ouvert)); return; }
+  if (d.opt !== undefined) {
+    const m = b.parentElement.querySelector(".optmenu"), ouvrir = m.classList.contains("hidden");
+    fermerMenusOptions();
+    if (ouvrir) {
+      m.classList.remove("hidden"); b.setAttribute("aria-expanded", "true");
+      // Position fixe : le menu n'est ni coupé par le défilement du tableau, ni recouvert par la ligne suivante.
+      const r = b.getBoundingClientRect(), h = m.offsetHeight, w = m.offsetWidth;
+      m.style.top = Math.max(4, r.bottom + 4 + h > window.innerHeight ? r.top - h - 4 : r.bottom + 4) + "px";
+      m.style.left = Math.max(4, Math.min(r.right - w, window.innerWidth - w - 4)) + "px";
+    }
+    return;
+  }
   const menu = b.closest(".optmenu"); if (menu) { menu.classList.add("hidden"); const ob = menu.parentElement.querySelector(".optbtn"); if (ob) ob.setAttribute("aria-expanded", "false"); }
   if (d.e) startEdit(d.e, false);
   else if (d.fo) ouvrirFichier(d.fo);
