@@ -1,4 +1,4 @@
-/* Pause ludique : deux mini-jeux (canvas, sans dépendance), ouverts dans une fenêtre depuis le menu du compte (app.js).
+/* Pause ludique : trois mini-jeux (canvas, sans dépendance), ouverts dans une fenêtre depuis le menu du compte (app.js).
    Chaque jeu expose : init(), action(bas) [saut / battement], bas(état) [se baisser], step(dt), draw(ctx). */
 (function (root) {
   "use strict";
@@ -263,7 +263,166 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     }
   };
 
-  const JEUX = { course, seringue };
+  /* ---------- 3. Urgences (réservé aux administrateurs pour l'instant) ---------- */
+  const HU = 440, VIES = 3;
+  const SOINS = {
+    constantes: { e: "🌡️", nom: "Constantes" }, ecg: { e: "📈", nom: "ECG" }, oxygene: { e: "💨", nom: "Oxygène" }, perfusion: { e: "💧", nom: "Perfusion" },
+    antalgique: { e: "💊", nom: "Antalgique" }, injection: { e: "💉", nom: "Injection" }, pansement: { e: "🩹", nom: "Pansement" }, transfusion: { e: "🩸", nom: "Transfusion" }
+  };
+  const SOINS_ORDRE = Object.keys(SOINS);
+  const PATHOS = [
+    { m: "Douleur après une chute", g: 1, s: [["antalgique", "Antalgique : paracétamol IV (douleur 7/10)"]] },
+    { m: "Plaie profonde de la main", g: 1, s: [["pansement", "Nettoyer et faire un pansement compressif"], ["antalgique", "Antalgique avant la suture"]] },
+    { m: "Gastro-entérite, déshydraté", g: 1, s: [["perfusion", "Perfusion de NaCl 0,9 % (réhydratation)"], ["antalgique", "Antiémétique + antalgique"]] },
+    { m: "Crise d'asthme", g: 2, s: [["oxygene", "Oxygène au masque (SpO₂ 86 %)"], ["injection", "Bronchodilatateur (salbutamol)"]] },
+    { m: "Malaise, hypoglycémie", g: 2, s: [["constantes", "Glycémie capillaire : 0,4 g/L"], ["injection", "Injection de glucose G30 %"]] },
+    { m: "Fièvre, suspicion de sepsis", g: 2, s: [["constantes", "Constantes : T° 39,8, tension basse"], ["perfusion", "Remplissage vasculaire (perfusion)"], ["injection", "Antibiotique IV"]] },
+    { m: "Douleur thoracique", g: 3, bloc: true, s: [["ecg", "ECG 12 dérivations : sus-décalage ST"], ["injection", "Anticoagulant + aspirine (injection)"], ["bloc", "Coronarographie au bloc"], ["constantes", "Surveillance post-opératoire"]] },
+    { m: "Hémorragie (accident de route)", g: 3, bloc: true, s: [["pansement", "Compression de la plaie"], ["transfusion", "Transfusion de culots globulaires"], ["bloc", "Chirurgie d'hémostase au bloc"], ["perfusion", "Perfusion de relais"]] },
+    { m: "Douleur abdominale aiguë", g: 3, bloc: true, s: [["perfusion", "À jeun + perfusion"], ["antalgique", "Antalgique IV"], ["bloc", "Appendicectomie au bloc"], ["constantes", "Surveillance post-opératoire"]] }
+  ];
+  const VISAGES = ["👵", "👴", "👩", "👨", "🧒", "👧", "🧑", "👩‍🦰", "👨‍🦳"];
+  const NIVEAUX = { 3: { debut: 8, mini: 4.5 }, 6: { debut: 6, mini: 3.4 }, 9: { debut: 4.6, mini: 2.6 } };
+  const DUREE_BLOC = 7, PATIENCE = 40;
+  const niveauLits = () => { try { const v = +localStorage.getItem("lydia_jeu_lits"); return NIVEAUX[v] ? v : 3; } catch (e) { return 3; } };
+  // Disposition : lits à gauche (3 colonnes), bloc et salle d'attente à droite, fiche du patient puis plateau de soins en bas.
+  const lit = (s, i) => { const lignes = Math.ceil(s.lits / 3), h = lignes === 1 ? 170 : lignes === 2 ? 150 : 100; return { x: 8 + (i % 3) * 160, y: 38 + Math.floor(i / 3) * (h + 6), w: 154, h }; };
+  const BLOC = { x: 490, y: 38, w: 142, h: 150 }, ATTENTE = { x: 490, y: 194, w: 142, h: 156 };
+  const outils = () => SOINS_ORDRE.map((k, i) => ({ k, x: 8 + i * 78.5, y: 398, w: 74, h: 38 }));
+  const dedans = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+
+  function nouveauPatient(s) {
+    const gros = Math.random() < Math.min(0.45, 0.12 + s.t / 400);
+    const choix = PATHOS.filter(p => !!p.bloc === gros), p = choix[Math.floor(Math.random() * choix.length)];
+    return { motif: p.m, g: p.g, etapes: p.s.map(e => ({ k: e[0], t: e[1] })), i: 0, vie: 100, taux: 1 + 0.9 * p.g, visage: VISAGES[Math.floor(Math.random() * VISAGES.length)], vu: false, etat: "attente", patience: PATIENCE, reste: 0 };
+  }
+  const libre = s => { for (let i = 0; i < s.lits; i++) if (!s.lit[i]) return i; return -1; };
+  function perdre(s, txt, x, y) {
+    s.morts++; s.textes.push({ x, y, txt, vie: 1.6, coul: "#d33a3a" });
+    if (s.morts >= VIES) s.mort = true;
+  }
+  function soigner(s, p) {
+    p.i++; p.vie = Math.min(100, p.vie + 22);
+    const idx = s.lit.indexOf(p), r = idx >= 0 ? lit(s, idx) : BLOC;
+    if (p.i >= p.etapes.length) {
+      s.lit[idx] = null; if (s.sel === p) s.sel = null; s.score++;
+      s.textes.push({ x: r.x + r.w / 2, y: r.y + r.h / 2, txt: "✔ Soigné", vie: 1.3, coul: "#2f9e5b" });
+    } else s.textes.push({ x: r.x + r.w / 2, y: r.y + 24, txt: "✔", vie: 0.8, coul: "#2f9e5b" });
+  }
+  function appliquer(s, k) {
+    const p = s.sel;
+    if (!p) { s.msg = { txt: "Choisissez d'abord un patient.", vie: 2 }; return false; }
+    if (p.etat !== "lit") return false;
+    const e = p.etapes[p.i];
+    if (e.k === k) { soigner(s, p); return true; }
+    p.vie = Math.max(1, p.vie - 6);
+    s.msg = { txt: "Ce n'est pas ce dont il a besoin (" + SOINS[k].nom + ").", vie: 2 };
+    return false;
+  }
+  function versBloc(s) {
+    const p = s.sel;
+    if (!p || p.etat !== "lit" || p.etapes[p.i].k !== "bloc") { s.msg = { txt: "Ce patient n'a pas besoin du bloc maintenant.", vie: 2 }; return false; }
+    if (s.bloc) { s.msg = { txt: "Le bloc est occupé : un seul patient à la fois !", vie: 2 }; return false; }
+    p.etat = "bloc"; p.reste = DUREE_BLOC; s.bloc = p; s.sel = null; return true;
+  }
+  function clic(s, x, y) {
+    if (dedans(BLOC, x, y)) return versBloc(s);
+    for (let i = 0; i < s.lits; i++) if (dedans(lit(s, i), x, y)) { const p = s.lit[i]; if (p && p.etat === "lit") { s.sel = p; p.vu = true; } return true; }
+    const o = outils().find(o => dedans(o, x, y)); if (o) return appliquer(s, o.k);
+    return false;
+  }
+  const humeur = v => v > 66 ? "🙂" : v > 33 ? "😟" : "😣";
+
+  const urgences = {
+    nom: "urgences", titre: "🏥 Urgences", admin: true, h: HU, unite: " soignés", cle: s => "urgences" + s.lits, niveaux: [3, 6, 9], niveau: niveauLits,
+    aide: "Cliquez un patient pour savoir ce dont il a besoin, puis cliquez le bon soin en bas (ou touches 1 à 8). Les cas critiques passent au bloc (un seul patient à la fois) : cliquez le bloc quand le patient en a besoin. Trois décès ou départs et c'est fini.",
+    fin: "Service débordé 🚑",
+    init() { const lits = niveauLits(); return { lits, lit: new Array(lits).fill(null), attente: [], bloc: null, sel: null, t: 0, prochain: 1, score: 0, morts: 0, mort: false, textes: [], msg: null, rec: record("urgences" + lits) }; },
+    action() { /* le jeu se joue à la souris / au doigt */ },
+    bas() { /* inutilisé */ },
+    clic,
+    touche(s, key) { const i = +key - 1; if (i >= 0 && i < SOINS_ORDRE.length) appliquer(s, SOINS_ORDRE[i]); else if (key === "b" || key === "B") versBloc(s); },
+    step(s, dt) {
+      s.t += dt;
+      const n = NIVEAUX[s.lits];
+      s.prochain -= dt;
+      if (s.prochain <= 0) {
+        s.prochain = Math.max(n.mini, n.debut - s.t * 0.035) * (0.8 + Math.random() * 0.4);
+        if (s.attente.length < 3 || libre(s) >= 0) s.attente.push(nouveauPatient(s));
+      }
+      // admission dans un lit libre (le plus ancien d'abord)
+      let k;
+      while (s.attente.length && (k = libre(s)) >= 0) { const p = s.attente.shift(); p.etat = "lit"; s.lit[k] = p; }
+      s.attente.forEach(p => { p.patience -= dt; });
+      for (let j = s.attente.length - 1; j >= 0; j--) if (s.attente[j].patience <= 0) { s.attente.splice(j, 1); perdre(s, "Parti sans soins", ATTENTE.x + 70, ATTENTE.y + 70); }
+      for (let i = 0; i < s.lits; i++) {
+        const p = s.lit[i]; if (!p) continue;
+        if (p.etat === "bloc") {
+          p.reste -= dt;
+          if (p.reste <= 0) { s.bloc = null; p.etat = "lit"; p.i++; p.vie = Math.min(100, p.vie + 18); s.textes.push({ x: BLOC.x + 70, y: BLOC.y + 60, txt: "Opéré ✔", vie: 1.2, coul: "#2f9e5b" }); }
+        } else {
+          p.vie -= p.taux * dt;
+          if (p.vie <= 0) { const r = lit(s, i); s.lit[i] = null; if (s.sel === p) s.sel = null; perdre(s, "💀", r.x + r.w / 2, r.y + r.h / 2); }
+        }
+      }
+      s.textes.forEach(t => { t.y -= 22 * dt; t.vie -= dt; }); s.textes = s.textes.filter(t => t.vie > 0);
+      if (s.msg) { s.msg.vie -= dt; if (s.msg.vie <= 0) s.msg = null; }
+    },
+    draw(ctx, s, c) {
+      const txt = (t, x, y, taille, coul, gras, al) => { ctx.fillStyle = coul || c.texte; ctx.font = (gras ? "bold " : "") + taille + "px system-ui,sans-serif"; ctx.textAlign = al || "left"; ctx.fillText(t, x, y); ctx.textAlign = "left"; };
+      const barre = (x, y, w, v, coul) => { ctx.fillStyle = "rgba(127,150,180,.25)"; bord(ctx, x, y, w, 7, 3); ctx.fill(); if (v > 0) { ctx.fillStyle = coul; bord(ctx, x, y, Math.max(4, w * v), 7, 3); ctx.fill(); } };
+      const couleurVie = v => v > 66 ? "#3aa76d" : v > 33 ? "#e0a020" : "#d33a3a";
+      // bandeau du haut
+      txt("✔ Soignés : " + s.score, 10, 24, 16, c.texte, true);
+      txt("Record : " + Math.max(s.rec, s.score), 190, 24, 13, c.doux);
+      for (let i = 0; i < VIES; i++) emoji(ctx, i < VIES - s.morts ? "❤️" : "🖤", 520 + i * 28, 26, 20);
+      // lits
+      for (let i = 0; i < s.lits; i++) {
+        const r = lit(s, i), p = s.lit[i], critique = p && p.etat === "lit" && p.vie < 30 && Math.floor(s.t * 3) % 2 === 0;
+        ctx.fillStyle = c.fond; ctx.strokeStyle = p && s.sel === p ? "#2f7de1" : critique ? "#d33a3a" : c.trait; ctx.lineWidth = p && s.sel === p ? 3 : 2; bord(ctx, r.x, r.y, r.w, r.h, 8); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "rgba(190,215,245,.35)"; bord(ctx, r.x + 6, r.y + r.h - 40, r.w - 12, 24, 5); ctx.fill();   // matelas
+        txt("Lit " + (i + 1), r.x + 8, r.y + 15, 11, c.doux);
+        if (!p) { txt("libre", r.x + r.w / 2, r.y + r.h / 2, 12, c.doux, false, "center"); continue; }
+        if (p.etat === "bloc") { txt("au bloc 🏥", r.x + r.w / 2, r.y + r.h / 2, 13, c.doux, false, "center"); continue; }
+        emoji(ctx, p.visage, r.x + 10, r.y + r.h - 24, Math.min(46, r.h - 40)); emoji(ctx, humeur(p.vie), r.x + r.w - 30, r.y + 24, 20);
+        txt(p.vu ? p.motif : "À examiner (cliquez)", r.x + 8, r.y + r.h - 6 - 12, 10.5, c.doux);
+        if (p.vu) { const e = p.etapes[p.i]; emoji(ctx, e.k === "bloc" ? "🏥" : SOINS[e.k].e, r.x + r.w - 32, r.y + r.h - 26, 20); }
+        barre(r.x + 8, r.y + r.h - 12, r.w - 16, p.vie / 100, couleurVie(p.vie));
+      }
+      // bloc opératoire
+      ctx.fillStyle = s.bloc ? "rgba(211,58,58,.12)" : c.fond; ctx.strokeStyle = s.bloc ? "#d33a3a" : c.trait; ctx.lineWidth = 2; bord(ctx, BLOC.x, BLOC.y, BLOC.w, BLOC.h, 8); ctx.fill(); ctx.stroke();
+      txt("🏥 Bloc opératoire", BLOC.x + 8, BLOC.y + 18, 12, c.texte, true);
+      if (s.bloc) { emoji(ctx, s.bloc.visage, BLOC.x + 40, BLOC.y + 90, 44); barre(BLOC.x + 10, BLOC.y + 124, BLOC.w - 20, 1 - s.bloc.reste / DUREE_BLOC, "#2f7de1"); txt("opération en cours…", BLOC.x + BLOC.w / 2, BLOC.y + 116, 10.5, c.doux, false, "center"); }
+      else txt("libre", BLOC.x + BLOC.w / 2, BLOC.y + 86, 13, c.doux, false, "center");
+      // salle d'attente
+      ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; bord(ctx, ATTENTE.x, ATTENTE.y, ATTENTE.w, ATTENTE.h, 8); ctx.fill(); ctx.stroke();
+      txt("Salle d'attente", ATTENTE.x + 8, ATTENTE.y + 18, 12, c.texte, true);
+      s.attente.slice(0, 3).forEach((p, i) => { const y = ATTENTE.y + 30 + i * 41; emoji(ctx, p.visage, ATTENTE.x + 8, y + 26, 26); barre(ATTENTE.x + 44, y + 14, ATTENTE.w - 54, p.patience / PATIENCE, couleurVie(p.patience / PATIENCE * 100)); });
+      if (!s.attente.length) txt("personne", ATTENTE.x + ATTENTE.w / 2, ATTENTE.y + 80, 12, c.doux, false, "center");
+      // fiche du patient sélectionné
+      ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; bord(ctx, 8, 354, 624, 40, 8); ctx.fill(); ctx.stroke();
+      const p = s.sel;
+      if (s.msg) txt(s.msg.txt, 18, 379, 13, "#d33a3a", true);
+      else if (!p) txt("Cliquez sur un patient pour voir ce dont il a besoin.", 18, 379, 13, c.doux);
+      else {
+        txt(p.motif, 18, 370, 12.5, c.texte, true);
+        let x = 18 + ctx.measureText(p.motif).width + 14;
+        p.etapes.forEach((e, i) => {
+          if (i < p.i) txt("✔", x + 8, 370, 13, "#2f9e5b", true, "center");
+          else { emoji(ctx, SOINS_ICONE(e), x, 371, 15); if (i === p.i) { ctx.fillStyle = "#2f7de1"; ctx.fillRect(x, 374, 18, 2); } }
+          x += 24;
+        });
+        const e = p.etapes[p.i]; txt("À faire : " + SOINS_ICONE(e) + " " + e.t, 18, 388, 12, "#2f7de1", true);
+      }
+      // plateau de soins
+      outils().forEach((o, i) => { ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; ctx.lineWidth = 2; bord(ctx, o.x, o.y, o.w, o.h, 8); ctx.fill(); ctx.stroke(); emoji(ctx, SOINS[o.k].e, o.x + 6, o.y + 28, 22); txt((i + 1) + "", o.x + o.w - 11, o.y + 13, 10, c.doux, false, "center"); txt(SOINS[o.k].nom, o.x + 34, o.y + 24, 9.5, c.texte); });
+      ctx.textAlign = "center"; ctx.font = "bold 16px system-ui,sans-serif";
+      s.textes.forEach(t => { ctx.globalAlpha = Math.min(1, t.vie * 2); ctx.fillStyle = t.coul; ctx.strokeStyle = c.fond; ctx.lineWidth = 3; ctx.strokeText(t.txt, t.x, t.y); ctx.fillText(t.txt, t.x, t.y); }); ctx.globalAlpha = 1; ctx.textAlign = "left";
+    }
+  };
+  const SOINS_ICONE = e => e.k === "bloc" ? "🏥" : SOINS[e.k].e;
+
+  const JEUX = { course, seringue, urgences };
 
   // Avatar de la course (choix mémorisé dans le navigateur).
   const AVATARS = [{ e: "👩‍⚕️", nom: "Femme" }, { e: "👨‍⚕️", nom: "Homme" }, { e: "🧑‍⚕️", nom: "Neutre" }];
@@ -275,16 +434,16 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
 
   function dessiner() {
     const { jeu, s, ctx } = actif; if (!ctx) return;
-    const c = couleurs();
+    const c = couleurs(), H = jeu.h || 260, cle = jeu.cle ? jeu.cle(s) : jeu.nom;
     ctx.clearRect(0, 0, W, H); ctx.fillStyle = c.fond; ctx.fillRect(0, 0, W, H);
     jeu.draw(ctx, s, c);
     const centre = (txt, y, taille, coul) => { ctx.fillStyle = coul || c.texte; ctx.font = (taille >= 20 ? "bold " : "") + taille + "px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.fillText(txt, W / 2, y); ctx.textAlign = "left"; };
     if (actif.etat === "pret") centre("Espace ou toucher pour commencer", H / 2 - 20, 20);
     if (actif.etat === "fini") {
       ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(0, 0, W, H);
-      centre(jeu.fin, H / 2 - 24, 24, "#fff"); centre("Score : " + s.score + (jeu.unite || "") + " · record : " + record(jeu.nom) + (jeu.unite || ""), H / 2 + 8, 18, "#fff"); 
+      centre(jeu.fin, H / 2 - 24, 24, "#fff"); centre("Score : " + s.score + (jeu.unite || "") + " · record : " + record(cle) + (jeu.unite || ""), H / 2 + 8, 18, "#fff"); 
     }
-    if (actif.maj) actif.maj(s.score, record(jeu.nom));
+    if (actif.maj) actif.maj(s.score, record(cle));
   }
 
   function boucle(t) {
@@ -292,7 +451,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     const dt = Math.min(0.05, (t - actif.t0) / 1000); actif.t0 = t;
     if (actif.etat === "jeu") {
       actif.jeu.step(actif.s, dt);
-      if (actif.s.mort) { actif.etat = "fini"; record(actif.jeu.nom, actif.s.score); if (actif.rej) actif.rej.style.display = "block"; }
+      if (actif.s.mort) { actif.etat = "fini"; record(actif.jeu.cle ? actif.jeu.cle(actif.s) : actif.jeu.nom, actif.s.score); if (actif.rej) actif.rej.style.display = "block"; }
     }
     dessiner();
     actif.raf = root.requestAnimationFrame(boucle);
@@ -309,7 +468,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     fermer();
     const jeu = JEUX[nom]; if (!jeu || !zone) return false;
     const doc = zone.ownerDocument;
-    zone.innerHTML = '<div style="position:relative;max-width:' + W + 'px"><canvas width="' + W + '" height="' + H + '" style="display:block;width:100%;border:1px solid var(--bd);border-radius:10px;touch-action:none;background:var(--card)" tabindex="0" aria-label="' + jeu.titre + '"></canvas><div class="jeurejouer" style="display:none;position:absolute;left:50%;top:68%;transform:translateX(-50%)"><button type="button" class="btn">↻ Rejouer</button></div></div><div class="meta" style="margin-top:6px"></div>';
+    zone.innerHTML = '<div style="position:relative;max-width:' + W + 'px"><canvas width="' + W + '" height="' + (jeu.h || H) + '" style="display:block;width:100%;border:1px solid var(--bd);border-radius:10px;touch-action:none;background:var(--card)" tabindex="0" aria-label="' + jeu.titre + '"></canvas><div class="jeurejouer" style="display:none;position:absolute;left:50%;top:68%;transform:translateX(-50%)"><button type="button" class="btn">↻ Rejouer</button></div></div><div class="meta" style="margin-top:6px"></div>';
     const cv = zone.querySelector("canvas"); zone.querySelector(".meta").textContent = jeu.aide;
     const rej = zone.querySelector(".jeurejouer");
     if (nom === "course") {
@@ -324,6 +483,18 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
       });
       zone.insertBefore(bar, zone.firstChild);
     }
+    if (jeu.niveaux) {
+      const bar = doc.createElement("div"); bar.className = "jeuniveau"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px";
+      const cur = jeu.niveau();
+      bar.innerHTML = '<span class="meta">Nombre de lits :</span>' + jeu.niveaux.map(n => '<button type="button" class="btn sm sec" data-lits="' + n + '" aria-pressed="' + (n === cur) + '"' + (n === cur ? ' style="outline:2px solid var(--pri)"' : "") + ">" + n + "</button>").join("");
+      bar.addEventListener("click", e => {
+        const b = e.target.closest("[data-lits]"); if (!b || !actif) return;
+        try { localStorage.setItem("lydia_jeu_lits", b.dataset.lits); } catch (x) { /* ignoré */ }
+        bar.querySelectorAll("[data-lits]").forEach(o => { const on = o === b; o.setAttribute("aria-pressed", String(on)); o.style.outline = on ? "2px solid var(--pri)" : ""; });
+        actif.s = jeu.init(); actif.etat = "pret"; actif.rej.style.display = "none";
+      });
+      zone.insertBefore(bar, zone.firstChild);
+    }
     actif = { jeu, s: jeu.init(), etat: "pret", raf: 0, t0: 0, cv, ctx: cv.getContext ? cv.getContext("2d") : null, maj, rej };
     rej.querySelector("button").addEventListener("click", () => {
       if (!actif || actif.etat !== "fini") return;
@@ -332,13 +503,16 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     });
     const touche = e => {
       if (!actif) return;
+      if (jeu.touche && actif.etat === "jeu" && e.key !== " ") { jeu.touche(actif.s, e.key); return; }
       if (e.key === " " || e.key === "ArrowUp") { e.preventDefault(); if (!e.repeat) appuyer(); }
       else if (e.key === "ArrowDown") { e.preventDefault(); jeu.bas(actif.s, true); }
     };
     const relache = e => { if (e.key === " " && actif && actif.etat === "fini" && e.target && e.target.tagName === "BUTTON") e.preventDefault(); if (actif && e.key === "ArrowDown") jeu.bas(actif.s, false); };
     const doigt = e => {
       e.preventDefault();
-      const r = cv.getBoundingClientRect(), bas = nom === "course" && (e.clientY - r.top) > r.height * 0.6;
+      const r = cv.getBoundingClientRect();
+      if (jeu.clic && actif.etat === "jeu") { jeu.clic(actif.s, (e.clientX - r.left) * W / r.width, (e.clientY - r.top) * (jeu.h || H) / r.height); return; }
+      const bas = nom === "course" && (e.clientY - r.top) > r.height * 0.6;
       if (bas && actif.etat === "jeu") jeu.bas(actif.s, true); else appuyer();
     };
     const leve = () => { if (actif) jeu.bas(actif.s, false); };
@@ -358,8 +532,8 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   }
 
   root.LydiaJeux = {
-    liste: Object.keys(JEUX).map(k => ({ id: k, titre: JEUX[k].titre })),
+    liste: Object.keys(JEUX).map(k => ({ id: k, titre: JEUX[k].titre, admin: !!JEUX[k].admin })),
     ouvrir, fermer, enCours: () => !!actif, record, avatar: () => avatar,
-    _test: { JEUX, chevauche, appuyer, etat: () => actif && actif.etat, finir: () => { actif.etat = "fini"; actif.rej.style.display = "block"; } }
+    _test: { JEUX, SOINS, chevauche, appuyer, etat: () => actif && actif.etat, finir: () => { actif.etat = "fini"; actif.rej.style.display = "block"; } }
   };
 })(typeof window !== "undefined" ? window : globalThis);

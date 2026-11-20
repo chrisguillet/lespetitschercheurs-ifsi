@@ -236,6 +236,8 @@ Lien discret « 💡 Un retour sur l'outil ? » en bas de page, pour **toute per
 
 Menu du compte (en haut à droite) → **🎮 Pause ludique** : *La course aux transmissions* (saut / se baisser) et *Flappy Seringue* (poches et potences à perfusion, gouttes à attraper pour +2, ECG en bas), dans une fenêtre. Code dans `games.js` (canvas, sans dépendance) ; avatar de la course au choix (femme, homme, neutre) et records conservés dans le navigateur. Accessible à toute personne connectée (étudiant, formateur, administrateur). Après une défaite, seul le bouton « Rejouer » relance une partie.
 
+**🏥 Urgences** (en test : visible uniquement avec un compte administrateur, filtre `admin: true` dans `games.js` à retirer pour l'ouvrir à tous) : on joue l'infirmier·ère d'un service de 3, 6 ou 9 lits (choix en haut de la fenêtre). Les patients arrivent (salle d'attente, 40 s de patience), se dégradent et il faut cliquer dessus pour découvrir leur besoin (ECG, oxygène, perfusion, antalgique, injection, pansement, transfusion, constantes), puis cliquer le bon soin du plateau (ou touches 1 à 8). Les cas critiques (douleur thoracique, hémorragie, abdomen aigu) passent par le **bloc opératoire** : un seul patient à la fois, 7 s d'opération (clic sur le bloc ou touche B). Un mauvais soin fait perdre de la vie au patient ; un décès ou un départ de la salle d'attente coûte une des 3 vies. Le compteur « Soignés » est le score, avec un record par nombre de lits.
+
 ## Rattachement des formateurs aux groupes
 
 Un formateur est lié à sa **promo** (inscrite à la validation de son accès) puis à un ou plusieurs **groupes** de cette promo, dans les deux sens :

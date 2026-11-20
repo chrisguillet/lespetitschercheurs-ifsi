@@ -392,7 +392,7 @@ function renderMe() {
       <span class="avatar" style="--c:${esc(me.couleur)}">${init}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
     <div class="colpop right acctpop">
       <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
-      ${window.LydiaJeux ? `<div class="acctgrp"><div class="acctlabel">🎮 Pause ludique</div>${LydiaJeux.liste.map(j => `<button type="button" class="acctitem" data-jeu="${esc(j.id)}">${esc(j.titre)}</button>`).join("")}</div>` : ""}
+      ${window.LydiaJeux ? `<div class="acctgrp"><div class="acctlabel">🎮 Pause ludique</div>${LydiaJeux.liste.filter(j => !j.admin || isSuper()).map(j => `<button type="button" class="acctitem" data-jeu="${esc(j.id)}">${esc(j.titre)}</button>`).join("")}</div>` : ""}
       <div class="acctgrp"><div class="acctlabel">Affichage</div><button type="button" class="acctitem" id="themebtn"></button></div>
       <div class="acctgrp"><button type="button" class="acctitem danger" id="logout">⎋ Se déconnecter</button></div>
     </div></details>`;
@@ -406,7 +406,7 @@ function renderMe() {
 let jeuOuvert = false;
 function ouvrirJeu(id) {
   if (!me || !window.LydiaJeux || !$("jeumodal")) return;
-  const j = LydiaJeux.liste.find(x => x.id === id); if (!j) return;
+  const j = LydiaJeux.liste.find(x => x.id === id); if (!j || (j.admin && !isSuper())) return;
   jeuOuvert = true;
   $("jeutitle").textContent = j.titre;
   $("jeumodal").classList.remove("hidden"); document.body.classList.add("modalopen");
