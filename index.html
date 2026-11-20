@@ -19,12 +19,14 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
     <div class="rightbar"><div id="online"></div><div class="me" id="me"></div></div>
   </div>
   <div class="tabs hidden" id="tabs" role="tablist">
+    <button class="tab" data-t="home" role="tab" aria-selected="false">🏠 Accueil</button>
     <button class="tab on" data-t="all" role="tab" aria-selected="true">📊 Tableau commun</button>
     <button class="tab" data-t="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
     <button class="tab" data-t="cmts" role="tab" aria-selected="false">💬 Commentaires <span id="cmtcount" class="count hidden"></span></button>
     <button class="tab hidden" data-t="suivi" role="tab" aria-selected="false">🗓️ Suivi de projet <span id="alertnb" class="count alertnb hidden" title="Jalons à surveiller"></span></button>
     <button class="tab" data-t="biblio" role="tab" aria-selected="false">📖 Bibliographie</button>
     <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
+    <button class="tab hidden" data-t="dash" role="tab" aria-selected="false">🧭 Tableau de bord</button>
     <button class="tab hidden" data-t="admin" role="tab" aria-selected="false">👥 Administration <span id="pending" class="count hidden"></span></button>
   </div>
   <div class="ctxbar hidden" id="ctxbar"></div>
@@ -44,6 +46,8 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
   <input type="file" id="fup" class="hidden" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" aria-label="Choisir un fichier à joindre">
   <div id="app" class="hidden">
     <div id="nogroup" class="note hidden"></div>
+    <section id="home" class="hidden"></section>
+    <section id="dash" class="hidden"></section>
     <section id="mine" class="hidden">
       <div class="tools" style="justify-content:space-between;margin:14px 0 4px">
         <h2 style="font-size:16px;margin:0">Mes lectures</h2>
@@ -129,6 +133,15 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
         <button class="btn sm sec" id="fbclose" type="button" aria-label="Fermer la fenêtre de retour">✕ Fermer</button>
       </div>
       <div id="fbbody" class="cmbox"></div>
+    </div>
+  </div>
+  <div id="hmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="htitle">
+    <div class="modalbox">
+      <div class="modalhead">
+        <div><h2 id="htitle">🕘 Historique</h2></div>
+        <button class="btn sm sec" id="hclose" type="button" aria-label="Fermer l’historique">✕ Fermer</button>
+      </div>
+      <div id="hbody" class="cmbox"></div>
     </div>
   </div>
   <div id="jeumodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="jeutitle">

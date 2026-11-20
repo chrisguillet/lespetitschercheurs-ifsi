@@ -306,3 +306,63 @@ button.calj{cursor:pointer}
 .calj.reu{border-left-color:#7c3aed;background:rgba(124,58,237,.12)}
 @media (max-width:640px){.calc{min-height:56px}.calj{font-size:10px;padding:0 2px}}
 .badge .grpn{font-weight:400;opacity:.85}
+
+/* ----- Statuts : à lire, priorité ----- */
+.badge.lire{background:transparent;color:var(--tx);border:2px dotted var(--c)}
+.badge.prio{background:var(--bd);color:var(--tx);font-weight:600}
+.badge.prio.haute{background:#fee2e2;color:#991b1b}
+.badge.prio.basse{background:#e0e7ff;color:#3730a3}
+tr.lire td.first,.cardc.lire{border-left-style:dotted}
+h3.mysec{font-size:14px;margin:16px 0 6px}
+.prio-sel{width:auto;padding:2px 6px;font-size:13px}
+/* ----- Historique ----- */
+.hrow{border:1px solid var(--bd);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--card)}
+.hdiff{margin:4px 0;font-size:13px;word-break:break-word}
+.hav{background:rgba(220,38,38,.10);padding:0 4px;border-radius:4px;text-decoration:line-through}
+.hap{background:rgba(22,163,74,.12);padding:0 4px;border-radius:4px}
+/* ----- Avatars, couvertures, jauges ----- */
+.avatar{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--c);color:#fff;font-size:11px;font-weight:700;margin-right:-6px;border:2px solid var(--card);text-transform:uppercase}
+.avatar.sm{width:20px;height:20px;font-size:9px;margin-right:2px;border-width:1px}
+.couv{display:flex;align-items:center;justify-content:space-between;height:54px;border-radius:10px;padding:0 14px;margin:-2px -2px 8px;background:linear-gradient(135deg,var(--cv),color-mix(in srgb,var(--cv) 45%,#fff))}
+.couvico{font-size:28px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))}
+.avatars{display:flex;padding-right:6px}
+.jauges{display:flex;gap:4px;margin:0 0 6px}
+.jauge{flex:1;height:5px;background:var(--bd);border-radius:3px;overflow:hidden;display:block}
+.jauge i{display:block;height:100%;border-radius:3px}
+.jauge.wide{display:inline-block;width:90px;vertical-align:middle;margin-left:8px}
+.jauge.wide i{background:#16a34a}
+/* ----- Vue liste compacte ----- */
+#cards.compact{display:block}
+#cards.compact .artgrp{margin-bottom:6px}
+#cards.compact .cardc.art:not(.open) .couv,#cards.compact .cardc.art:not(.open) .jauges,#cards.compact .cardc.art:not(.open) .sect,#cards.compact .cardc.art:not(.open) .acts,#cards.compact .cardc.art:not(.open) .chipsc,#cards.compact .cardc.art:not(.open) .vote{display:none}
+#cards.compact .cardc.art{padding:8px 12px}
+#cards.compact .cardc.art h3{font-size:14px;margin:4px 0 2px}
+#cards.compact .cardc.art .couv{height:36px}
+/* ----- Accueil ----- */
+.hhead{margin:14px 0 10px}.hhead h2{margin:0;font-size:20px}
+.hgrid,.dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.hcard,.dcard{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px 14px}
+.hcard h3{margin:0 0 6px;font-size:14px}
+.hlist{margin:0 0 8px;padding-left:18px}.hlist li{margin:3px 0}
+.hacts{margin:14px 0;display:flex;gap:8px;flex-wrap:wrap}
+/* ----- Tableau de bord ----- */
+.dgrid{grid-template-columns:repeat(auto-fill,minmax(320px,1fr));margin-top:12px}
+.dcard{border-left:6px solid #16a34a}.dcard.retard{border-left-color:#dc2626}.dcard.inactif{border-left-color:#f59e0b}
+.dhead{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}.dhead h3{margin:0;font-size:16px}
+.dflag{margin-left:auto;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;background:#dcfce7;color:#166534}
+.dflag.retard{background:#fee2e2;color:#991b1b}.dflag.inactif{background:#fef3c7;color:#92400e}
+.dmembres{display:flex;align-items:center;gap:8px;margin:8px 0;padding-left:6px}
+.dstats{display:flex;gap:14px;font-weight:600;margin:6px 0}
+.drow{margin:8px 0;font-size:13px}.dcom{font-style:italic;margin:2px 0}
+.dacts{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
+/* ----- Petite fête ----- */
+.fete{position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden}
+.fete i{position:absolute;top:35%;width:9px;height:14px;border-radius:2px;opacity:0;animation:confetti 1.5s ease-out forwards}
+@keyframes confetti{0%{opacity:1;transform:translate(0,0) rotate(0)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) rotate(var(--r))}}
+@media (prefers-reduced-motion:reduce){.fete{display:none}}
+/* ----- Téléphone : onglets défilables, tableau remplacé par la liste ----- */
+@media (max-width:700px){
+  .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}.tab{white-space:nowrap}
+  .hgrid,.dgrid{grid-template-columns:1fr}
+  #filters .seg #vt{display:none}
+}

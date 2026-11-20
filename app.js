@@ -55,7 +55,7 @@ const frais = new Set();    // commentaires qui étaient non lus à l'ouverture 
 const CM = { nonLus: false, miennes: false };
 const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
 const F = { q: "", who: "", grp: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute",
-  view: lsGet("lydia_vue", matchMedia("(max-width:700px)").matches ? "cartes" : "tableau") };
+  view: lsGet("lydia_vue", matchMedia("(max-width:700px)").matches ? "liste" : "tableau") };
 const masquees = new Set((() => { try { return JSON.parse(lsGet("lydia_cols", "[]")); } catch (e) { return []; } })());
 
 // etudiant : écrit, administre et commente ; formateur : lit et commente (dans ses groupes) ; admin : gère tout.
@@ -139,7 +139,7 @@ function showGate(msg, retry) {
 function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
-  groupes = []; votes = []; promosMoi = []; rattachements = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); fermerJeu(); $("fbopen")?.classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; GM.fcand = null; fermerGroupe(true);
+  groupes = []; votes = []; promosMoi = []; rattachements = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); fermerHistorique(); fermerJeu(); $("fbopen")?.classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; GM.fcand = null; fermerGroupe(true);
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
@@ -260,6 +260,8 @@ function renderData() {
   etape("onglet", () => {
     if (tab === "biblio") renderBiblio();
     if (tab === "synth") renderSynth();
+    if (tab === "home") renderHome();
+    if (tab === "dash") renderDash();
     if (tab === "suivi") renderSuivi();
   });
   etape("barres", majBarres);
@@ -270,7 +272,7 @@ function renderData() {
 // Onglets selon la personne : « Mes lectures » réservé aux étudiants, « Suivi de projet » à qui a un groupe,
 // « Administration » à l'administrateur et aux étudiants qui ont un groupe (un formateur ne l'a jamais).
 function majOnglets() {
-  const vis = { mine: canWrite(), suivi: !!groupeCourant(), admin: canAdmin() && (isSuper() || !!groupeCourant()) };
+  const vis = { mine: canWrite(), dash: !!me && (me.role === "formateur" || isSuper()), suivi: !!groupeCourant(), admin: canAdmin() && (isSuper() || !!groupeCourant()) };
   Object.keys(vis).forEach(t => document.querySelector(`.tab[data-t="${t}"]`).classList.toggle("hidden", !vis[t]));
   if (vis[tab] === false) setTab("all");
 }
@@ -301,6 +303,7 @@ async function boot() {
     $("app").classList.remove("hidden");
     clearStatus();
     renderAll();
+    setTab("home");
     startPolling();
   } catch (e) {
     if (e.code === "unauthorized") sessionError(e);
@@ -331,6 +334,8 @@ async function refresh(manuel) {
     if (!typing) renderTable();
     renderPending();
     renderComments();
+    if (tab === "home") renderHome();
+    if (tab === "dash") renderDash();
     renderOnline();
     majModal();
     if (tab === "biblio") renderBiblio();
@@ -442,7 +447,7 @@ function renderPending() {
   el.classList.toggle("hidden", !(canAdmin() && pendingCount));
 }
 
-const ONGLETS = ["all", "mine", "cmts", "suivi", "biblio", "synth", "admin"];
+const ONGLETS = ["home", "all", "mine", "cmts", "suivi", "biblio", "synth", "dash", "admin"];
 function setTab(t) {
   tab = t;
   document.querySelectorAll(".tab").forEach(b => {
@@ -455,6 +460,8 @@ function setTab(t) {
   if (t === "admin" && canAdmin()) loadAdmin();
   if (t === "cmts") renderComments();
   if (t === "suivi") renderSuivi();
+  if (t === "home") renderHome();
+  if (t === "dash") renderDash();
   majAlertes();
   if (t === "biblio") { renderBiblioTools(); renderBiblio(); }
   if (t === "synth") renderSynth();
@@ -463,6 +470,16 @@ document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.datase
 
 /* ---------- Suivi de projet : rétroplanning et réunions du groupe ---------- */
 
+// Statuts d'une lecture : « À lire » est la file d'attente (visible du groupe : c'est aussi la réservation).
+const ST = {
+  "Terminée": { ico: "✅", lib: "Terminée", long: "Terminée", cl: "" },
+  "En cours": { ico: "📖", lib: "En cours", long: "En cours de lecture", cl: "prog" },
+  "À lire": { ico: "📌", lib: "À lire", long: "À lire", cl: "lire" }
+};
+const stInfo = x => ST[x] || ST["Terminée"];
+const PRIO = { haute: "🔥 Haute", normale: "Normale", basse: "💤 Basse" };
+const ORDRE_PRIO = { haute: 0, normale: 1, basse: 2 };
+const badgeStatut = (i, c) => `<span class="badge ${stInfo(i.statut).cl}" style="--c:${c}">${stInfo(i.statut).ico} ${stInfo(i.statut).lib}</span>${i.statut === "À lire" && i.priorite ? `<span class="badge prio ${esc(i.priorite)}" title="Priorité">${esc(PRIO[i.priorite] || i.priorite)}</span>` : ""}`;
 const STATUT_JALON = { a_faire: "À faire", en_cours: "En cours", fait: "Fait ✅" };
 let suiviForm = null;   // { type: "jalon" | "reunion", id } pendant la saisie : on ne reconstruit pas le formulaire (actualisation automatique)
 
@@ -689,14 +706,17 @@ function renderForm() {
       ? "Cet article existe déjà dans la base de la promo : sa partie objective est commune. Ajoutez votre propre fiche de lecture (colonnes 2 à 8) ; elle sera partagée avec la promo dès qu’elle sera « Terminée »."
       : forceStatut
       ? "Pour passer cette lecture à « Terminée », complétez d’abord les champs obligatoires de la première partie."
-      : "Choisissez « 📖 En cours de lecture » si vous n’avez pas fini : seul le titre est alors obligatoire. Pour une lecture « ✅ Terminée », toute la première partie est obligatoire.";
-  const statut = forceStatut || (editing ? d.statut : "") || "Terminée";
+      : "Choisissez « 📌 À lire » pour la file d’attente, ou « 📖 En cours de lecture » si vous n’avez pas fini : seul le titre est alors obligatoire. Pour une lecture « ✅ Terminée », toute la première partie est obligatoire.";
+  const statut = forceStatut || (editing ? d.statut : "") || "En cours";
   $("form").innerHTML = `
   <div id="draftnote" class="meta" style="display:none;margin-bottom:10px"></div>
   <details class="sec" open><summary>Colonne 1 · Identification de l’article <span class="req" style="color:#d33">(obligatoire)</span></summary>
    <div style="margin-bottom:12px;${modeArticle ? "display:none" : ""}"><label for="f_statut">Statut</label><select id="f_statut">
      <option value="Terminée" ${statut === "Terminée" ? "selected" : ""}>✅ Terminée</option>
-     <option value="En cours" ${statut === "En cours" ? "selected" : ""}>📖 En cours de lecture</option></select></div>
+     <option value="En cours" ${statut === "En cours" ? "selected" : ""}>📖 En cours de lecture</option>
+     <option value="À lire" ${statut === "À lire" ? "selected" : ""}>📌 À lire (file d’attente)</option></select></div>
+   <div id="prioblk" style="margin-bottom:12px;${statut === "À lire" && !modeArticle ? "" : "display:none"}"><label for="f_priorite">Priorité</label><select id="f_priorite">${Object.keys(PRIO).map(k => `<option value="${k}" ${(editing ? d.priorite || "normale" : "normale") === k ? "selected" : ""}>${esc(PRIO[k])}</option>`).join("")}</select>
+    <div class="meta">Les autres étudiants du groupe voient que vous prévoyez de lire ce document : cela évite de le lire à deux sans le savoir.</div></div>
    <div class="grid">
     ${field("f_titre", "Titre de l’article", base.titre, { dis: objDesact("titre"), req: 1 })}
     ${field("f_parution", "Date de parution", fmtD(base.parution), { dis: objDesact("parution"), req: 1, ph: "2021, mars 2021 ou 04/03/2021" })}
@@ -774,7 +794,7 @@ $("drawerclose").onclick = () => closeDrawer();
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const ouvert = document.querySelector("details.colmenu[open]");
-  if (ouvert) ouvert.removeAttribute("open"); else if (jeuOuvert) fermerJeu(); else if (FB.ouvert) fermerFeedback(); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
+  if (ouvert) ouvert.removeAttribute("open"); else if (jeuOuvert) fermerJeu(); else if (HI.ouvert) fermerHistorique(); else if (FB.ouvert) fermerFeedback(); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
 });
 $("addbtn").onclick = () => { editing = null; artCible = ""; modeArticle = false; forceStatut = ""; openForm(); };
 
@@ -807,7 +827,7 @@ async function traduire() {
 /* ---------- Aperçu APA, doublons, brouillon ---------- */
 
 const CHAMPS_FORM = ["statut", "titre", "parution", "auteur", "qualite", "nation", "type", "source", "volume", "numero",
-  "pages", "doi", "lien", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre"];
+  "pages", "doi", "lien", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre", "priorite"];
 let formBase = "", brouillonTimer = null;
 
 const snapshot = () => Object.fromEntries(CHAMPS_FORM.map(k => [k, $("f_" + k) ? $("f_" + k).value : ""]));
@@ -882,6 +902,7 @@ function restaurerBrouillon() {
 
 function surSaisie(e) {
   if (e && e.target && e.target.id === "f_kw" && $("tradres")) $("tradres").innerHTML = "";   // les pastilles ne décrivent plus le texte
+  if (e && e.target && e.target.id === "f_statut" && $("prioblk")) $("prioblk").style.display = e.target.value === "À lire" ? "" : "none";
   majApercu(); majDoublon();
   planifierBrouillon();
 }
@@ -892,7 +913,8 @@ function basculerAnalyse(articleId) {
   effacerBrouillon();
   artCible = articleId;
   renderForm();
-  ["statut", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre"].forEach(k => { if ($("f_" + k) && garde[k]) $("f_" + k).value = garde[k]; });
+  ["statut", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre", "priorite"].forEach(k => { if ($("f_" + k) && garde[k]) $("f_" + k).value = garde[k]; });
+  if ($("prioblk")) $("prioblk").style.display = $("f_statut") && $("f_statut").value === "À lire" ? "" : "none";
   majApercu(); majDoublon();
 }
 
@@ -904,7 +926,7 @@ async function save() {
   if (!dateOk) { $("ferr").textContent = "Date de parution non reconnue (exemples : 2021, mars 2021, 04/03/2021)"; return; }
   const orig = editing ? itemsAll.find(i => i.id === editing) : null;
   const need = (modeArticle ? itemsAll.some(i => i.article_id === modeArticle && i.statut === "Terminée") ? FIN : ["titre"]
-    : data.statut === "En cours" ? ["titre"] : FIN);
+    : data.statut !== "Terminée" ? ["titre"] : FIN);
   const miss = need.filter(k => !data[k]);
   if (miss.length) { $("ferr").textContent = "À compléter : " + miss.map(k => LAB[k]).join(", "); return; }
   $("save").disabled = true;
@@ -922,6 +944,7 @@ async function save() {
     effacerBrouillon();
     closeDrawer(true);
     applyResult(res);
+    if (data.statut === "Terminée" && !modeArticle && !(orig && orig.statut === "Terminée")) fete();
     if (jointe) await joindreApresCreation(res, jointe, avant);
     if (objChange && (res.propositions || []).some(p => p.mine && p.article_id === artId)) {
       alert("Votre correction de l’article est proposée à la promo : elle sera appliquée quand 3 étudiants (vous compris) l’auront approuvée.");
@@ -929,7 +952,8 @@ async function save() {
   } catch (e) {
     $("ferr").textContent = "Enregistrement impossible : " + e.message;
     if (e.code === "duplicate" && e.extra && e.extra.article_id) {
-      $("ferr").innerHTML = esc(e.message) + ' <button type="button" class="btn sm" id="dupgo">Ajouter ma fiche de lecture à cet article</button>';
+      const lec = (e.extra.lecteurs || []).map(x => `${esc(x.prenom)} (${esc(stInfo(x.statut).lib.toLowerCase())})`).join(", ");
+      $("ferr").innerHTML = esc(e.message) + (lec ? ` <span class="meta">Déjà dans les fiches de : ${lec}.</span>` : "") + ' <button type="button" class="btn sm" id="dupgo">Ajouter ma fiche de lecture à cet article</button>';
       $("dupgo").onclick = () => basculerAnalyse(e.extra.article_id);
     }
     if (e.code === "unauthorized") sessionError(e);
@@ -971,22 +995,48 @@ async function marquerTerminee(id) {
   if (FIN.some(k => !String(it[k] || "").trim())) { startEdit(id, false, "Terminée"); return; }
   const data = Object.fromEntries(CHAMPS_FORM.map(k => [k, String(it[k] || "")]));
   data.statut = "Terminée";
-  try { applyResult(await enCours("Enregistrement…", () => api("update", { id, data }))); }
+  try { applyResult(await enCours("Enregistrement…", () => api("update", { id, data }))); fete(); }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Enregistrement impossible : " + e.message); }
+}
+
+// Modification rapide (statut, priorité) d'une de mes lectures, sans ouvrir le formulaire.
+async function majRapide(id, patch) {
+  const it = itemsAll.find(x => x.id === id);
+  if (!it) return;
+  const data = { ...Object.fromEntries(CHAMPS_FORM.map(k => [k, String(it[k] || "")])), ...patch };
+  const termine = patch.statut === "Terminée" && it.statut !== "Terminée";
+  try { applyResult(await enCours("Enregistrement…", () => api("update", { id, data }))); if (termine) fete(); }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Enregistrement impossible : " + e.message); }
+}
+// Réserver un document déjà présent dans la promo (sans ouvrir de formulaire).
+async function mettreALire(articleId) {
+  try { applyResult(await enCours("Enregistrement…", () => api("add", { data: { article_id: articleId, statut: "À lire", priorite: "normale" } }))); }
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Enregistrement impossible : " + e.message); }
 }
 
 function renderMine() {
   if (!canWrite()) return;
   const g = groupeCourant();
-  const mine = itemsAll.filter(i => i.mine && g && i.groupe_id === g.id).sort((a, b) =>
-    (a.statut === "En cours" ? 0 : 1) - (b.statut === "En cours" ? 0 : 1) || String(b.ajoute).localeCompare(a.ajoute));
-  const enc = mine.filter(i => i.statut === "En cours").length;
-  $("mysum").textContent = mine.length ? `${mine.length} lecture${mine.length > 1 ? "s" : ""} · ${enc} en cours · ${mine.length - enc} terminée${mine.length - enc > 1 ? "s" : ""}` : "";
-  if (!mine.length) { $("mylist").innerHTML = '<div class="empty">Aucune lecture pour l’instant.<br>Cliquez sur « ＋ Ajouter une lecture » pour saisir la première.</div>'; return; }
-  $("mylist").innerHTML = mine.map(i => `<div class="card" style="border-left:6px solid ${esc(i.couleur)};padding:10px 14px"><div class="tools" style="justify-content:space-between"><div><span class="badge ${i.statut === "En cours" ? "prog" : ""}" style="--c:${esc(i.couleur)}">${i.statut === "En cours" ? "📖 En cours" : "✅ Terminée"}</span> <b>${esc(i.titre)}</b> <span class="meta">· saisi le ${esc(fmtD(i.ajoute))}${i.modifie_par ? ` · modifié par ${esc(i.modifie_par)}` : ""}</span></div><div>${i.statut === "En cours" ? `<button class="btn sm" data-done="${esc(i.id)}">✅ Marquer terminée</button> ` : ""}<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> <button class="btn sm sec del" data-d="${esc(i.id)}">Supprimer</button></div></div></div>`).join("");
+  const mine = itemsAll.filter(i => i.mine && g && i.groupe_id === g.id);
+  const lire = mine.filter(i => i.statut === "À lire").sort((a, b) => (ORDRE_PRIO[a.priorite] ?? 1) - (ORDRE_PRIO[b.priorite] ?? 1) || String(a.ajoute).localeCompare(b.ajoute));
+  const enc = mine.filter(i => i.statut === "En cours").sort((a, b) => String(b.ajoute).localeCompare(a.ajoute));
+  const fin = mine.filter(i => i.statut === "Terminée").sort((a, b) => String(b.ajoute).localeCompare(a.ajoute));
+  $("mysum").textContent = mine.length ? `${mine.length} lecture${mine.length > 1 ? "s" : ""} · ${lire.length} à lire · ${enc.length} en cours · ${fin.length} terminée${fin.length > 1 ? "s" : ""}` : "";
+  if (!mine.length) { $("mylist").innerHTML = '<div class="empty">Aucune lecture pour l’instant.<br>Cliquez sur « ＋ Ajouter une lecture » pour saisir la première, ou mettez un document de côté avec le statut « 📌 À lire ».</div>'; return; }
+  const ligne = i => {
+    const prio = i.statut === "À lire" ? `<select class="prio-sel" data-prio="${esc(i.id)}" aria-label="Priorité de ${esc(i.titre)}">${Object.keys(PRIO).map(k => `<option value="${k}" ${(i.priorite || "normale") === k ? "selected" : ""}>${esc(PRIO[k])}</option>`).join("")}</select> ` : "";
+    const act = i.statut === "À lire" ? `<button class="btn sm" data-start="${esc(i.id)}">▶ Commencer</button> `
+      : i.statut === "En cours" ? `<button class="btn sm" data-done="${esc(i.id)}">✅ Marquer terminée</button> ` : "";
+    return `<div class="card" style="border-left:6px solid ${esc(i.couleur)};padding:10px 14px"><div class="tools" style="justify-content:space-between"><div><span class="badge ${stInfo(i.statut).cl}" style="--c:${esc(i.couleur)}">${stInfo(i.statut).ico} ${stInfo(i.statut).lib}</span> <b>${esc(i.titre)}</b> <span class="meta">· saisi le ${esc(fmtD(i.ajoute))}${i.modifie_par ? ` · modifié par ${esc(i.modifie_par)}` : ""}</span></div><div>${prio}${act}<button class="btn sm sec" data-e="${esc(i.id)}">Modifier</button> <button class="btn sm sec" data-hist="lecture:${esc(i.id)}" title="Versions précédentes">🕘</button> <button class="btn sm sec del" data-d="${esc(i.id)}">Supprimer</button></div></div></div>`;
+  };
+  const section = (titre, l, note) => l.length ? `<h3 class="mysec">${titre} <span class="meta">${l.length}${note ? " · " + note : ""}</span></h3>${l.map(ligne).join("")}` : "";
+  $("mylist").innerHTML = section("📌 File d’attente", lire, "triée par priorité ; visible de votre groupe") + section("📖 En cours", enc) + section("✅ Terminées", fin);
   $("mylist").querySelectorAll("[data-e]").forEach(b => b.onclick = () => startEdit(b.dataset.e, false));
   $("mylist").querySelectorAll("[data-d]").forEach(b => b.onclick = () => del(b.dataset.d));
   $("mylist").querySelectorAll("[data-done]").forEach(b => b.onclick = () => marquerTerminee(b.dataset.done));
+  $("mylist").querySelectorAll("[data-start]").forEach(b => b.onclick = () => majRapide(b.dataset.start, { statut: "En cours", priorite: "" }));
+  $("mylist").querySelectorAll("[data-prio]").forEach(x => x.onchange = () => majRapide(x.dataset.prio, { priorite: x.value }));
+  $("mylist").querySelectorAll("[data-hist]").forEach(b => b.onclick = () => { const [k, id] = b.dataset.hist.split(":"); ouvrirHistorique(k, id); });
 }
 
 /* ---------- Tableau commun, cartes et commentaires ---------- */
@@ -1116,17 +1166,18 @@ const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).leng
 
 // Actions d'une fiche de lecture : la modifier (la sienne) et la commenter.
 function actionsHtml(i) {
-  const edit = canWrite() && i.mine && i.modifiable ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier ma fiche de lecture</button> ` : "";
+  const edit = canWrite() && i.mine && i.modifiable ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier ma fiche de lecture</button> <button class="btn sm sec" data-hist="lecture:${esc(i.id)}" title="Versions précédentes de ma fiche">🕘</button> ` : "";
   const n = comments.filter(x => x.lecture_id === i.id).length, u = nbNonLus(i.id);
   return `${edit}<button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n}${u ? ", " + u + " non lus" : ""})">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button>`;
 }
 
 // Actions du document : ajouter sa fiche de lecture, corriger la partie objective.
 function actionsArticle(i) {
-  if (!canWrite() || !i.article_modifiable) return "";
+  const hist = `<button class="btn sm sec" data-hist="article:${esc(i.article_id)}" title="Versions précédentes de l’article">🕘 Historique</button>`;
+  if (!canWrite() || !i.article_modifiable) return hist;
   const dejaMienne = itemsAll.some(x => x.mine && x.article_id === i.article_id);
-  return (!dejaMienne ? `<button class="btn sm" data-an="${esc(i.article_id)}">＋ Ajouter ma fiche de lecture</button> ` : "")
-    + `<button class="btn sm sec" data-ea="${esc(i.article_id)}">Corriger l’article</button>`;
+  return (!dejaMienne ? `<button class="btn sm" data-an="${esc(i.article_id)}">＋ Ajouter ma fiche de lecture</button> <button class="btn sm sec" data-alire="${esc(i.article_id)}" title="Le mettre dans ma file d’attente (mon groupe le verra)">📌 À lire</button> ` : "")
+    + `<button class="btn sm sec" data-ea="${esc(i.article_id)}">Corriger l’article</button> ` + hist;
 }
 
 function infosHtml(i) {
@@ -1148,7 +1199,7 @@ function groupesArticles(l) {
 
 // Résumé d'un document : qui a fait une fiche, et où elle en est.
 function resumeFiches(g) {
-  return g.map(x => `<span class="badge ${x.statut === "En cours" ? "prog" : ""}" style="--c:${esc(x.couleur)}" title="${x.statut === "En cours" ? "En cours de lecture" : "Terminée"}">${esc(x.etudiant)} ${x.statut === "En cours" ? "📖" : "✅"}${x.groupe ? ` <span class="grpn">· ${esc(x.groupe)}</span>` : ""}</span>`).join(" ");
+  return g.map(x => `<span class="badge ${stInfo(x.statut).cl}" style="--c:${esc(x.couleur)}" title="${stInfo(x.statut).long}">${esc(x.etudiant)} ${stInfo(x.statut).ico}${x.groupe ? ` <span class="grpn">· ${esc(x.groupe)}</span>` : ""}</span>`).join(" ");
 }
 function badgesArticle(g) {
   const nc = g.reduce((n, x) => n + comments.filter(c => c.lecture_id === x.id).length, 0);
@@ -1178,6 +1229,176 @@ async function annulerProp(id) {
   try { applyResult(await enCours("Annulation…", () => api("article_cancel", { id }))); }
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Annulation impossible : " + e.message); }
 }
+
+/* ---------- Accueil : le résumé du jour ---------- */
+
+const joursDepuis = iso => { const t = Date.parse(iso || ""); return isNaN(t) ? null : Math.floor((Date.now() - t) / 864e5); };
+const nomGroupe = id => (groupes.find(g => g.id === id) || {}).nom || "";
+
+function renderHome() {
+  const box = $("home");
+  if (!me || !box) return;
+  const mes = mesGroupesIds();
+  const jours = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"][new Date().getDay()];
+  const bloc = (titre, corps, action) => corps ? `<section class="hcard"><h3>${titre}</h3>${corps}${action || ""}</section>` : "";
+  const aller = (t, txt, extra) => `<button type="button" class="btn sm sec" data-go="${t}" ${extra || ""}>${txt}</button>`;
+  // Jalons de mes groupes : en retard ou dans les 14 jours.
+  const jal = jalonsAll.filter(j => mes.has(j.groupe_id) && j.statut !== "fait" && ecartJours(j.echeance) !== null && ecartJours(j.echeance) <= 14)
+    .sort((a, b) => a.echeance.localeCompare(b.echeance));
+  const jalHtml = jal.length ? `<ul class="hlist">${jal.slice(0, 5).map(j => `<li><b>${esc(j.titre)}</b>${groupes.length > 1 ? ` <span class="meta">(${esc(nomGroupe(j.groupe_id))})</span>` : ""} <span class="meta">${esc(fmtDatesJalon(j))}</span> ${delaiJalon(j)}</li>`).join("")}</ul>${jal.length > 5 ? `<div class="meta">+ ${jal.length - 5} autre(s)</div>` : ""}` : "";
+  // Votes qui attendent ma réponse.
+  const vf = groupes.reduce((n, g) => n + votesAFaire(g), 0), pf = canWrite() ? props.filter(p => !p.mine && p.monVote == null).length : 0;
+  const voteGroupe = groupes.find(g => votesAFaire(g));
+  const voteHtml = vf || pf ? `<ul class="hlist">${vf ? `<li>${vf} vote${vf > 1 ? "s" : ""} de groupe à donner</li>` : ""}${pf ? `<li>${pf} correction${pf > 1 ? "s" : ""} d’article à approuver ou refuser</li>` : ""}</ul>` : "";
+  const nl = commentsAll.filter(nonLu).length;
+  const comHtml = nl ? `<div>${nl} commentaire${nl > 1 ? "s" : ""} non lu${nl > 1 ? "s" : ""}.</div>` : "";
+  // Mes lectures : file d'attente et en cours.
+  const miennes = itemsAll.filter(i => i.mine), lire = miennes.filter(i => i.statut === "À lire").sort((a, b) => (ORDRE_PRIO[a.priorite] ?? 1) - (ORDRE_PRIO[b.priorite] ?? 1)), enc = miennes.filter(i => i.statut === "En cours");
+  const lectHtml = canWrite() && (lire.length || enc.length) ? `<ul class="hlist">${enc.slice(0, 3).map(i => `<li>📖 <b>${esc(i.titre)}</b> <span class="meta">en cours</span></li>`).join("")}${lire.slice(0, 3).map(i => `<li>📌 <b>${esc(i.titre)}</b> <span class="meta">${esc(PRIO[i.priorite] || "")}</span></li>`).join("")}</ul>` : "";
+  // Nouveautés : fiches des autres, saisies depuis moins d'une semaine.
+  const nouv = itemsAll.filter(i => !i.mine && i.statut !== "À lire" && joursDepuis(i.ajoute) !== null && joursDepuis(i.ajoute) < 7).sort((a, b) => String(b.ajoute).localeCompare(a.ajoute));
+  const nouvHtml = nouv.length ? `<ul class="hlist">${nouv.slice(0, 5).map(i => `<li><span class="avatar sm" style="--c:${esc(i.couleur)}">${initiales(i.etudiant)}</span> <b>${esc(i.etudiant)}</b> · ${esc(i.titre)} <span class="meta">${esc(stInfo(i.statut).lib.toLowerCase())}</span></li>`).join("")}</ul>` : "";
+  const attente = isSuper() && pendingCount ? `<div>${pendingCount} demande${pendingCount > 1 ? "s" : ""} d’accès en attente.</div>` : "";
+  const blocs = [
+    bloc("⏰ Rétroplanning", jalHtml, aller("suivi", "Ouvrir le suivi de projet")),
+    bloc("🗳 À voter", voteHtml, voteGroupe ? `<button type="button" class="btn sm sec" data-gv="${esc(voteGroupe.id)}">Ouvrir les votes</button>` : ""),
+    bloc("💬 Commentaires", comHtml, aller("cmts", "Les lire")),
+    bloc("✍️ Mes lectures", lectHtml, aller("mine", "Mes lectures")),
+    bloc("🆕 Cette semaine", nouvHtml, aller("all", "Voir le tableau commun")),
+    bloc("👥 Accès", attente, aller("admin", "Administration"))
+  ].filter(Boolean);
+  const dash = me.role === "formateur" || isSuper() ? aller("dash", "🧭 Tableau de bord des groupes") : "";
+  box.innerHTML = `<div class="hhead"><h2>Bonjour ${esc(me.prenom)} 👋</h2><div class="meta">Nous sommes ${jours} ${esc(fmtD(new Date().toISOString()))}.</div></div>
+    <div class="hgrid">${blocs.length ? blocs.join("") : '<div class="hcard"><h3>✨ Tout est à jour</h3><div class="meta">Rien d’urgent aujourd’hui : jalons, votes et commentaires sont à jour.</div></div>'}</div>
+    <div class="hacts">${canWrite() ? '<button type="button" class="btn" data-go="add">＋ Ajouter une lecture</button> ' : ""}${aller("all", "📊 Tableau commun")} ${dash}</div>`;
+}
+$("home").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.go === "add") { editing = null; artCible = ""; modeArticle = false; forceStatut = ""; openForm(); }
+  else if (b.dataset.go) setTab(b.dataset.go);
+  else if (b.dataset.gv) { changerContexte({ gid: b.dataset.gv }); setTab("all"); ouvrirGroupe(); }
+};
+
+/* ---------- Tableau de bord des groupes (formateurs et administrateur) ---------- */
+
+function resumeGroupe(g) {
+  const lect = itemsAll.filter(i => i.groupe_id === g.id);
+  const ids = new Set(lect.map(i => i.id));
+  const nb = st => lect.filter(i => i.statut === st).length;
+  const jal = jalonsAll.filter(j => j.groupe_id === g.id);
+  const retard = jal.filter(j => j.statut !== "fait" && ecartJours(j.echeance) !== null && ecartJours(j.echeance) < 0);
+  const prochain = jal.filter(j => j.statut !== "fait" && ecartJours(j.echeance) !== null && ecartJours(j.echeance) >= 0).sort((a, b) => a.echeance.localeCompare(b.echeance))[0];
+  const coms = commentsAll.filter(c => ids.has(c.lecture_id)).sort((a, b) => String(b.date).localeCompare(a.date));
+  const dernier = coms[0] || null;
+  const reu = reunionsAll.filter(r => r.groupe_id === g.id).sort((a, b) => String(b.date).localeCompare(a.date))[0];
+  const dates = lect.map(i => i.modifie_le || i.ajoute).concat(coms.map(c => c.date)).filter(Boolean).sort();
+  const derniereActivite = dates.length ? dates[dates.length - 1] : "";
+  return { g, etudiants: g.membres.filter(m => m.role === "etudiant"), formateurs: g.membres.filter(m => m.role === "formateur"), fin: nb("Terminée"), enc: nb("En cours"), lire: nb("À lire"), jal, faits: jal.filter(j => j.statut === "fait").length,
+    retard, prochain, dernier, lectDernier: dernier ? lect.find(i => i.id === dernier.lecture_id) : null, reu, derniereActivite, inactif: derniereActivite ? joursDepuis(derniereActivite) : null };
+}
+
+function renderDash() {
+  const box = $("dash");
+  if (!me || !box) return;
+  if (!(me.role === "formateur" || isSuper())) { box.innerHTML = ""; return; }
+  if (!groupes.length) { box.innerHTML = '<div class="card empty">Aucun groupe pour le moment.</div>'; return; }
+  const l = groupes.map(resumeGroupe).sort((a, b) => b.retard.length - a.retard.length || (a.g.etablissement + a.g.promo + a.g.nom).localeCompare(b.g.etablissement + b.g.promo + b.g.nom, "fr"));
+  const tot = l.reduce((t, r) => ({ fin: t.fin + r.fin, enc: t.enc + r.enc, ret: t.ret + r.retard.length }), { fin: 0, enc: 0, ret: 0 });
+  const kpi = (n, t) => `<div class="kpi"><b>${n}</b>${t}</div>`;
+  const carte = r => {
+    const g = r.g;
+    const etat = r.retard.length ? ["retard", `⚠ ${r.retard.length} jalon${r.retard.length > 1 ? "s" : ""} en retard`] : r.inactif !== null && r.inactif >= 14 ? ["inactif", `😴 sans activité depuis ${r.inactif} j`] : ["ok", "✅ Dans les temps"];
+    const pct = r.jal.length ? Math.round(100 * r.faits / r.jal.length) : null;
+    return `<article class="dcard ${etat[0]}">
+     <div class="dhead"><h3>${esc(g.nom)}</h3><span class="meta">${esc(g.etablissement)} · ${esc(g.promo)}</span><span class="dflag ${etat[0]}">${esc(etat[1])}</span></div>
+     <div class="dmembres">${r.etudiants.map(m => `<span class="avatar" style="--c:${esc(m.couleur)}" title="${esc(m.prenom)}">${initiales(m.prenom)}</span>`).join("")}<span class="meta">${r.etudiants.map(m => esc(m.prenom)).join(", ") || "aucun étudiant"}</span></div>
+     <div class="dstats"><span title="Fiches terminées">✅ ${r.fin}</span><span title="En cours de lecture">📖 ${r.enc}</span><span title="File d’attente">📌 ${r.lire}</span></div>
+     <div class="drow"><b>Jalons</b> ${r.jal.length ? `${r.faits}/${r.jal.length} faits${pct !== null ? `<span class="jauge wide"><i style="width:${pct}%"></i></span>` : ""}` : '<span class="meta">aucun jalon</span>'}
+       ${r.retard.length ? `<div class="late">${r.retard.slice(0, 3).map(j => `${esc(j.titre)} (${-ecartJours(j.echeance)} j)`).join(" · ")}</div>` : ""}
+       ${r.prochain ? `<div class="meta">Prochain : <b>${esc(r.prochain.titre)}</b> ${esc(fmtDatesJalon(r.prochain))} ${delaiJalon(r.prochain)}</div>` : ""}</div>
+     <div class="drow"><b>Dernier commentaire</b> ${r.dernier ? `<div class="dcom">« ${esc(coupe(r.dernier.texte, 140))} »</div><div class="meta">${esc(r.dernier.auteur)} · ${esc(fmtDT(r.dernier.date))}${r.lectDernier ? ` · sur ${esc(coupe(r.lectDernier.titre, 50))}` : ""}</div>` : '<span class="meta">aucun</span>'}</div>
+     <div class="drow"><b>Dernière réunion</b> ${r.reu ? `${esc(fmtD(r.reu.date))}${r.reu.titre ? ` · ${esc(coupe(r.reu.titre, 50))}` : ""}` : '<span class="meta">aucune</span>'}</div>
+     <div class="dacts"><button type="button" class="btn sm" data-dsuivi="${esc(g.id)}">🗓️ Suivi de projet</button> <button type="button" class="btn sm sec" data-dlect="${esc(g.id)}">📊 Lectures</button></div>
+    </article>`;
+  };
+  box.innerHTML = `<div class="kpis">${kpi(l.length, "groupes")}${kpi(tot.fin, "fiches terminées")}${kpi(tot.enc, "en cours")}${kpi(tot.ret, "jalons en retard")}</div>
+    <div class="dgrid">${l.map(carte).join("")}</div>`;
+}
+$("dash").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.dsuivi) { changerContexte({ gid: b.dataset.dsuivi }); setTab("suivi"); }
+  else if (b.dataset.dlect) { changerContexte({ gid: b.dataset.dlect, vue: "groupe" }); setTab("all"); }
+};
+
+/* ---------- Petite fête quand une lecture est terminée ---------- */
+
+function fete() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || !document.body) return;
+  const couleurs = ["#2563eb", "#d97706", "#0d9488", "#be185d", "#7c3aed", "#16a34a"];
+  const zone = document.createElement("div");
+  zone.className = "fete"; zone.setAttribute("aria-hidden", "true");
+  for (let n = 0; n < 28; n++) {
+    const c = document.createElement("i");
+    c.style.cssText = `left:${40 + Math.random() * 20}%;background:${couleurs[n % couleurs.length]};--dx:${Math.round((Math.random() - .5) * 520)}px;--dy:${Math.round(180 + Math.random() * 220)}px;--r:${Math.round(Math.random() * 720)}deg;animation-delay:${Math.round(Math.random() * 120)}ms`;
+    zone.appendChild(c);
+  }
+  document.body.appendChild(zone);
+  setTimeout(() => zone.remove(), 1700);
+}
+
+/* ---------- Historique des versions d'un article ou de sa propre fiche ---------- */
+
+const HI = { ouvert: false, kind: "", id: "", liste: null, focus: null };
+const LIB_HIST = { ...CHAMP_LIB, statut: "statut", mots: "mots-clés", kw: "keywords", concepts: "concepts", objet: "objet / sujet", opinion: "opinion de l’auteur", controverse: "controverse", libre: "colonne libre", priorite: "priorité" };
+const coupe = (t, n) => { t = String(t || ""); return t.length > n ? t.slice(0, n) + "…" : t; };
+
+function ouvrirHistorique(kind, id) {
+  if (!$("hmodal")) return;
+  HI.ouvert = true; HI.kind = kind; HI.id = id; HI.liste = null; HI.focus = document.activeElement;
+  $("hmodal").classList.remove("hidden"); document.body.classList.add("modalopen");
+  $("htitle").textContent = kind === "article" ? "🕘 Historique de l’article" : "🕘 Historique de ma fiche de lecture";
+  renderHistorique();
+  api("history_get", { kind, id }).then(r => { if (!HI.ouvert || HI.id !== id) return; HI.liste = r.historique || []; renderHistorique(); })
+    .catch(e => { if (e.code === "unauthorized") sessionError(e); else if (HI.ouvert) $("hbody").innerHTML = `<div class="err">Chargement impossible : ${esc(e.message)}</div>`; });
+}
+function fermerHistorique() {
+  if (!$("hmodal")) return;
+  HI.ouvert = false;
+  $("hmodal").classList.add("hidden"); $("hbody").innerHTML = "";
+  if (!cmId && !GM.ouvert && !FB.ouvert) document.body.classList.remove("modalopen");
+  if (HI.focus && HI.focus.isConnected && HI.focus.focus) { try { HI.focus.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
+}
+function peutRestaurer() {
+  if (!canWrite()) return false;
+  if (HI.kind === "lecture") { const it = itemsAll.find(x => x.id === HI.id); return !!it && it.mine && it.modifiable; }
+  const it = itemsAll.find(x => x.article_id === HI.id);
+  return !!it && !!it.article_modifiable;
+}
+function renderHistorique() {
+  const box = $("hbody");
+  if (HI.liste === null) { box.innerHTML = '<div class="meta">Chargement…</div>'; return; }
+  if (!HI.liste.length) { box.innerHTML = '<div class="empty">Aucune modification enregistrée pour l’instant.</div>'; return; }
+  const peut = peutRestaurer();
+  const note = HI.kind === "article" && peut ? '<div class="meta" style="margin-bottom:8px">Restaurer une version d’un article est une correction comme une autre : elle est appliquée tout de suite si vous en êtes le créateur isolé, sinon proposée à la promo (3 approbations).</div>' : "";
+  box.innerHTML = note + HI.liste.map((h, n) => `<div class="hrow"><div><b>${esc(h.par || "?")}</b> <span class="meta">· ${esc(fmtDT(h.date))}</span></div>
+    ${h.champs.map(c => `<div class="hdiff"><span class="meta">${esc(LIB_HIST[c.k] || c.k)}</span> <span class="hav">${esc(coupe(c.avant, 160)) || "—"}</span> <span class="meta">→</span> <span class="hap">${esc(coupe(c.apres, 160)) || "—"}</span></div>`).join("")}
+    ${peut ? `<button type="button" class="btn sm sec" data-hr="${n}">↩ Revenir à la version d’avant cette modification</button>` : ""}</div>`).join("");
+  box.querySelectorAll("[data-hr]").forEach(b => b.onclick = () => restaurerVersion(HI.liste[+b.dataset.hr]));
+}
+async function restaurerVersion(h) {
+  if (!h || !confirm("Revenir à cette version ? Votre restauration sera elle-même notée dans l’historique.")) return;
+  const kind = HI.kind, id = HI.id;
+  try {
+    const res = await enCours("Restauration…", () => kind === "article"
+      ? api("article_update", { article_id: id, data: h.valeurs })
+      : api("update", { id, data: h.valeurs }));
+    applyResult(res);
+    if (kind === "article" && (res.propositions || []).some(p => p.mine && p.article_id === id)) alert("Votre correction est proposée à la promo : elle sera appliquée quand 3 étudiants (vous compris) l’auront approuvée.");
+    ouvrirHistorique(kind, id);
+  } catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Restauration impossible : " + e.message); }
+}
+if ($("hclose")) $("hclose").onclick = () => fermerHistorique();
+if ($("hmodal")) $("hmodal").addEventListener("mousedown", e => { if (e.target === $("hmodal")) fermerHistorique(); });
 
 /* ---------- Retours sur l'outil (bugs, idées) ---------- */
 
@@ -1334,8 +1555,8 @@ function artRow(g) {
 // Fiche de lecture : colonnes 2 à 8, visible quand son document est déplié.
 function cells(i) {
   const c = esc(i.couleur), k = cleArt(i);
-  const prog = i.statut === "En cours";
-  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="fiche ${artOuvert(k) ? "show" : ""} ${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
+  const prog = stInfo(i.statut).cl;
+  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="fiche ${artOuvert(k) ? "show" : ""} ${prog} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
    <div class="meta">Fiche de lecture${i.modifie_par ? ` · modifiée par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}` : ""} · saisie le ${esc(fmtD(i.ajoute))}</div>
    <div class="rowacts">${actionsHtml(i)}</div></td>
    <td class="c2 nowrapc"><div class="chipsc">${chips(i.mots)}</div></td><td class="c3 nowrapc"><div class="chipsc">${chips(i.kw)}</div></td>
@@ -1343,9 +1564,22 @@ function cells(i) {
    <td class="c7">${clampTxt(i.id, i.controverse)}</td><td class="c8">${clampTxt(i.id, i.libre)}</td><td class="c9"></td></tr>`;
 }
 
+// Couverture générée : couleur et pictogramme selon le type d'article (pas d'image externe).
+const COUVERTURES = { "Article scientifique": ["🔬", "#2563eb"], "Article de recherche": ["🧪", "#7c3aed"], "Revue de littérature": ["📚", "#0d9488"],
+  "Article professionnel": ["🩺", "#d97706"], "Rapport / recommandation HAS": ["📋", "#475569"], "Thèse / mémoire": ["🎓", "#be185d"], "Autre": ["📄", "#64748b"] };
+const couverture = i => COUVERTURES[i.type] || ["📄", "#64748b"];
+const initiales = n => esc(String(n || "?").trim().slice(0, 2));
+// Avancement d'une fiche : colonnes d'analyse remplies sur 7 (mots-clés, keywords, concepts, objet, opinion, controverse, libre).
+const COL_ANALYSE = ["mots", "kw", "concepts", "objet", "opinion", "controverse", "libre"];
+const avancement = i => Math.round(100 * COL_ANALYSE.filter(k => String(i[k] || "").trim()).length / COL_ANALYSE.length);
 function artCard(g) {
   const i = g[0], k = cleArt(i), open = artOuvert(k);
+  const [ico, col] = couverture(i);
+  const avatars = g.map(x => `<span class="avatar" style="--c:${esc(x.couleur)}" title="${esc(x.etudiant)} · ${esc(stInfo(x.statut).long)}">${initiales(x.etudiant)}</span>`).join("");
+  const jauges = g.filter(x => x.statut !== "À lire").map(x => `<span class="jauge" title="Fiche de ${esc(x.etudiant)} : ${avancement(x)} % renseignée"><i style="width:${avancement(x)}%;background:${esc(x.couleur)}"></i></span>`).join("");
   return `<article class="cardc art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}">
+   <div class="couv" style="--cv:${col}"><span class="couvico" aria-hidden="true">${ico}</span><span class="avatars">${avatars}</span></div>
+   ${jauges ? `<div class="jauges">${jauges}</div>` : ""}
    <div>${badgesArticle(g)}</div>
    <h3><span class="chev" aria-hidden="true"></span>${esc(i.titre)}</h3>${lienHtml(i)}
    <div class="meta">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
@@ -1357,10 +1591,10 @@ function artCard(g) {
 
 function cardHtml(i) {
   const c = esc(i.couleur);
-  const prog = i.statut === "En cours";
+  const prog = stInfo(i.statut).cl;
   const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b>${clampTxt(i.id, v)}</div>` : "";
-  return `<article class="cardc fiche ${prog ? "prog" : ""} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
-   <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span><span class="badge ${prog ? "prog" : ""}" style="--c:${c}">${prog ? "📖 En cours de lecture" : "✅ Terminée"}</span>${badgeGroupe(i)}${badgeNouveau(i)}</div>
+  return `<article class="cardc fiche ${prog} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
+   <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}</div>
    <h3><span class="chev" aria-hidden="true"></span>Fiche de lecture de ${esc(i.etudiant)}</h3>
    ${motsListe(i.mots).length || motsListe(i.kw).length ? `<div class="chipsc">${chips(i.mots)}${chips(i.kw)}</div>` : ""}
    ${sect("Concepts en sciences infirmières", i.concepts)}${sect("Objet / sujet principal", i.objet)}${sect("Opinion de l’auteur", i.opinion)}${sect("Controverse", i.controverse)}${sect("Libre", i.libre)}
@@ -1476,7 +1710,7 @@ function applyCols() {
 function renderFilters() {
   usersChanged = false;
   const types = [...new Set(TYPES.concat(items.map(i => i.type).filter(Boolean)))];
-  const tableau = F.view !== "cartes";
+  const tableau = F.view !== "cartes" && F.view !== "liste";
   const actifs = [["q", F.q ? `« ${F.q} »` : ""], ["who", F.who], ["grp", F.grp], ["st", F.st], ["type", F.type]].filter(x => x[1]);
   const nb = actifs.length + (F.kw ? 1 : 0);
   $("filters").innerHTML = `
@@ -1485,7 +1719,7 @@ function renderFilters() {
      <div><label for="q">Recherche</label><input id="q" placeholder="Titre, auteur, mot-clé, commentaire…" value="${esc(F.q)}"></div>
      <div><label for="who">Étudiant</label><select id="who"><option value="">Tous les étudiants</option>${students().map(s => `<option ${F.who === s.prenom ? "selected" : ""}>${esc(s.prenom)}</option>`).join("")}</select></div>
      ${groupesListe().length > 1 ? `<div><label for="grp">Groupe</label><select id="grp"><option value="">Tous les groupes</option>${groupesListe().map(n => `<option ${F.grp === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>` : ""}
-     <div><label for="st">Statut</label><select id="st"><option value="">Tous les statuts</option><option value="Terminée" ${F.st === "Terminée" ? "selected" : ""}>✅ Terminées</option><option value="En cours" ${F.st === "En cours" ? "selected" : ""}>📖 En cours</option></select></div>
+     <div><label for="st">Statut</label><select id="st"><option value="">Tous les statuts</option><option value="Terminée" ${F.st === "Terminée" ? "selected" : ""}>✅ Terminées</option><option value="En cours" ${F.st === "En cours" ? "selected" : ""}>📖 En cours</option><option value="À lire" ${F.st === "À lire" ? "selected" : ""}>📌 À lire</option></select></div>
      <div><label for="type">Type d’article</label><select id="type"><option value="">Tous les types</option>${types.map(t => `<option ${F.type === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
      <div><label for="sort">Tri</label><select id="sort"><option value="ajoute" ${F.sort === "ajoute" ? "selected" : ""}>Date de saisie</option><option value="etudiant" ${F.sort === "etudiant" ? "selected" : ""}>Étudiant</option><option value="titre" ${F.sort === "titre" ? "selected" : ""}>Titre</option><option value="parution" ${F.sort === "parution" ? "selected" : ""}>Date de parution</option></select></div>
      <button type="button" class="btn sm sec" id="reset">Réinitialiser les filtres</button>
@@ -1494,7 +1728,7 @@ function renderFilters() {
    ${F.kw ? `<button type="button" class="chip on" id="kwoff" title="Retirer le filtre">Mot-clé : ${esc(F.kwLabel)} ✕</button>` : ""}
    <span class="meta" id="nbres"></span>
    <span class="spacer"></span>
-   <span class="seg"><button type="button" class="btn sm sec ${tableau ? "on" : ""}" id="vt" aria-pressed="${tableau}">▦ Tableau</button><button type="button" class="btn sm sec ${tableau ? "" : "on"}" id="vc" aria-pressed="${!tableau}">🗂 Cartes</button></span>
+   <span class="seg"><button type="button" class="btn sm sec ${tableau ? "on" : ""}" id="vt" aria-pressed="${tableau}">▦ Tableau</button><button type="button" class="btn sm sec ${F.view === "cartes" ? "on" : ""}" id="vc" aria-pressed="${F.view === "cartes"}">🗂 Cartes</button><button type="button" class="btn sm sec ${F.view === "liste" ? "on" : ""}" id="vl" aria-pressed="${F.view === "liste"}">☰ Liste</button></span>
    ${tableau ? `<details class="colmenu"><summary class="btn sm sec">Colonnes ▾</summary><div class="colpop">${Object.keys(COLS).map(k => `<label><input type="checkbox" data-col="${k}" ${masquees.has(+k) ? "" : "checked"}> ${COLS[k]}</label>`).join("")}</div></details>` : ""}
    <button type="button" class="btn sm sec" id="expall"></button>
    <button type="button" class="btn sm sec" id="refresh" title="Actualisation automatique toutes les ${CFG.REFRESH_SECONDS || 0} s tant que la page est ouverte" aria-label="Actualiser">↻</button><span class="meta" id="sync"></span>
@@ -1508,6 +1742,7 @@ function renderFilters() {
   if ($("kwoff")) $("kwoff").onclick = () => filtrerMotCle(F.kwLabel);
   $("vt").onclick = () => changerVue("tableau");
   $("vc").onclick = () => changerVue("cartes");
+  $("vl").onclick = () => changerVue("liste");
   $("filters").querySelectorAll("[data-col]").forEach(cb => cb.onchange = () => {
     if (cb.checked) masquees.delete(+cb.dataset.col); else masquees.add(+cb.dataset.col);
     try { localStorage.setItem("lydia_cols", JSON.stringify([...masquees])); } catch (e) { /* ignoré */ }
@@ -1565,7 +1800,8 @@ function filtered() {
 
 function renderTable() {
   const l = filtered();
-  const cartes = F.view === "cartes";
+  const cartes = F.view === "cartes" || F.view === "liste";
+  $("cards").classList.toggle("compact", F.view === "liste");
   const vide = items.length ? "Aucune lecture ne correspond aux filtres."
     : canWrite() ? "Aucune lecture pour l’instant : utilisez « ＋ Ajouter une lecture »." : "Aucune lecture pour l’instant.";
   $("tablewrap").classList.toggle("hidden", cartes);
@@ -1584,7 +1820,7 @@ function renderTable() {
   if (nbres) nbres.textContent = (F.q || F.who || F.grp || F.st || F.type || F.kw) ? `${l.length} / ${items.length} fiches de lecture` : "";
   $("stats").innerHTML = students().map(s => {
     const n = items.filter(i => i.etudiant === s.prenom);
-    return `<span class="badge" style="--c:${esc(s.couleur)}">${esc(s.prenom)} : ${n.length} fiche${n.length > 1 ? "s" : ""} de lecture (${n.filter(i => i.statut === "En cours").length} en cours)</span>`;
+    return `<span class="badge" style="--c:${esc(s.couleur)}">${esc(s.prenom)} : ${n.length} fiche${n.length > 1 ? "s" : ""} de lecture (${n.filter(i => i.statut === "En cours").length} en cours${n.some(i => i.statut === "À lire") ? ` · ${n.filter(i => i.statut === "À lire").length} à lire` : ""})</span>`;
   }).join("");
 }
 
@@ -1606,7 +1842,7 @@ function toggleOpen(id, host) {
 function toggleArt(k) {
   const ouvrir = !artOuvert(k);
   if (ouvrir) { openArts.add(k); fermesArts.delete(k); } else { openArts.delete(k); fermesArts.add(k); }
-  const racine = F.view === "cartes" ? $("cards") : $("rows");
+  const racine = F.view === "cartes" || F.view === "liste" ? $("cards") : $("rows");
   racine.querySelectorAll("tr.art, .cardc.art").forEach(h => {
     if (h.dataset.art !== k) return;
     h.classList.toggle("open", ouvrir); h.setAttribute("aria-expanded", String(ouvrir));
@@ -1639,6 +1875,8 @@ const onAction = e => {
   else if (d.fo) ouvrirFichier(d.fo);
   else if (d.an) startAnalyse(d.an);
   else if (d.ea) startCorrection(d.ea);
+  else if (d.alire) mettreALire(d.alire);
+  else if (d.hist) { const [k, id] = d.hist.split(":"); ouvrirHistorique(k, id); }
   else if (d.pv) voterProp(d.pv, d.pvo === "1");
   else if (d.pc) annulerProp(d.pc);
   else if (d.apa) copierApa(d.apa);
@@ -1755,7 +1993,7 @@ function renderSynth() {
   arts.forEach(i => { const a = (/^(\d{4})/.exec(i.parution || "") || [])[1]; if (a) annees.set(a, (annees.get(a) || 0) + 1); });
   const parAnnee = [...annees.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12);
   const kpi = (n, t) => `<div class="kpi"><b>${n}</b>${t}</div>`;
-  $("synthbox").innerHTML = `<div class="kpis">${kpi(items.length, "lectures")}${kpi(fin, "terminées")}${kpi(items.length - fin, "en cours")}${kpi(comments.length, "commentaires")}</div>
+  $("synthbox").innerHTML = `<div class="kpis">${kpi(items.length, "lectures")}${kpi(fin, "terminées")}${kpi(items.filter(i => i.statut === "En cours").length, "en cours")}${items.some(i => i.statut === "À lire") ? kpi(items.filter(i => i.statut === "À lire").length, "à lire") : ""}${kpi(comments.length, "commentaires")}</div>
    <div class="synth">
    ${barres("Lectures par étudiant", students().map(s => [s.prenom, items.filter(i => i.etudiant === s.prenom).length, s.couleur]), "var(--pri)")}
    ${barres("Types d’articles", compter(arts.map(i => i.type), 8), "var(--pri)")}
@@ -1889,7 +2127,7 @@ $("adminbox").onclick = async e => {
 function exportXlsx() {
   if (typeof XLSX === "undefined") { alert("Module Excel non chargé."); return; }
   const head = ["Groupe", "Étudiant", "Statut", "Titre", "Date de parution", "Auteur", "Qualité de l’auteur", "Nationalité", "Type d’article", "Mots-clés", "Keywords (EN)", "Concepts en sciences infirmières", "Objet / sujet principal", "Opinion de l’auteur", "Controverse", "Libre", "Référence APA", "Date de saisie", "Lien"];
-  const rows = filtered().map(i => [i.groupe, i.etudiant, i.statut === "En cours" ? "En cours de lecture" : "Terminée", i.titre, fmtD(i.parution), i.auteur, i.qualite, i.nation, i.type, i.mots, i.kw, i.concepts, i.objet, i.opinion, i.controverse, i.libre, LydiaApa.apa(i).text, fmtD(i.ajoute), urlSure(i.lien)].map(v => v || ""));
+  const rows = filtered().map(i => [i.groupe, i.etudiant, stInfo(i.statut).long, i.titre, fmtD(i.parution), i.auteur, i.qualite, i.nation, i.type, i.mots, i.kw, i.concepts, i.objet, i.opinion, i.controverse, i.libre, LydiaApa.apa(i).text, fmtD(i.ajoute), urlSure(i.lien)].map(v => v || ""));
   const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
   ws["!cols"] = [18, 12, 16, 40, 14, 24, 20, 14, 22, 28, 28, 36, 36, 36, 30, 24, 50, 14, 40].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
@@ -1903,7 +2141,7 @@ function exportPdf() {
   doc.setFontSize(13); doc.text("Lectures du mémoire - IFSI", 10, 10);
   doc.setFontSize(8); doc.text("Export du " + fmtD(new Date().toISOString()), 10, 15);
   const l = filtered();
-  const body = l.map(i => [i.etudiant + "\n" + (i.statut === "En cours" ? "(en cours)" : "(terminée)"),
+  const body = l.map(i => [i.etudiant + "\n" + ("(" + stInfo(i.statut).lib.toLowerCase() + ")"),
     (i.titre || "") + "\nParution : " + (fmtD(i.parution) || "-") + "\nAuteur : " + (i.auteur || "-") + " (" + (i.qualite || "-") + ")\nNationalité : " + (i.nation || "-") + "\nType : " + (i.type || "-") + "\nSaisi le " + fmtD(i.ajoute) + (urlSure(i.lien) ? "\nLien : " + urlSure(i.lien) : ""),
     i.mots || "", i.kw || "", i.concepts || "", i.objet || "", i.opinion || "", i.controverse || "", i.libre || "", LydiaApa.apa(i).text]);
   doc.autoTable({
@@ -2086,9 +2324,9 @@ function renderCtx() {
   $("sub").textContent = !g ? "Outil partagé de suivi des lectures de mémoire"
     : ctx.vue === "promo" ? `${g.etablissement} · ${g.promo} — fiches partagées par tous les groupes`
       : `${g.etablissement} · ${g.promo} · ${g.nom} — ${g.membres.filter(m => m.role === "etudiant").map(m => m.prenom).join(", ") || "aucun étudiant"}`;
-  if (!g) { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
+  if (!g || tab === "home" || tab === "dash") { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
   bar.classList.remove("hidden");
-  const avecVue = !["mine", "suivi", "admin"].includes(tab);   // groupe / promo n'a de sens que pour tableau, commentaires, biblio, synthèse
+  const avecVue = !["mine", "suivi", "admin", "home", "dash"].includes(tab);   // groupe / promo n'a de sens que pour tableau, commentaires, biblio, synthèse
   const sig = JSON.stringify([avecVue, ctx.gid, ctx.vue, groupes.map(x => [x.id, x.nom, x.promo, x.etablissement, nonLusDe(x, "groupe")]), nonLusDe(g, "promo"), votesAFaire(g), votes.filter(v => v.groupe_id === g.id).length]);
   if (sig === ctxSig && bar.innerHTML) return;
   ctxSig = sig;

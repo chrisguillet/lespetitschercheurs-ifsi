@@ -43,7 +43,7 @@ const FEUILLE_JALONS = 'Jalons';
 
 const COLONNES = ['id', 'owner', 'statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'ajoute', 'modifie_le', 'modifie_par',
-  'source', 'volume', 'numero', 'pages', 'doi', 'lien', 'groupe_id', 'portee', 'article_id'];
+  'source', 'volume', 'numero', 'pages', 'doi', 'lien', 'groupe_id', 'portee', 'article_id', 'priorite'];
 // Un article (partie objective, mise en commun dans la promo) porte une ou plusieurs analyses (feuille Lectures,
 // une par étudiant). Les colonnes objectives de Lectures ne servent plus qu'à la reprise de l'existant.
 const COL_ARTICLES = ['id', 'cree_par', 'groupe_id', 'ajoute', 'modifie_le', 'modifie_par',
@@ -62,7 +62,7 @@ const COL_REUNIONS = ['id', 'groupe_id', 'date', 'titre', 'participants', 'vu', 
 const COL_JALONS = ['id', 'groupe_id', 'titre', 'echeance', 'statut', 'note', 'cree_par', 'cree_le', 'modifie_le', 'modifie_par', 'debut', 'alerte_jours'];
 const STATUTS_JALON = ['a_faire', 'en_cours', 'fait'];
 const OBJECTIFS = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type', 'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
-const ANALYSES = ['statut', 'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre'];
+const ANALYSES = ['statut', 'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'priorite'];
 // promo_demandee / role_demande : ce que la personne a indiqué à sa première connexion (informatif pour qui valide).
 const COL_UTILISATEURS = ['email', 'prenom', 'role', 'couleur', 'statut', 'demande_le', 'derniere_connexion', 'promo_demandee', 'role_demande'];
 // portee : « groupe » ou « promo » ; groupe_id : groupe de l'auteur au moment du commentaire.
@@ -93,7 +93,7 @@ const COL_LUS = ['id', 'commentaires'];
 const COL_HISTORIQUE = ['date', 'id', 'modifie_par', 'proprietaire', 'avant'];
 const CHAMPS = ['statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type',
   'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre',
-  'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
+  'source', 'volume', 'numero', 'pages', 'doi', 'lien', 'priorite'];
 // Une analyse terminée est partagée avec toute la promo ; en cours, elle reste dans le groupe de son auteur.
 function porteeDe_(statut) { return statut === 'Terminée' ? 'promo' : 'groupe'; }
 const NOM_MAX = 60;
@@ -102,7 +102,9 @@ const VOTE_BLOCAGE_MS = 14 * 24 * 3600 * 1000;   // et une proposition de retrai
 const OBLIGATOIRES_TERMINEE = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type'];
 const LIBELLES = { titre: 'titre', parution: 'date de parution', auteur: 'auteur', qualite: 'qualité',
   nation: 'nationalité', type: 'type d’article' };
-const STATUTS = ['Terminée', 'En cours'];
+// « À lire » : file d'attente personnelle (visible du groupe, ce qui sert de réservation : on voit qui prévoit de lire quoi).
+const STATUTS = ['Terminée', 'En cours', 'À lire'];
+const PRIORITES = ['haute', 'normale', 'basse'];
 const TYPES = ['Article scientifique', 'Article de recherche', 'Revue de littérature', 'Article professionnel',
   'Rapport / recommandation HAS', 'Thèse / mémoire', 'Autre'];
 const LONGUEUR_MAX = 2500;
@@ -358,6 +360,8 @@ function doPost(e) {
         const id = muter_(function () { return ajouter_(user, req.data); });
         return json_(Object.assign({ ok: true, id: id }, donnees_(user)));
       }
+      case 'history_get':
+        return json_({ ok: true, historique: historiqueFiche_(user, req.kind, req.id) });
       case 'update':
         muter_(function () { modifier_(user, req.id, req.data); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
@@ -940,7 +944,10 @@ function ajouter_(user, data) {
       })[0];
       if (doublon) {
         const e = err_('duplicate', 'Cet article existe déjà dans la promo : ajoutez-y plutôt votre fiche de lecture.');
-        e.extra = { article_id: doublon.id, titre: doublon.titre };
+        const parEmail = {};
+        listerUtilisateurs_().forEach(function (u) { parEmail[u.email] = u.prenom; });
+        e.extra = { article_id: doublon.id, titre: doublon.titre,
+          lecteurs: analysesVisibles_(c, doublon.id).map(function (r) { return { prenom: parEmail[r.owner] || '', statut: r.statut }; }) };
         throw e;
       }
     }
@@ -1010,6 +1017,7 @@ function modifier_(user, id, data) {
     validerArticleTerminees_(r.article_id, voulu, r.id);
     proposerArticle_(user, art, voulu, maintenant);
   }
+  if (ANALYSES.some(function (k) { return String(r[k] || '') !== d[k]; })) historiser_(r, user, maintenant);
   const ligne = COLONNES.map(function (k) {
     if (ANALYSES.indexOf(k) >= 0) return d[k];
     if (k === 'portee') return porteeDe_(d.statut);
@@ -1173,6 +1181,42 @@ function historiser_(ancienne, user, date) {
   CHAMPS.forEach(function (c) { avant[c] = ancienne[c]; });
   const h = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(FEUILLE_HISTORIQUE);
   h.appendRow([date, ancienne.id, user.prenom, proprio ? proprio.prenom : '', JSON.stringify(avant).slice(0, 49000)]);
+}
+
+/* ---------- Historique des modifications (article = partie commune, lecture = analyse de son auteur) ---------- */
+
+const HISTORIQUE_MAX = 30;
+
+// Versions successives d'un article ou d'une analyse, de la plus récente à la plus ancienne. Chaque entrée dit qui a modifié,
+// quand, et ce qui a changé (avant → après) ; `valeurs` est la version d'avant, que le client renvoie pour la restaurer
+// par les mêmes actions (et donc les mêmes règles : vote pour un article, auteur seul pour une analyse).
+function historiqueFiche_(user, kind, id) {
+  id = String(id || '');
+  let champs, actuel;
+  const c = contexte_(user);
+  if (kind === 'article') {
+    const art = articleVisible_(user, id);
+    champs = OBJECTIFS; actuel = art;
+  } else if (kind === 'lecture') {
+    const r = trouver_(feuilleLectures_(), id);
+    if (!lectureVisible_(c, r)) throw err_('not_found', 'Lecture introuvable');
+    champs = ANALYSES; actuel = r;
+  } else throw err_('invalid', 'Type inconnu');
+  const rows = table_(FEUILLE_HISTORIQUE, COL_HISTORIQUE).filter(function (h) { return h.id === id; })
+    .sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+  const etats = rows.map(function (h) { try { return JSON.parse(h.avant || '{}') || {}; } catch (e) { return {}; } });
+  const sortie = [];
+  rows.forEach(function (h, i) {
+    const apres = i + 1 < rows.length ? etats[i + 1] : actuel;
+    const diff = [], valeurs = {};
+    champs.forEach(function (k) {
+      const av = String(etats[i][k] === undefined ? '' : etats[i][k]), ap = String(apres[k] === undefined ? '' : apres[k]);
+      valeurs[k] = av;
+      if (av !== ap) diff.push({ k: k, avant: av, apres: ap });
+    });
+    if (diff.length) sortie.push({ date: h.date, par: h.modifie_par, champs: diff, valeurs: valeurs });
+  });
+  return sortie.reverse().slice(0, HISTORIQUE_MAX);
 }
 
 /* ---------- Commentaires (étudiants et formateurs) ---------- */
@@ -1989,12 +2033,15 @@ function nettoyer_(data) {
     if (v.length > LONGUEUR_MAX) throw err_('invalid', 'Champ trop long (' + LONGUEUR_MAX + ' caractères maximum)');
     d[c] = v;
   });
+  // La priorité n'a de sens que dans la file d'attente ; « normale » par défaut.
+  d.priorite = d.statut === 'À lire' ? (d.priorite || 'normale') : '';
   return d;
 }
 
 function valider_(d) {
   if (STATUTS.indexOf(d.statut) < 0) throw err_('invalid', 'Statut invalide');
-  const requis = d.statut === 'En cours' ? ['titre'] : OBLIGATOIRES_TERMINEE;
+  if (d.priorite && PRIORITES.indexOf(d.priorite) < 0) throw err_('invalid', 'Priorité invalide');
+  const requis = d.statut === 'Terminée' ? OBLIGATOIRES_TERMINEE : ['titre'];
   const manquants = requis.filter(function (k) { return !d[k]; });
   if (manquants.length) {
     throw err_('invalid', 'À compléter : ' + manquants.map(function (k) { return LIBELLES[k]; }).join(', '));

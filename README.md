@@ -227,6 +227,7 @@ Lien discret « 💡 Un retour sur l'outil ? » en bas de page, pour **toute per
 
 ## Onglets et filtres selon la personne
 
+- **Accueil** (page d'arrivée, pour tous) : résumé du jour — jalons en retard ou proches, votes à donner, commentaires non lus, mes lectures, nouveautés de la semaine, demandes d'accès pour l'administrateur. **Tableau de bord** : formateurs et administrateur seulement (voir plus bas).
 - **Mes lectures** : étudiants seulement. **Suivi de projet** : toute personne ayant un groupe. **Administration** : l'administrateur, et les étudiants qui ont un groupe (jamais un formateur).
 - Le choix **Mon groupe / Toute la promo** n'apparaît que sur le tableau commun, les commentaires, la bibliographie et la synthèse ; « Mes lectures », « Suivi de projet » et « Administration » concernent toujours le groupe.
 - La recherche permet de filtrer par **groupe** quand plusieurs groupes sont visibles, et chaque document affiche, pour chaque personne qui l'a lu, son groupe.
@@ -245,3 +246,25 @@ Un formateur est lié à sa **promo** (inscrite à la validation de son accès) 
 Dans les deux cas, c'est un **vote des étudiants du groupe** (majorité simple, 7 jours, comme les autres votes) ; une fois adopté, le formateur est rattaché sans autre étape. Une demande refusée ne peut pas être refaite tout de suite. La demande peut être annulée.
 L'administrateur garde le rattachement et le retrait directs. Il n'y a pas de bouton « quitter le groupe » : c'est l'administrateur qui retire.
 Après mise à jour du script, lancer `setup` une fois : il inscrit à leur promo les formateurs déjà validés.
+
+## File d'attente « À lire » et réservation
+
+Une lecture a trois statuts : **✅ Terminée**, **📖 En cours** et **📌 À lire**. « À lire » est une file d'attente personnelle : seul le titre est exigé, avec une **priorité** (🔥 haute, normale, 💤 basse). Elle est visible du **groupe** (jamais de la promo tant qu'elle n'est pas terminée) : c'est la **réservation**, on voit qui prévoit de lire quoi.
+- Dans « Mes lectures », une section « File d'attente » triée par priorité : priorité modifiable en place, **▶ Commencer** (passe en cours), puis **✅ Marquer terminée**.
+- Sur un document déjà présent : bouton **📌 À lire** (le met dans sa file sans formulaire).
+- Si on saisit un document déjà connu, l'outil indique qui l'a déjà (et à quel stade).
+- Colonne `priorite` ajoutée à la feuille `Lectures` : relancer `setup` une fois.
+
+## Historique des modifications et retour en arrière
+
+Chaque modification de la **partie commune d'un article** et de **sa propre fiche de lecture** est journalisée (feuille `Historique`). Bouton **🕘 Historique** sur l'article et **🕘** sur sa fiche : qui, quand, et ce qui a changé (avant → après). **↩ Revenir à la version d'avant** repasse par les mêmes règles que la modification elle-même : pour une fiche, son auteur seulement ; pour un article, correction directe (administrateur, créateur isolé) ou proposition soumise au vote de la promo. Une restauration est elle-même journalisée, donc réversible. Les 30 dernières versions sont affichées.
+
+## Tableau de bord (formateurs et administrateur)
+
+Une carte par groupe (celle des groupes rattachés pour un formateur, tous pour l'administrateur) : étudiants, fiches terminées / en cours / à lire, avancement des jalons, jalons en retard, prochain jalon, **dernier commentaire**, dernière réunion. Bandeau rouge (jalon en retard) ou orangé (aucune activité depuis 14 jours), groupes en retard en premier. Boutons vers le suivi de projet et les lectures du groupe. Calculé sur les données déjà visibles de la personne : aucune information supplémentaire n'est exposée.
+
+## Confort et esthétique
+
+- **Vues** du tableau commun : Tableau, **Cartes** (couverture colorée selon le type d'article, avatars des lecteurs, jauge d'avancement de chaque fiche) et **☰ Liste** compacte (vue par défaut sur téléphone ; un clic déplie le document).
+- Petite animation de confettis quand une lecture passe à « Terminée » (désactivée si le système demande de réduire les animations).
+- Sur téléphone : onglets défilables, pas de vue tableau.
