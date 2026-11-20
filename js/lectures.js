@@ -130,7 +130,7 @@ $("drawerclose").onclick = () => closeDrawer();
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const ouvert = document.querySelector("details.colmenu[open]");
-  if (ouvert) ouvert.removeAttribute("open"); else if (jeuOuvert) fermerJeu(); else if (N.ouvert) fermerNotes(); else if (HI.ouvert) fermerHistorique(); else if (FB.ouvert) fermerFeedback(); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
+  if (ouvert) ouvert.removeAttribute("open"); else if (jeuOuvert) fermerJeu(); else if ($("jeuchoix") && !$("jeuchoix").classList.contains("hidden")) fermerChoixJeu(); else if (N.ouvert) fermerNotes(); else if (HI.ouvert) fermerHistorique(); else if (FB.ouvert) fermerFeedback(); else if (cmId) fermerDiscussion(); else if (GM.ouvert) fermerGroupe(); else closeDrawer();
 });
 $("addbtn").onclick = () => { editing = null; artCible = ""; modeArticle = false; forceStatut = ""; openForm(); };
 

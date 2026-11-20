@@ -32,10 +32,10 @@ function renderMe() {
       <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
       <div class="acctgrp"><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button><button type="button" class="acctitem" id="mydatabtn" title="Télécharger tout ce que l’application garde sur vous (droit d’accès)">📦 Télécharger mes données</button></div>
       <div class="acctgrp"><div class="acctlabel">Affichage</div><button type="button" class="acctitem" id="themebtn"></button></div>
-      ${window.LydiaJeux ? `<div class="acctgrp"><div class="acctlabel">🎮 Pause ludique</div>${LydiaJeux.liste.filter(j => !j.admin || isSuper()).map(j => `<button type="button" class="acctitem" data-jeu="${esc(j.id)}">${esc(j.titre)}</button>`).join("")}</div>` : ""}
+      ${window.LydiaJeux ? `<div class="acctgrp"><button type="button" class="acctitem" id="jeuxbtn">🎮 Pause ludique</button></div>` : ""}
       <div class="acctgrp"><button type="button" class="acctitem danger" id="logout">⎋ Se déconnecter</button></div>
     </div></details>`;
-  $("me").querySelectorAll("[data-jeu]").forEach(b => b.onclick = () => { b.closest("details").removeAttribute("open"); ouvrirJeu(b.dataset.jeu); });
+  if ($("jeuxbtn")) $("jeuxbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirChoixJeu(); };
   $("logout").onclick = logout;
   $("mydatabtn").onclick = async () => {
     $("me").querySelector("details").removeAttribute("open");
@@ -49,8 +49,25 @@ function renderMe() {
   majLibelleTheme();
 }
 
-// Pause ludique (toute personne connectée) : un jeu dans une fenêtre, arrêté à la fermeture.
+// Pause ludique (toute personne connectée) : une fenêtre de choix (miniature, nom et description de chaque jeu), puis le jeu dans sa propre fenêtre, arrêté à la fermeture.
 let jeuOuvert = false;
+function ouvrirChoixJeu() {
+  if (!me || !window.LydiaJeux || !$("jeuchoix")) return;
+  const liste = LydiaJeux.liste.filter(j => !j.admin || isSuper());
+  $("jeuchoixbody").innerHTML = liste.map(j => {
+    const [icone, ...nom] = j.titre.split(" ");
+    return `<button type="button" class="jeucarte" data-jeu="${esc(j.id)}"><span class="jeuvign"><canvas width="640" height="260" aria-hidden="true"></canvas><span class="jeuicone" aria-hidden="true">${esc(icone)}</span></span><b>${esc(nom.join(" "))}</b><span class="meta">${esc(j.desc)}</span></button>`;
+  }).join("");
+  $("jeuchoixbody").querySelectorAll(".jeucarte").forEach(b => {
+    if (LydiaJeux.miniature(b.dataset.jeu, b.querySelector("canvas"))) b.querySelector(".jeuvign").classList.add("avecvue");
+    b.onclick = () => { fermerChoixJeu(); ouvrirJeu(b.dataset.jeu); };
+  });
+  $("jeuchoix").classList.remove("hidden"); document.body.classList.add("modalopen");
+}
+function fermerChoixJeu() { $("jeuchoix")?.classList.add("hidden"); if (!jeuOuvert) document.body.classList.remove("modalopen"); }
+$("jeuchoixclose")?.addEventListener("click", fermerChoixJeu);
+$("jeuchoix")?.addEventListener("click", e => { if (e.target === $("jeuchoix")) fermerChoixJeu(); });
+$("jeuretour")?.addEventListener("click", () => { fermerJeu(); ouvrirChoixJeu(); });
 function ouvrirJeu(id) {
   if (!me || !window.LydiaJeux || !$("jeumodal")) return;
   const j = LydiaJeux.liste.find(x => x.id === id); if (!j || (j.admin && !isSuper())) return;

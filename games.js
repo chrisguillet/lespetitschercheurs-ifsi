@@ -98,7 +98,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   }
 
   const course = {
-    nom: "course-m", unite: " m", titre: "🏃 La course aux transmissions",
+    nom: "course-m", unite: " m", titre: "🏃 La course aux transmissions", desc: "Sautez et baissez-vous pour éviter les obstacles du service.",
     aide: "Espace ou ↑ : sauter les chariots, flaques de sang et familles · ↓ (maintenu) : se baisser sous l’enseigne suspendue. Sur écran tactile : toucher en haut pour sauter, en bas pour se baisser.",
     fin: "Convoqué·e par la cadre de santé 📋",
     init() { return { y: SOL, vy: 0, bas: false, obs: [], dist: 0, vitesse: 280, prochain: 300, score: 0, mort: false }; },
@@ -212,7 +212,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   }
 
   const seringue = {
-    nom: "seringue", titre: "💉 Flappy Seringue",
+    nom: "seringue", titre: "💉 Flappy Seringue", desc: "Battez des ailes entre les poches et les potences à perfusion.",
     aide: "Espace, ↑ ou toucher : battre. Passez entre les poches et les potences à perfusion. Attrapez les gouttes qui tombent des poches : +2 points.",
     fin: "Aïe : piqûre ratée 🩹",
     init() { return { y: H / 2, vy: 0, tuyaux: [], dx: 0, score: 0, mort: false, piston: 0, part: [], textes: [], rec: record("seringue") }; },
@@ -336,7 +336,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   const humeur = v => v > 66 ? "🙂" : v > 33 ? "😟" : "😣";
 
   const urgences = {
-    nom: "urgences", titre: "🏥 Urgences", h: HU, unite: " soignés", cle: s => "urgences" + s.lits, niveaux: [3, 6, 9], niveau: niveauLits,
+    nom: "urgences", titre: "🏥 Urgences", desc: "Soignez les patients d’un service de 3, 6 ou 9 lits.", h: HU, unite: " soignés", cle: s => "urgences" + s.lits, niveaux: [3, 6, 9], niveau: niveauLits,
     aide: "Cliquez un patient pour savoir ce dont il a besoin, puis cliquez le bon soin en bas (ou touches 1 à 8). Les cas critiques passent au bloc (un seul patient à la fois) : bouton « Envoyer au bloc » (ou touche B) quand c'est leur tour. Trois décès ou départs et c'est fini.",
     fin: "Service débordé 🚑",
     init() { const lits = niveauLits(); const s0 = { lits, lit: new Array(lits).fill(null), attente: [], bloc: null, sel: null, t: 0, prochain: 1, score: 0, morts: 0, mort: false, textes: [], msg: null, rec: record("urgences" + lits) };
@@ -502,9 +502,11 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   }
 
   const couloir = {
-    nom: "couloir", titre: "🚪 Couloir", h: HC, unite: " pts", fin: "Service débordé 🚑", curseur: "crosshair",
+    nom: "couloir", titre: "🚪 Couloir", desc: "Renvoyez les patients en chambre, donnez les dossiers, appelez la sécu.", h: HC, unite: " pts", fin: "Service débordé 🚑", curseur: "crosshair",
     aide: "Cliquez sur un patient qui sort de sa chambre pour lui envoyer un calmant et le renvoyer se coucher. Un médecin passe : bouton « Dossier » (touche D) quand il est assez près, sans lui tirer dessus. Un patient agité fonce sur vous : bouton « Sécu » (touche S) pour le faire plaquer. Chaque fugue ou agité qui vous touche coûte un cœur et des points.",
     init() { return { t: 0, score: 0, vies: VIES_C, mort: false, ents: [], tirs: [], textes: [], cdTir: 0, cdSecu: 0, cdDossier: 0, secousse: 0, mx: CX, my: 150, prochainP: 0.6, prochainD: 20, prochainA: 32, rec: record("couloir") }; },
+    // Scène de démonstration pour la miniature du choix de jeu.
+    demo(s) { s.score = 30; nouveauPatientC(s, 0.6, 1).lx = 0.35; nouveauPatientC(s, 0.85, -1).lx = -0.45; nouveauMedecin(s).z = 0.5; s.ents.forEach(e => { e.t = 0; }); },
     action() { /* se joue à la souris / au doigt */ },
     bas() { /* inutilisé */ },
     bouge(s, x, y) { s.mx = x; s.my = y; },
@@ -697,6 +699,18 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     return true;
   }
 
+  // Dessine l'écran de départ d'un jeu dans un petit canvas (choix du jeu) ; sans canvas disponible, la vignette garde son emoji.
+  function miniature(id, cv) {
+    const jeu = JEUX[id]; if (!jeu || !cv || !cv.getContext) return false;
+    try {
+      const ctx = cv.getContext("2d"); if (!ctx) return false;
+      const h = jeu.h || H, s = jeu.init(); if (jeu.demo) jeu.demo(s);
+      cv.width = W; cv.height = h;
+      const c = couleurs(); ctx.fillStyle = c.fond; ctx.fillRect(0, 0, W, h); jeu.draw(ctx, s, c);
+      return true;
+    } catch (e) { return false; }
+  }
+
   function fermer() {
     if (!actif) return;
     if (actif.raf && root.cancelAnimationFrame) root.cancelAnimationFrame(actif.raf);
@@ -705,7 +719,8 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   }
 
   root.LydiaJeux = {
-    liste: Object.keys(JEUX).map(k => ({ id: k, titre: JEUX[k].titre, admin: !!JEUX[k].admin })),
+    liste: Object.keys(JEUX).map(k => ({ id: k, titre: JEUX[k].titre, desc: JEUX[k].desc || "", admin: !!JEUX[k].admin })),
+    miniature,
     ouvrir, fermer, enCours: () => !!actif, record, avatar: () => avatar,
     _test: { JEUX, SOINS, chevauche, appuyer, etat: () => actif && actif.etat, finir: () => { actif.etat = "fini"; actif.rej.style.display = "block"; } }
   };
