@@ -698,12 +698,16 @@ function renderForm() {
   const art = artCible || modeArticle ? itemsAll.find(i => i.article_id === (artCible || modeArticle)) : null;
   const base = editing ? d : art || {};
   const gc = groupeCourant();
-  const objDesact = k => artCible && String(art && art[k] || "").trim() ? "disabled" : "";
+  // La partie commune de l'article est figée dans une fiche (ajout ou modification) ; seuls les champs encore vides restent saisissables.
+  // Pour la corriger : bouton « Corriger l’article » (correction directe ou proposition soumise à la promo).
+  const objDesact = k => (artCible && String(art && art[k] || "").trim()) || (editing && String(d[k] || "").trim()) ? "disabled" : "";
   $("ftitle").textContent = modeArticle ? "Corriger l’article" : artCible ? "Ajouter ma fiche de lecture" : editing ? "Modifier ma fiche de lecture" : "Ajouter une lecture";
   $("fnote").textContent = modeArticle
     ? "La partie objective (identification, références) est commune à toute la promo : votre correction sera proposée, puis appliquée quand 3 étudiants de la promo l’auront approuvée (vous comptez pour un)."
     : artCible
       ? "Cet article existe déjà dans la base de la promo : sa partie objective est commune. Ajoutez votre propre fiche de lecture (colonnes 2 à 8) ; elle sera partagée avec la promo dès qu’elle sera « Terminée »."
+      : editing && !forceStatut
+      ? "La partie commune de l’article (première partie) est figée ici : pour la corriger, utilisez le bouton « Corriger l’article » (elle peut alors être proposée à la promo). Les champs encore vides restent modifiables."
       : forceStatut
       ? "Pour passer cette lecture à « Terminée », complétez d’abord les champs obligatoires de la première partie."
       : "Choisissez « 📌 À lire » pour la file d’attente, ou « 📖 En cours de lecture » si vous n’avez pas fini : seul le titre est alors obligatoire. Pour une lecture « ✅ Terminée », toute la première partie est obligatoire.";

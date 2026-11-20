@@ -116,17 +116,29 @@ const DELAI_CONNEXION_MS = 10 * 60 * 1000;
 const COULEUR_ADMIN = '#475569';
 const CACHE_JETON_MAX_S = 3000;
 
-// Lectures de feuilles mémorisées pour la durée d'une requête (désactivées pendant une écriture).
+// Lectures de feuilles mémorisées pour la durée d'une requête. Pendant une écriture, tout est relu à chaque fois (valeur sûre)
+// sauf si l'action déclare les feuilles qu'elle peut modifier (`ecrits`) : seules celles-là sont alors relues, les autres restent
+// mémorisées, ce qui évite des dizaines de lectures du Sheet (le gros du temps d'une écriture).
 let memo_ = {};
 let memoOn_ = true;
+let ecrits_ = null;
+const FEUILLES_CONTEXTE = ['Utilisateurs', 'Groupes', 'Membres', 'Inscriptions', 'Promos', 'Etablissements'];
+function frais_(cle) {
+  if (ecrits_ === null) return false;
+  if (cle === 'u') return ecrits_.indexOf('Utilisateurs') >= 0;
+  if (cle.indexOf('ctx:') === 0) return FEUILLES_CONTEXTE.some(function (f) { return ecrits_.indexOf(f) >= 0; });
+  return cle.indexOf('t:') === 0 && ecrits_.indexOf(cle.slice(2)) >= 0;
+}
 function lu_(cle, fn) {
-  if (!memoOn_) return fn();
+  if (!memoOn_ || frais_(cle)) return fn();
   if (!(cle in memo_)) memo_[cle] = fn();
   return memo_[cle];
 }
-function muter_(fn) {
-  memoOn_ = false;
-  try { return avecVerrou_(fn); } finally { memo_ = {}; memoOn_ = true; viderCacheTables_(); }
+function muter_(fn, ecrits) {
+  ecrits_ = ecrits || null;
+  memoOn_ = !!ecrits;
+  // Les feuilles non modifiées restent mémorisées pour la lecture qui suit l'écriture (même requête) : rien n'a pu changer pour elles.
+  try { return avecVerrou_(fn); } finally { if (!ecrits) memo_ = {}; memoOn_ = true; ecrits_ = null; viderCacheTables_(); }
 }
 const EMAIL_VALIDE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -357,16 +369,16 @@ function doPost(e) {
       case 'list':
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'add': {
-        const id = muter_(function () { return ajouter_(user, req.data); });
+        const id = muter_(function () { return ajouter_(user, req.data); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
         return json_(Object.assign({ ok: true, id: id }, donnees_(user)));
       }
       case 'history_get':
         return json_({ ok: true, historique: historiqueFiche_(user, req.kind, req.id) });
       case 'update':
-        muter_(function () { modifier_(user, req.id, req.data); });
+        muter_(function () { modifier_(user, req.id, req.data); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'article_update':
-        muter_(function () { modifierArticle_(user, req.article_id, req.data); });
+        muter_(function () { modifierArticle_(user, req.article_id, req.data); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'file_add':
         muter_(function () { ajouterFichier_(user, req.article_id, req.nom, req.data); });
@@ -394,29 +406,29 @@ function doPost(e) {
         muter_(function () { supprimerSuivi_(user, 'jalon', req.id); });
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'article_vote':
-        muter_(function () { voterArticle_(user, req.id, req.vote === true); });
+        muter_(function () { voterArticle_(user, req.id, req.vote === true); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'article_cancel':
-        muter_(function () { annulerProposition_(user, req.id); });
+        muter_(function () { annulerProposition_(user, req.id); }, ['Lectures', 'Articles', 'Historique', 'Propositions']);
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'delete':
-        muter_(function () { supprimer_(user, req.id); });
+        muter_(function () { supprimer_(user, req.id); }, ['Lectures', 'Articles', 'Commentaires', 'Fichiers', 'Lus', 'Propositions', 'Historique']);
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'comment_add': {
-        const id = muter_(function () { return commenter_(user, req.lecture_id, req.texte, req.portee); });
+        const id = muter_(function () { return commenter_(user, req.lecture_id, req.texte, req.portee); }, ['Commentaires', 'Lus']);
         return json_(Object.assign({ ok: true, id: id }, donnees_(user)));
       }
       case 'comment_update':
-        muter_(function () { modifierCommentaire_(user, req.id, req.texte); });
+        muter_(function () { modifierCommentaire_(user, req.id, req.texte); }, ['Commentaires', 'Lus']);
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'comment_delete':
-        muter_(function () { supprimerCommentaire_(user, req.id); });
+        muter_(function () { supprimerCommentaire_(user, req.id); }, ['Commentaires', 'Lus']);
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'comments_read':
-        muter_(function () { marquerLus_(user, req.ids, req.tous === true); });
+        muter_(function () { marquerLus_(user, req.ids, req.tous === true); }, ['Commentaires', 'Lus']);
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'comments_unread':
-        muter_(function () { marquerNonLus_(user, req.ids); });
+        muter_(function () { marquerNonLus_(user, req.ids); }, ['Commentaires', 'Lus']);
         return json_(Object.assign({ ok: true }, donnees_(user)));
       case 'bye':
         return json_({ ok: true });
@@ -1359,7 +1371,7 @@ function table_(nom, colonnes) {
   if (!sh) return [];
   // Les feuilles de structure changent rarement : lues depuis le cache du script (10 min) sauf pendant une écriture,
   // où l'on relit toujours le Sheet. Le cache est vidé à la fin de chaque écriture.
-  if (!TABLES_EN_CACHE[nom] || !memoOn_) return lireTable_(sh, colonnes);
+  if (!TABLES_EN_CACHE[nom] || !memoOn_ || frais_('t:' + nom)) return lireTable_(sh, colonnes);
   return lu_('t:' + nom, function () {
     const cache = CacheService.getScriptCache();
     let valeurs = null;
@@ -1378,7 +1390,7 @@ function table_(nom, colonnes) {
 }
 
 const CACHE_TABLES_S = 600;
-const TABLES_EN_CACHE = { 'Etablissements': true, 'Promos': true, 'Inscriptions': true, 'Fichiers': true };
+const TABLES_EN_CACHE = { 'Etablissements': true, 'Promos': true, 'Inscriptions': true, 'Fichiers': true, 'Reunions': true, 'Jalons': true };
 function viderCacheTables_() {
   const cache = CacheService.getScriptCache();
   Object.keys(TABLES_EN_CACHE).forEach(function (n) { cache.remove('tc_' + n); });
