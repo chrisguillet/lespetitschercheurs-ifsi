@@ -59,7 +59,7 @@ const PROP_DUREE_MS = 14 * 24 * 3600 * 1000;
 // rattachés et de l'administrateur ; modifiables par les étudiants du groupe).
 // canal : « g:<id du groupe> » ou « p:<clé de la promo> ». Messages courts, conservés au plus CHAT_JOURS jours et CHAT_MAX par canal.
 const COL_CHAT = ['id', 'canal', 'auteur_email', 'auteur', 'date', 'texte'];
-const CHAT_MAX = 1000, CHAT_JOURS = 7, CHAT_DELAI_S = 60, CHAT_TEXTE_MAX = 500, CHAT_AFFICHES = 100;
+const CHAT_MAX = 1000, CHAT_JOURS = 7, CHAT_RAFALE = 5, CHAT_FENETRE_S = 120, CHAT_TEXTE_MAX = 500, CHAT_AFFICHES = 100;
 const COL_NOTES = ['id', 'owner', 'titre', 'date', 'texte', 'liens', 'cree_le', 'modifie_le', 'etiquettes', 'epingle'];
 const COL_REUNIONS = ['id', 'groupe_id', 'date', 'titre', 'participants', 'vu', 'attendu', 'suite',
   'cree_par', 'cree_le', 'modifie_le', 'modifie_par'];
@@ -2318,7 +2318,7 @@ function supprimerNote_(user, id) {
 
 /* ---------- Chat de groupe et de promo ----------
    Deux salons par groupe : « groupe » (ses membres, l'administrateur) et « promo » (toutes les personnes de la promo).
-   Limites : un message par minute et par personne, CHAT_TEXTE_MAX caractères, CHAT_MAX messages par salon, CHAT_JOURS jours. La feuille est créée au premier usage. */
+   Limites : 5 messages par personne sur 2 minutes glissantes, CHAT_TEXTE_MAX caractères, CHAT_MAX messages par salon, CHAT_JOURS jours. La feuille est créée au premier usage. */
 
 function feuilleChat_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2339,6 +2339,15 @@ function canalChat_(user, type, gid) {
 
 function chatCoupure_() { return new Date(Date.now() - CHAT_JOURS * 86400000).toISOString(); }
 
+// Secondes à attendre avant de pouvoir écrire : 0 tant que la personne a envoyé moins de CHAT_RAFALE messages sur les CHAT_FENETRE_S dernières secondes (fenêtre glissante).
+function chatAttente_(toutes, email) {
+  const maintenant = Date.now();
+  const recents = toutes.filter(function (m) { return m.auteur_email === email; }).map(function (m) { return Date.parse(m.date); })
+    .filter(function (t) { return maintenant - t < CHAT_FENETRE_S * 1000; }).sort(function (a, b) { return b - a; });
+  if (recents.length < CHAT_RAFALE) return 0;
+  return Math.max(1, Math.ceil(CHAT_FENETRE_S - (maintenant - recents[CHAT_RAFALE - 1]) / 1000));
+}
+
 // Messages du salon demandé (les `limite` derniers), nombre de nouveaux messages d'autrui dans chaque salon (depuis `vu`) et délai restant avant de pouvoir écrire.
 function chatPour_(user, req) {
   const type = req.type === 'promo' ? 'promo' : 'groupe';
@@ -2356,8 +2365,7 @@ function chatPour_(user, req) {
     nouveaux[t] = !clesChaqueSalon[t] ? 0 : toutes.filter(function (m) { return m.canal === clesChaqueSalon[t] && m.auteur_email !== user.email && m.date > String(vu[t] || ''); }).length;
   });
   const duSalon = toutes.filter(function (m) { return m.canal === canal; }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
-  const mesDerniers = toutes.filter(function (m) { return m.auteur_email === user.email; }).map(function (m) { return m.date; }).sort().pop();
-  const restant = mesDerniers ? Math.max(0, Math.ceil(CHAT_DELAI_S - (Date.now() - Date.parse(mesDerniers)) / 1000)) : 0;
+  const restant = chatAttente_(toutes, user.email);
   return {
     ok: true, total: duSalon.length, restant: restant, nouveaux: nouveaux,
     messages: duSalon.slice(-limite).map(function (m) {
@@ -2375,11 +2383,8 @@ function envoyerChat_(user, req) {
   if (texte.length > CHAT_TEXTE_MAX) throw err_('invalid', 'Message trop long (' + CHAT_TEXTE_MAX + ' caractères maximum)');
   const sh = feuilleChat_(), coupe = chatCoupure_();
   const toutes = lireTable_(sh, COL_CHAT);
-  const mesDerniers = toutes.filter(function (m) { return m.auteur_email === user.email; }).map(function (m) { return m.date; }).sort().pop();
-  if (mesDerniers) {
-    const attente = Math.ceil(CHAT_DELAI_S - (Date.now() - Date.parse(mesDerniers)) / 1000);
-    if (attente > 0) throw err_('rate', 'Un message par minute au maximum : encore ' + attente + ' s');
-  }
+  const attente = chatAttente_(toutes, user.email);
+  if (attente > 0) throw err_('rate', 'Limite atteinte (' + CHAT_RAFALE + ' messages sur 2 minutes) : encore ' + attente + ' s');
   sh.appendRow([Utilities.getUuid(), canal, user.email, user.prenom, new Date().toISOString(), texte]);
   // Nettoyage : messages trop anciens, puis excédent du salon (les plus anciens d'abord). Suppression de bas en haut pour garder les numéros de ligne valables.
   const aSupprimer = {};

@@ -97,7 +97,7 @@ function chatRendu(bas) {
       `<div class="chmsg ${m.moi ? "moi" : ""}"><div class="chmeta"><b style="color:${esc(m.couleur)}">${esc(m.auteur)}</b> <span>${esc(chatHeure(m.date))}</span>${m.moi || (me && me.role === "admin") ? `<button type="button" class="chdel" data-chdel="${esc(m.id)}" aria-label="Retirer ce message" title="Retirer ce message">✕</button>` : ""}</div><div class="chtxt">${esc(m.texte)}</div></div>`).join(""));
   if (bas !== false) l.scrollTop = l.scrollHeight;
   $("cherr").textContent = CH.err;
-  $("chnote").textContent = "1 message par minute · 500 caractères · conservés 7 jours (1000 messages au plus)";
+  $("chnote").textContent = "5 messages sur 2 minutes · 500 caractères · conservés 7 jours (1000 messages au plus)";
   chatMajEnvoi();
 }
 function chatMajEnvoi() {
@@ -135,7 +135,7 @@ async function chatEnvoyer() {
     CH.limite = 100; chatRecu(j, canal, gid);
   } catch (e) {
     CH.err = e.message || "Envoi impossible";
-    if (e.code === "rate") { const m = /(\d+) s/.exec(e.message || ""); CH.libreA = Date.now() + (m ? +m[1] : 60) * 1000; }
+    if (e.code === "rate") { const m = /(\d+) s/.exec(e.message || ""); CH.libreA = Date.now() + (m ? +m[1] : 120) * 1000; }
     $("cherr").textContent = CH.err;
   } finally { CH.envoi = false; chatMajEnvoi(); }
 }

@@ -16,6 +16,7 @@ function renderAll() {
   renderFilters();
   renderTable();
   majBarres();
+  etape("chat", majChat);
 }
 
 renderMeAnonyme();
