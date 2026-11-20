@@ -233,4 +233,4 @@ Lien discret « 💡 Un retour sur l'outil ? » en bas de page, pour **toute per
 
 ## Pause ludique (easter egg, administrateur seulement)
 
-Menu du compte (en haut à droite) → **🎮 Pause ludique** : *La course aux transmissions* (saut / se baisser) et *Flappy Seringue*, dans une fenêtre. Code dans `games.js` (canvas, sans dépendance) ; records conservés dans le navigateur. Invisible pour tout autre rôle.
+Menu du compte (en haut à droite) → **🎮 Pause ludique** : *La course aux transmissions* (saut / se baisser) et *Flappy Seringue*, dans une fenêtre. Code dans `games.js` (canvas, sans dépendance) ; avatar de la course au choix (femme, homme, neutre) et records conservés dans le navigateur. Invisible pour tout autre rôle.

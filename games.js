@@ -28,14 +28,25 @@
   /* ---------- 1. La course aux transmissions ---------- */
   const SOL = 205;
   const OBSTACLES = [
-    { e: "🛒", w: 40, h: 38, haut: false, nom: "chariot de soins" },
+    { e: "chariot", w: 44, h: 40, haut: false, nom: "chariot de soins" },
     { e: "💧", w: 36, h: 22, haut: false, nom: "flaque" },
     { e: "👪", w: 44, h: 44, haut: false, nom: "famille" },
-    { e: "📞", w: 30, h: 28, haut: true, nom: "téléphone" }
+    { e: "📞", w: 30, h: SOL - 28, haut: true, nom: "téléphone suspendu" }
   ];
+  // Chariot de soins dessiné à la main : plateau métallique, tiroirs, croix rouge, poignée et roulettes.
+  function chariot(ctx, x, y, w, h) {
+    ctx.fillStyle = "#cfd8e3"; ctx.strokeStyle = "#5b6b7f"; ctx.lineWidth = 2;
+    ctx.fillRect(x, y, w, 6); ctx.strokeRect(x, y, w, 6);                       // plateau
+    ctx.fillStyle = "#eef2f7"; ctx.fillRect(x + 3, y + 6, w - 6, h - 16); ctx.strokeRect(x + 3, y + 6, w - 6, h - 16);   // corps
+    ctx.beginPath(); ctx.moveTo(x + 3, y + 6 + (h - 16) / 2); ctx.lineTo(x + w - 3, y + 6 + (h - 16) / 2); ctx.stroke();   // séparation des tiroirs
+    ctx.fillStyle = "#d33a3a"; const cx = x + w / 2, cy = y + 6 + (h - 16) / 4;
+    ctx.fillRect(cx - 1.5, cy - 5, 3, 10); ctx.fillRect(cx - 5, cy - 1.5, 10, 3);   // croix
+    ctx.strokeStyle = "#5b6b7f"; ctx.beginPath(); ctx.moveTo(x + w, y + 3); ctx.lineTo(x + w + 6, y + 3); ctx.lineTo(x + w + 6, y + 14); ctx.stroke();   // poignée
+    ctx.fillStyle = "#2b3340"; [x + 8, x + w - 8].forEach(r => { ctx.beginPath(); ctx.arc(r, y + h - 4, 4, 0, 7); ctx.fill(); });   // roulettes
+  }
   const course = {
     nom: "course", titre: "🏃 La course aux transmissions",
-    aide: "Espace ou ↑ : sauter · ↓ : se baisser (téléphone qui sonne). Sur écran tactile : toucher en haut pour sauter, en bas pour se baisser.",
+    aide: "Espace ou ↑ : sauter les chariots, flaques et familles · ↓ (maintenu) : se baisser sous le téléphone suspendu. Sur écran tactile : toucher en haut pour sauter, en bas pour se baisser.",
     fin: "Convoqué·e par la cadre de santé 📋",
     init() { return { y: SOL, vy: 0, bas: false, obs: [], dist: 0, vitesse: 280, prochain: 300, score: 0, mort: false }; },
     action(s) { if (s.y >= SOL) s.vy = -640; },
@@ -52,7 +63,7 @@
       s.prochain -= s.vitesse * dt;
       if (s.prochain <= 0) {
         const t = OBSTACLES[Math.floor(Math.random() * OBSTACLES.length)];
-        s.obs.push({ x: W + 20, y: t.haut ? SOL - 54 : SOL - t.h, w: t.w, h: t.h, e: t.e, haut: t.haut });
+        s.obs.push({ x: W + 20, y: t.haut ? 0 : SOL - t.h, w: t.w, h: t.h, e: t.e, haut: t.haut });
         s.prochain = alea(260, 480) + s.vitesse * 0.25;
       }
       const moi = this.boite(s);
@@ -63,9 +74,15 @@
       ctx.beginPath(); ctx.moveTo(0, SOL + 2); ctx.lineTo(W, SOL + 2); ctx.stroke();
       ctx.setLineDash([10, 14]); ctx.lineDashOffset = -(s.dist % 24);
       ctx.beginPath(); ctx.moveTo(0, SOL + 14); ctx.lineTo(W, SOL + 14); ctx.stroke(); ctx.setLineDash([]);
-      s.obs.forEach(o => emoji(ctx, o.e, o.x, o.y + o.h, o.h + 4));
+      s.obs.forEach(o => {
+        if (o.e === "chariot") chariot(ctx, o.x, o.y, o.w, o.h);
+        else if (o.haut) {   // téléphone au bout d'un fil : on ne peut pas sauter par-dessus, il faut passer dessous
+          ctx.strokeStyle = c.doux; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(o.x + o.w / 2, 0); ctx.lineTo(o.x + o.w / 2, o.h - 26); ctx.stroke();
+          emoji(ctx, o.e, o.x, o.h, 30);
+        } else emoji(ctx, o.e, o.x, o.y + o.h, o.h + 4);
+      });
       const h = this.hauteur(s);
-      emoji(ctx, "🧑‍⚕️", 50, s.y, h + 4);
+      emoji(ctx, avatar, 50, s.y, h + 4);
       ctx.fillStyle = c.texte; ctx.font = "bold 16px system-ui,sans-serif"; ctx.textAlign = "right";
       ctx.fillText(s.score + " patients vus", W - 12, 24); ctx.textAlign = "left";
     }
@@ -109,6 +126,11 @@
 
   const JEUX = { course, seringue };
 
+  // Avatar de la course (choix mémorisé dans le navigateur).
+  const AVATARS = [{ e: "👩‍⚕️", nom: "Femme" }, { e: "👨‍⚕️", nom: "Homme" }, { e: "🧑‍⚕️", nom: "Neutre" }];
+  const lireAvatar = () => { try { const v = localStorage.getItem("lydia_jeu_avatar"); return AVATARS.some(a => a.e === v) ? v : AVATARS[0].e; } catch (e) { return AVATARS[0].e; } };
+  let avatar = lireAvatar();
+
   /* ---------- Fenêtre et boucle ---------- */
   let actif = null;   // { jeu, s, etat: "pret" | "jeu" | "fini", raf, t0, cv, ctx, nettoyer }
 
@@ -150,6 +172,18 @@
     const doc = zone.ownerDocument;
     zone.innerHTML = '<canvas width="' + W + '" height="' + H + '" style="width:100%;max-width:' + W + 'px;border:1px solid var(--bd);border-radius:10px;touch-action:none;background:var(--card)" tabindex="0" aria-label="' + jeu.titre + '"></canvas><div class="meta" style="margin-top:6px"></div>';
     const cv = zone.querySelector("canvas"); zone.querySelector(".meta").textContent = jeu.aide;
+    if (nom === "course") {
+      avatar = lireAvatar();
+      const bar = doc.createElement("div"); bar.className = "jeuavatar"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+      bar.innerHTML = '<span class="meta">Mon avatar :</span>' + AVATARS.map(a => '<button type="button" class="btn sm sec" data-avatar="' + a.e + '" aria-label="' + a.nom + '" aria-pressed="' + (a.e === avatar) + '" style="' + (a.e === avatar ? "outline:2px solid var(--pri)" : "") + '">' + a.e + " " + a.nom + "</button>").join("");
+      bar.addEventListener("click", e => {
+        const b = e.target.closest("[data-avatar]"); if (!b) return;
+        avatar = b.dataset.avatar; try { localStorage.setItem("lydia_jeu_avatar", avatar); } catch (x) { /* ignoré */ }
+        bar.querySelectorAll("[data-avatar]").forEach(o => { const on = o === b; o.setAttribute("aria-pressed", String(on)); o.style.outline = on ? "2px solid var(--pri)" : ""; });
+        try { cv.focus({ preventScroll: true }); } catch (x) { /* ignoré */ }
+      });
+      zone.insertBefore(bar, cv);
+    }
     actif = { jeu, s: jeu.init(), etat: "pret", raf: 0, t0: 0, cv, ctx: cv.getContext ? cv.getContext("2d") : null, maj };
     const touche = e => {
       if (!actif) return;
@@ -180,7 +214,7 @@
 
   root.LydiaJeux = {
     liste: Object.keys(JEUX).map(k => ({ id: k, titre: JEUX[k].titre })),
-    ouvrir, fermer, enCours: () => !!actif, record,
+    ouvrir, fermer, enCours: () => !!actif, record, avatar: () => avatar,
     _test: { JEUX, chevauche, appuyer, etat: () => actif && actif.etat }
   };
 })(typeof window !== "undefined" ? window : globalThis);
