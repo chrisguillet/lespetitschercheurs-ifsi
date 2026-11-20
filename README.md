@@ -296,6 +296,7 @@ Chaque note peut porter des **étiquettes** (filtre par `#étiquette` dans la li
 ## RGPD et confidentialité
 
 - `privacy.html` décrit les traitements (base légale : consentement, données, durées, sous-traitants Google et GitHub, droits). Elle affiche le responsable et le contact lus dans `config.js` : `RESPONSABLE` et `CONTACT` (à renseigner). **La mettre à jour si une fonctionnalité change les données traitées** (par exemple si `CHAT_ACTIF` est activé).
+- `registre.html` : version publique du registre des traitements, liée depuis la politique. **À mettre à jour avec `privacy.html`, y compris la date « Dernière mise à jour ».**
 - **Accès** : chaque personne peut télécharger toutes ses données (menu du compte, « 📦 Télécharger mes données », fichier JSON).
 - **Effacement** : dans l'administration, « 🧹 Effacer ses données » supprime fiches, commentaires, notes, messages, retours, votes, appartenances et fichiers de la personne, et anonymise ce qui doit rester (articles partagés, comptes rendus). « 🗑 Supprimer l'accès » retire seulement l'accès.
 - Les sauvegardes du Sheet (7 quotidiennes, 8 hebdomadaires) expirent seules : une donnée effacée en disparaît sous 8 semaines.
