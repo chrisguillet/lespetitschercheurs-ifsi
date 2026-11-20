@@ -141,38 +141,126 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   };
 
   /* ---------- 2. Flappy Seringue ---------- */
-  const TROU = 128, LARG = 54, ECART = 210;
+  const TROU = 124, LARG = 54, ECART = 210, BANDE = 30, SOL2 = H - BANDE, SX = 127;
+  const LIQUIDES = ["#4fc3f7", "#66bb6a", "#f06292", "#ffca28"];   // la couleur du liquide change tous les 10 points
+
+  // Éléments solides d'un obstacle : poche suspendue au plafond (tube + poche) et potence à perfusion (poche + mât + pied à roulettes).
+  function solides(t) {
+    const cx = t.x + LARG / 2, r = [], hb = Math.min(70, t.haut), y0 = t.haut + TROU, bb = Math.min(70, SOL2 - y0);
+    if (t.haut - hb > 0) r.push({ x: cx - 4, y: 0, w: 8, h: t.haut - hb });
+    r.push({ x: t.x, y: t.haut - hb, w: LARG, h: hb });
+    r.push({ x: t.x, y: y0, w: LARG, h: bb });
+    r.push({ x: cx - 4, y: y0 + bb, w: 8, h: SOL2 - (y0 + bb) });
+    r.push({ x: cx - 24, y: SOL2 - 9, w: 48, h: 9 });
+    return r;
+  }
+  const bord = (ctx, x, y, w, h, r) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); };
+  function poche(ctx, x, y, w, h, niveau) {
+    ctx.fillStyle = "rgba(225,242,255,.92)"; ctx.strokeStyle = "#7aa6c4"; ctx.lineWidth = 2; bord(ctx, x, y, w, h, 10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "rgba(110,185,230,.9)"; bord(ctx, x + 3, y + h * (1 - niveau), w - 6, h * niveau - 3, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(60,110,150,.6)"; ctx.lineWidth = 1;
+    for (let i = 1; i < 5; i++) { ctx.beginPath(); ctx.moveTo(x + w - 12, y + (h * i) / 5); ctx.lineTo(x + w - 5, y + (h * i) / 5); ctx.stroke(); }
+  }
+  function obstacle(ctx, t) {
+    const cx = t.x + LARG / 2, hb = Math.min(70, t.haut), y0 = t.haut + TROU, bb = Math.min(70, SOL2 - y0);
+    ctx.fillStyle = "#b8c4d2";
+    if (t.haut - hb > 0) ctx.fillRect(cx - 3, 0, 6, t.haut - hb);                       // tube / support du plafond
+    poche(ctx, t.x, t.haut - hb, LARG, hb, 0.7);
+    ctx.fillStyle = "#8796a8"; ctx.fillRect(cx - 3, y0 + bb, 6, SOL2 - (y0 + bb));        // mât de la potence
+    poche(ctx, t.x, y0, LARG, bb, 0.55);
+    ctx.fillStyle = "#6f7f92"; ctx.fillRect(cx - 24, SOL2 - 9, 48, 5);                   // pied
+    ctx.fillStyle = "#2b3340"; [cx - 17, cx + 17].forEach(x => { ctx.beginPath(); ctx.arc(x, SOL2 - 3, 3.5, 0, 7); ctx.fill(); });
+  }
+
+  // Décor : salle de soins en parallaxe + bandeau d'ECG en bas (plat à la défaite).
+  function decorSalle(ctx, dx, mort) {
+    const cl = a => "rgba(127,150,180," + a + ")";
+    ctx.fillStyle = cl(".09"); ctx.fillRect(0, 16, W, SOL2 - 16);
+    ctx.fillStyle = cl(".22"); ctx.fillRect(0, 0, W, 16);
+    for (let i = -1; i <= 5; i++) { const x = i * 150 - ((dx * 0.5) % 150); ctx.fillStyle = "rgba(190,215,245,.75)"; ctx.fillRect(x + 30, 4, 70, 6); }
+    const F = 0.3, E = 230, k0 = Math.floor(dx * F / E) - 1;
+    for (let idx = k0; idx <= k0 + 4; idx++) {
+      const x = idx * E - dx * F, t = ((idx % 4) + 4) % 4;
+      ctx.lineWidth = 2; ctx.strokeStyle = cl(".5");
+      if (t === 0) { ctx.fillStyle = "rgba(170,210,245,.55)"; ctx.fillRect(x + 20, 40, 84, 80); ctx.strokeRect(x + 20, 40, 84, 80); ctx.beginPath(); ctx.moveTo(x + 62, 40); ctx.lineTo(x + 62, 120); ctx.moveTo(x + 20, 80); ctx.lineTo(x + 104, 80); ctx.stroke(); }
+      else if (t === 1) { ctx.fillStyle = cl(".2"); ctx.fillRect(x + 25, 60, 70, 120); ctx.strokeRect(x + 25, 60, 70, 120); ctx.beginPath(); ctx.moveTo(x + 60, 60); ctx.lineTo(x + 60, 180); ctx.stroke(); ctx.fillStyle = "#3aa76d"; ctx.fillRect(x + 56, 74, 8, 26); ctx.fillRect(x + 47, 83, 26, 8); }
+      else if (t === 2) { ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.beginPath(); ctx.arc(x + 60, 70, 22, 0, 7); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x + 60, 70); ctx.lineTo(x + 60, 56); ctx.moveTo(x + 60, 70); ctx.lineTo(x + 72, 76); ctx.stroke(); }
+      else { ctx.fillStyle = cl(".2"); ctx.fillRect(x + 20, 70, 76, 56); ctx.strokeRect(x + 20, 70, 76, 56); ctx.strokeStyle = cl(".35"); for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(x + 28, 86 + i * 14); ctx.lineTo(x + 88, 86 + i * 14); ctx.stroke(); } }
+    }
+    // bandeau d'ECG
+    ctx.fillStyle = "#0f1b2a"; ctx.fillRect(0, SOL2, W, BANDE);
+    ctx.strokeStyle = "#3ddc84"; ctx.lineWidth = 2; ctx.beginPath(); const yc = SOL2 + BANDE / 2;
+    for (let x = 0; x <= W; x += 3) {
+      let v = 0;
+      if (!mort) {
+        const ph = (x + dx * 0.9) % 150;
+        v = ph < 40 ? 0 : ph < 52 ? -4 * Math.sin((ph - 40) / 12 * Math.PI) : ph < 60 ? 0 : ph < 64 ? 5 * (ph - 60) / 4 : ph < 70 ? 5 - 22 * (ph - 64) / 6 : ph < 76 ? -17 + 22 * (ph - 70) / 6 : ph < 80 ? 5 * (1 - (ph - 76) / 4) : ph < 110 ? 0 : ph < 130 ? -6 * Math.sin((ph - 110) / 20 * Math.PI) : 0;
+      }
+      if (x) ctx.lineTo(x, yc + v); else ctx.moveTo(x, yc + v);
+    }
+    ctx.stroke();
+  }
+
+  function seringueDessin(ctx, x, y, angle, couleur, piston) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+    ctx.fillStyle = "#9aa7b5"; ctx.fillRect(-24 - piston, -2, 9, 4); ctx.fillRect(-26 - piston, -7, 3, 14);   // piston
+    ctx.fillStyle = "rgba(235,245,255,.95)"; ctx.strokeStyle = "#5b7da0"; ctx.lineWidth = 1.5; bord(ctx, -16, -7, 30, 14, 3); ctx.fill(); ctx.stroke();   // corps
+    ctx.fillStyle = couleur; ctx.fillRect(-14 + piston, -5, 26 - piston, 10);                                  // liquide
+    ctx.strokeStyle = "rgba(40,70,100,.55)"; ctx.lineWidth = 1; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-8 + i * 6, -7); ctx.lineTo(-8 + i * 6, -3); ctx.stroke(); }
+    ctx.fillStyle = "#c9d3df"; ctx.fillRect(14, -3, 4, 6);                                                     // embout
+    ctx.fillStyle = "#e8edf3"; ctx.beginPath(); ctx.moveTo(18, -1); ctx.lineTo(32, 0); ctx.lineTo(18, 1); ctx.closePath(); ctx.fill(); ctx.strokeStyle = "#7d8fa3"; ctx.stroke();   // aiguille
+    ctx.restore();
+  }
+
   const seringue = {
     nom: "seringue", titre: "💉 Flappy Seringue",
-    aide: "Espace, ↑ ou toucher : battre. Passez entre les tuyaux de perfusion sans les toucher.",
+    aide: "Espace, ↑ ou toucher : battre. Passez entre les poches et les potences à perfusion. Attrapez les gouttes qui tombent des poches : +2 points.",
     fin: "Aïe : piqûre ratée 🩹",
-    init() { return { y: H / 2, vy: 0, tuyaux: [], dx: 0, score: 0, mort: false }; },
-    action(s) { s.vy = -370; },
+    init() { return { y: H / 2, vy: 0, tuyaux: [], dx: 0, score: 0, mort: false, piston: 0, part: [], textes: [], rec: record("seringue") }; },
+    action(s) { s.vy = -370; s.piston = 5; for (let i = 0; i < 4; i++) s.part.push({ x: SX - 18, y: s.y + alea(-4, 4), vx: alea(-70, -20), vy: alea(-20, 40), vie: alea(0.35, 0.7), coul: LIQUIDES[Math.floor(s.score / 10) % 4] }); },
     bas() { /* une seule touche */ },
-    boite(s) { return { x: 110, y: s.y - 12, w: 34, h: 24 }; },
+    boite(s) { return { x: 110, y: s.y - 8, w: 36, h: 16 }; },
     step(s, dt) {
-      s.vy += 1300 * dt; s.y += s.vy * dt;
+      s.vy += 1300 * dt; s.y += s.vy * dt; s.piston = Math.max(0, s.piston - 22 * dt);
       const v = 160 + Math.min(80, s.score * 4);
       s.dx += v * dt;
-      s.tuyaux.forEach(t => { t.x -= v * dt; if (!t.passe && t.x + LARG < 110) { t.passe = true; s.score++; } });
+      s.tuyaux.forEach(t => {
+        t.x -= v * dt;
+        if (!t.passe && t.x + LARG < 110) { t.passe = true; s.score++; }
+        const g = t.g;   // goutte qui tombe de la poche du haut
+        if (g.etat === "attente") { g.delai -= dt; if (g.delai <= 0) { g.etat = "tombe"; g.y = t.haut + 4; g.vy = 18; } }
+        else if (g.etat === "tombe") {
+          g.vy += 40 * dt; g.y += g.vy * dt;
+          if (g.y > t.haut + TROU) g.etat = "perdue";
+          else if (chevauche(this.boite(s), { x: t.x + LARG / 2 - 9, y: g.y - 9, w: 18, h: 18 })) { g.etat = "prise"; s.score += 2; s.textes.push({ x: t.x + LARG / 2, y: g.y, txt: "+2", vie: 0.9 }); }
+        }
+      });
+      s.part.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vie -= dt; }); s.part = s.part.filter(p => p.vie > 0);
+      s.textes.forEach(t => { t.y -= 30 * dt; t.vie -= dt; }); s.textes = s.textes.filter(t => t.vie > 0);
       s.tuyaux = s.tuyaux.filter(t => t.x + LARG > -5);
-      if (!s.tuyaux.length || s.tuyaux[s.tuyaux.length - 1].x < W - ECART) s.tuyaux.push({ x: W + 10, haut: alea(30, H - TROU - 30), passe: false });
+      if (!s.tuyaux.length || s.tuyaux[s.tuyaux.length - 1].x < W - ECART) s.tuyaux.push({ x: W + 10, haut: alea(28, SOL2 - TROU - 28), passe: false, g: { etat: Math.random() < 0.55 ? "attente" : "aucune", delai: alea(0.2, 1.2), y: 0, vy: 0 } });
       const moi = this.boite(s);
-      if (s.y < 0 || s.y > H || s.tuyaux.some(t => chevauche(moi, { x: t.x, y: 0, w: LARG, h: t.haut }, 3) || chevauche(moi, { x: t.x, y: t.haut + TROU, w: LARG, h: H }, 3))) s.mort = true;
+      if (s.y < 8 || s.y > SOL2 - 8 || s.tuyaux.some(t => solides(t).some(r => chevauche(moi, r, 2)))) {
+        s.mort = true;
+        for (let i = 0; i < 16; i++) s.part.push({ x: SX, y: s.y, vx: alea(-110, 110), vy: alea(-130, 60), vie: 99, coul: LIQUIDES[Math.floor(s.score / 10) % 4] });
+        s.part.forEach(p => { if (p.vie === 99) { p.x += p.vx * 0.25; p.y += p.vy * 0.25; } });   // éclaboussure figée sur l'écran de fin
+      }
     },
     draw(ctx, s, c) {
+      decorSalle(ctx, s.dx, s.mort);
       s.tuyaux.forEach(t => {
-        ctx.fillStyle = "#7fb7d9"; ctx.strokeStyle = "#3a7ca5"; ctx.lineWidth = 2;
-        [[0, t.haut], [t.haut + TROU, H - t.haut - TROU]].forEach(([y, h]) => { ctx.fillRect(t.x, y, LARG, h); ctx.strokeRect(t.x, y, LARG, h); });
-        ctx.fillStyle = "#3a7ca5";
-        ctx.fillRect(t.x - 4, t.haut - 10, LARG + 8, 10); ctx.fillRect(t.x - 4, t.haut + TROU, LARG + 8, 10);
-        emoji(ctx, "💧", t.x + 14, t.haut - 16, 16);
+        obstacle(ctx, t);
+        if (t.g.etat === "tombe") { const gx = t.x + LARG / 2; ctx.fillStyle = "#4fa6dd"; ctx.beginPath(); ctx.moveTo(gx, t.g.y - 8); ctx.quadraticCurveTo(gx + 6, t.g.y + 1, gx, t.g.y + 6); ctx.quadraticCurveTo(gx - 6, t.g.y + 1, gx, t.g.y - 8); ctx.fill(); ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.lineWidth = 1; ctx.stroke(); }
       });
-      ctx.save(); ctx.translate(127, s.y); ctx.rotate(Math.max(-0.5, Math.min(1.1, s.vy / 500)));
-      emoji(ctx, "💉", -14, 10, 30); ctx.restore();
-      ctx.fillStyle = c.texte; ctx.font = "bold 22px system-ui,sans-serif"; ctx.textAlign = "center";
-      ctx.lineWidth = 5; ctx.strokeStyle = c.fond; ctx.strokeText(String(s.score), W / 2, 34);
-      ctx.fillText(String(s.score), W / 2, 34); ctx.textAlign = "left";
+      s.part.forEach(p => { ctx.globalAlpha = Math.min(1, p.vie * 2.5); ctx.fillStyle = p.coul; ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, 7); ctx.fill(); }); ctx.globalAlpha = 1;
+      const coul = LIQUIDES[Math.floor(s.score / 10) % 4];
+      seringueDessin(ctx, SX, s.y, s.mort ? 1.1 : Math.max(-0.5, Math.min(1.1, s.vy / 500)), coul, s.piston);
+      ctx.textAlign = "center"; ctx.font = "bold 16px system-ui,sans-serif";
+      s.textes.forEach(t => { ctx.globalAlpha = Math.min(1, t.vie * 2); ctx.fillStyle = "#e0a800"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.strokeText(t.txt, t.x, t.y); ctx.fillText(t.txt, t.x, t.y); }); ctx.globalAlpha = 1;
+      ctx.fillStyle = c.texte; ctx.font = "bold 22px system-ui,sans-serif";
+      ctx.lineWidth = 5; ctx.strokeStyle = c.fond; ctx.strokeText(String(s.score), W / 2, 36);
+      ctx.fillText(String(s.score), W / 2, 36);
+      ctx.textAlign = "left"; ctx.font = "13px system-ui,sans-serif"; ctx.fillStyle = c.doux; ctx.fillText("Record : " + Math.max(s.rec, s.score), 10, 36);
     }
   };
 
@@ -195,7 +283,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     if (actif.etat === "pret") centre("Espace ou toucher pour commencer", H / 2 - 20, 20);
     if (actif.etat === "fini") {
       ctx.fillStyle = "rgba(0,0,0,.28)"; ctx.fillRect(0, 0, W, H);
-      centre(jeu.fin, H / 2 - 24, 24, "#fff"); centre("Score : " + s.score + (jeu.unite || "") + " · record : " + record(jeu.nom) + (jeu.unite || ""), H / 2 + 8, 18, "#fff"); centre("Espace ou toucher pour rejouer", H / 2 + 40, 15, "#fff");
+      centre(jeu.fin, H / 2 - 24, 24, "#fff"); centre("Score : " + s.score + (jeu.unite || "") + " · record : " + record(jeu.nom) + (jeu.unite || ""), H / 2 + 8, 18, "#fff"); centre("Cliquez sur « Rejouer » pour recommencer", H / 2 + 40, 15, "#fff");
     }
     if (actif.maj) actif.maj(s.score, record(jeu.nom));
   }
@@ -205,7 +293,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     const dt = Math.min(0.05, (t - actif.t0) / 1000); actif.t0 = t;
     if (actif.etat === "jeu") {
       actif.jeu.step(actif.s, dt);
-      if (actif.s.mort) { actif.etat = "fini"; record(actif.jeu.nom, actif.s.score); }
+      if (actif.s.mort) { actif.etat = "fini"; record(actif.jeu.nom, actif.s.score); if (actif.rej) actif.rej.style.display = "block"; }
     }
     dessiner();
     actif.raf = root.requestAnimationFrame(boucle);
@@ -214,7 +302,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   function appuyer() {
     if (!actif) return;
     if (actif.etat === "pret") { actif.etat = "jeu"; actif.jeu.action(actif.s); }
-    else if (actif.etat === "fini") { actif.s = actif.jeu.init(); actif.etat = "jeu"; actif.jeu.action(actif.s); }
+    // « fini » : ni Espace ni toucher ne relancent la partie (on risquerait d'enchaîner), seul le bouton « Rejouer » le fait.
     else actif.jeu.action(actif.s);
   }
 
@@ -222,8 +310,9 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     fermer();
     const jeu = JEUX[nom]; if (!jeu || !zone) return false;
     const doc = zone.ownerDocument;
-    zone.innerHTML = '<canvas width="' + W + '" height="' + H + '" style="width:100%;max-width:' + W + 'px;border:1px solid var(--bd);border-radius:10px;touch-action:none;background:var(--card)" tabindex="0" aria-label="' + jeu.titre + '"></canvas><div class="meta" style="margin-top:6px"></div>';
+    zone.innerHTML = '<canvas width="' + W + '" height="' + H + '" style="width:100%;max-width:' + W + 'px;border:1px solid var(--bd);border-radius:10px;touch-action:none;background:var(--card)" tabindex="0" aria-label="' + jeu.titre + '"></canvas><div class="jeurejouer" style="display:none;margin-top:8px"><button type="button" class="btn">↻ Rejouer</button></div><div class="meta" style="margin-top:6px"></div>';
     const cv = zone.querySelector("canvas"); zone.querySelector(".meta").textContent = jeu.aide;
+    const rej = zone.querySelector(".jeurejouer");
     if (nom === "course") {
       avatar = lireAvatar();
       const bar = doc.createElement("div"); bar.className = "jeuavatar"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
@@ -236,13 +325,18 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
       });
       zone.insertBefore(bar, cv);
     }
-    actif = { jeu, s: jeu.init(), etat: "pret", raf: 0, t0: 0, cv, ctx: cv.getContext ? cv.getContext("2d") : null, maj };
+    actif = { jeu, s: jeu.init(), etat: "pret", raf: 0, t0: 0, cv, ctx: cv.getContext ? cv.getContext("2d") : null, maj, rej };
+    rej.querySelector("button").addEventListener("click", () => {
+      if (!actif || actif.etat !== "fini") return;
+      actif.s = jeu.init(); actif.etat = "pret"; rej.style.display = "none";
+      try { cv.focus({ preventScroll: true }); } catch (e) { /* ignoré */ }
+    });
     const touche = e => {
       if (!actif) return;
       if (e.key === " " || e.key === "ArrowUp") { e.preventDefault(); if (!e.repeat) appuyer(); }
       else if (e.key === "ArrowDown") { e.preventDefault(); jeu.bas(actif.s, true); }
     };
-    const relache = e => { if (actif && e.key === "ArrowDown") jeu.bas(actif.s, false); };
+    const relache = e => { if (e.key === " " && actif && actif.etat === "fini" && e.target && e.target.tagName === "BUTTON") e.preventDefault(); if (actif && e.key === "ArrowDown") jeu.bas(actif.s, false); };
     const doigt = e => {
       e.preventDefault();
       const r = cv.getBoundingClientRect(), bas = nom === "course" && (e.clientY - r.top) > r.height * 0.6;
@@ -267,6 +361,6 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   root.LydiaJeux = {
     liste: Object.keys(JEUX).map(k => ({ id: k, titre: JEUX[k].titre })),
     ouvrir, fermer, enCours: () => !!actif, record, avatar: () => avatar,
-    _test: { JEUX, chevauche, appuyer, etat: () => actif && actif.etat }
+    _test: { JEUX, chevauche, appuyer, etat: () => actif && actif.etat, finir: () => { actif.etat = "fini"; actif.rej.style.display = "block"; } }
   };
 })(typeof window !== "undefined" ? window : globalThis);
