@@ -176,6 +176,36 @@ final class Droits
         return false;
     }
 
+    /** Étudiante d'au moins une promo ? */
+    public function estEtudiant(): bool
+    {
+        return $this->promosEtudiant() !== [];
+    }
+
+    /** @return list<string> promos où la personne est étudiante */
+    public function promosEtudiant(): array
+    {
+        $ids = [];
+        foreach ($this->attributions() as $a) {
+            if ($a['role'] === 'etudiant' && $a['promo_id'] !== null) {
+                $ids[] = $a['promo_id'];
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
+    /** @return list<string> établissements où la personne est formateur */
+    public function etablissementsFormateur(): array
+    {
+        $ids = [];
+        foreach ($this->attributions() as $a) {
+            if ($a['role'] === 'formateur' && $a['etablissement_id'] !== null) {
+                $ids[] = $a['etablissement_id'];
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
     public function estEtudiantDans(string $promoId): bool
     {
         return $this->a('etudiant', null, $promoId);

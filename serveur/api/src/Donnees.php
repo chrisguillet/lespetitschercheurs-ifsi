@@ -5,8 +5,8 @@ namespace Lpc;
 
 /**
  * Sections de données renvoyées avec « init », « list » et la plupart des actions (mêmes noms et mêmes formes que l'ancien donnees_).
- * Lots A et B : utilisateurs, enLigne, groupes, votes, promosMoi, rattachements, enAttente (+ groupesAdmin et structure pour les
- * administrateurs). Les sections des lots C et D (lectures, commentaires, suivi, fichiers…) arrivent ensuite.
+ * Lots A à C : utilisateurs, enLigne, groupes, votes, propositions, promosMoi, rattachements, lectures, commentaires, lus, enAttente
+ * (+ groupesAdmin et structure pour les administrateurs). Les sections du lot D (fichiers, suivi, glossaire…) arrivent ensuite.
  */
 final class Donnees
 {
@@ -15,14 +15,47 @@ final class Donnees
     /** @return array<string,mixed> */
     public static function toutes(Contexte $c): array
     {
+        $out = [];
+        foreach (self::sections($c) as $nom => $calcul) {
+            $out[$nom] = $calcul();
+        }
+        return $out;
+    }
+
+    /**
+     * Seulement les sections demandées (celles qu'une action vient de modifier), marquées « partiel » comme l'ancien serveur.
+     * Un nom inconnu (section d'un lot pas encore migré) est ignoré.
+     *
+     * @param list<string> $noms
+     * @return array<string,mixed>
+     */
+    public static function choisies(Contexte $c, array $noms): array
+    {
+        $out = [];
+        foreach (self::sections($c) as $nom => $calcul) {
+            if (in_array($nom, $noms, true)) {
+                $out[$nom] = $calcul();
+            }
+        }
+        $out['partiel'] = true;
+        return $out;
+    }
+
+    /** @return array<string,callable():mixed> les sections, dans l'ordre de l'ancien serveur */
+    private static function sections(Contexte $c): array
+    {
         return [
-            'utilisateurs' => self::utilisateurs($c),
-            'enLigne' => self::enLigne($c),
-            'groupes' => self::groupes($c),
-            'votes' => Votes::pourClient($c),
-            'promosMoi' => Votes::promosMoi($c),
-            'rattachements' => Votes::rattachements($c),
-            'enAttente' => self::enAttente($c),
+            'utilisateurs' => static fn (): array => self::utilisateurs($c),
+            'enLigne' => static fn (): array => self::enLigne($c),
+            'groupes' => static fn (): array => self::groupes($c),
+            'votes' => static fn (): array => Votes::pourClient($c),
+            'propositions' => static fn (): array => Lectures::propositionsPourClient($c),
+            'promosMoi' => static fn (): array => Votes::promosMoi($c),
+            'rattachements' => static fn (): array => Votes::rattachements($c),
+            'lectures' => static fn (): array => Lectures::lister($c),
+            'commentaires' => static fn (): array => Commentaires::lister($c),
+            'lus' => static fn (): array => Commentaires::lus($c),
+            'enAttente' => static fn (): int => self::enAttente($c),
         ];
     }
 
