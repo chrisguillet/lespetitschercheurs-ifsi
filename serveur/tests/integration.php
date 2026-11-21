@@ -556,8 +556,8 @@ verifie('effacement : notes, retours, fichiers et historique supprimés', (int) 
     && (int) valeur($pdo, 'SELECT COUNT(*) FROM historique WHERE cible_id = ?', [$xan]) === 0);
 verifie('effacement : messages du chat supprimés', (int) valeur($chat, 'SELECT COUNT(*) FROM chat_messages WHERE auteur_id = ?', [$er]) === 0);
 verifie('effacement : appartenances supprimées', (int) valeur($pdo, 'SELECT COUNT(*) FROM membres WHERE utilisateur_id = ?', [$er]) === 0);
-verifie('effacement : l\'article partagé reste, sans auteur', valeur($pdo, 'SELECT titre FROM articles WHERE id = ?', [$xart]) === 'Article X'
-    && valeur($pdo, 'SELECT cree_par FROM articles WHERE id = ?', [$xart]) === null);
+verifie('effacement : l\'article partagé reste, et passe à l\'autrice de l\'autre fiche', valeur($pdo, 'SELECT titre FROM articles WHERE id = ?', [$xart]) === 'Article X'
+    && (int) valeur($pdo, 'SELECT cree_par FROM articles WHERE id = ?', [$xart]) === $simple);
 verifie('effacement : la fiche d\'une autre personne reste', (int) valeur($pdo, 'SELECT COUNT(*) FROM analyses WHERE id = ?', [$xan2]) === 1);
 
 // Effacement avec anonymisation (choix par défaut) : la personne disparaît, ses contributions restent sans auteur
