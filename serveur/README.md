@@ -21,6 +21,9 @@ Le compte SFTP de déploiement (GitHub) est limité à `/qocot/lespetitschercheu
 
 ## Mise en route
 
+0. Raccourci : remplir `serveur/config.php` (ignoré par git), puis `.\serveur\deploiement\envoyer.ps1` fait les étapes 1 et 3
+   d'un coup (envoi par scp, installation par ssh ; le mot de passe est tapé à la main).
+   Puis `.\serveur\deploiement\migrer.ps1` crée les tables (PHP ≥ 8.2 détecté sur le serveur) et supprime `diag.php`.
 1. Copier `config.exemple.php` en `config.php` **hors du dépôt**, le remplir, le déposer dans `/qocot/_prive/lespetitschercheurs/`.
 2. Créer les tables, en SSH : `php serveur/bin/migrer.php principale` puis `php serveur/bin/migrer.php chat`
    (ou importer `sql/001_principal.sql` et `sql/002_chat.sql` dans phpMyAdmin, chacun dans sa base).
