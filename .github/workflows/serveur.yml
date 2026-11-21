@@ -206,7 +206,7 @@ jobs:
           test -f front/index.html || { echo "front/index.html introuvable"; exit 1; }
           # Miroir limité à js/ ; les autres fichiers sont envoyés un par un : jamais de --delete à la racine (api/ y vit).
           cmd="set sftp:auto-confirm yes; set net:max-retries 2; set net:timeout 30; set cmd:fail-exit yes; mirror --reverse --delete --no-perms --verbose front/js js;"
-          for f in index.html privacy.html registre.html style.css favicon.svg apa.js games.js config.js .htaccess; do cmd="$cmd put -O . front/$f;"; done
+          for f in index.html privacy.html registre.html style.css favicon.svg qocot.webp apa.js games.js config.js .htaccess; do cmd="$cmd put -O . front/$f;"; done
           set +e
           lftp -u "$SFTP_UTILISATEUR,$SFTP_MOT_DE_PASSE" "sftp://$SFTP_HOTE" -e "$cmd bye" > "$RUNNER_TEMP/lftp-front.log" 2>&1
           code=$?

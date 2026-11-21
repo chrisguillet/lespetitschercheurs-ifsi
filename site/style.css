@@ -802,3 +802,7 @@ tr.pers:focus-visible{outline:2px solid var(--pri);outline-offset:-2px}
 .idgrid input{width:100%;min-width:0!important;box-sizing:border-box}
 .idgrid input[type=color]{height:38px;padding:2px}
 .idgrid .btn{justify-self:start}
+
+/* Logo Qocot (tête de la poule) dans l'en-tête : recadrage par CSS sur l'image complète */
+header .logo{display:inline-block;width:40px;height:40px;background:#fff url(qocot.webp) 50% 0 / 200% auto no-repeat;border-radius:10px}
+@media (max-width:640px){header .logo{width:32px;height:32px}}
