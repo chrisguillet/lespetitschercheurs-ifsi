@@ -1088,8 +1088,20 @@ verifie('retours : liste du jour de la personne', count(appel('a1@ci.test', 'fee
 $r = appel($admin, 'admin_list');
 verifie('retours : lus par l\'admin global seulement', count($r['feedbacks'] ?? []) >= 3 && ($r['feedbacks'][0]['par'] ?? '') !== '' && isset($r['feedbacks'][0]['email']) && !array_key_exists('feedbacks', appel('ap@ci.test', 'admin_list')));
 
+$fbId = (string) ($r['feedbacks'][0]['id'] ?? '');
+verifie('retours : non traité par défaut', ($r['feedbacks'][0]['statut'] ?? '') === 'nouveau');
+verifie('retours : statut réservé à l\'admin global', $err(appel('a1@ci.test', 'feedback_status', ['data' => ['id' => $fbId, 'statut' => 'traitee']])) === 'forbidden');
+verifie('retours : statut inconnu refusé', $err(appel($admin, 'feedback_status', ['data' => ['id' => $fbId, 'statut' => 'peut-etre']])) === 'invalid');
+verifie('retours : retour inconnu', $err(appel($admin, 'feedback_status', ['data' => ['id' => 'inconnu', 'statut' => 'a_faire']])) === 'not_found');
+$s = appel($admin, 'feedback_status', ['data' => ['id' => $fbId, 'statut' => 'a_faire']]);
+verifie('retours : statut « à faire » enregistré', ($s['ok'] ?? false) === true && ($s['feedbacks'][0]['statut'] ?? '') === 'a_faire');
+foreach (['ecartee', 'traitee', 'nouveau'] as $stt) {
+    $s = appel($admin, 'feedback_status', ['data' => ['id' => $fbId, 'statut' => $stt]]);
+}
+verifie('retours : écartée, traitée, puis de nouveau non traité', ($s['feedbacks'][0]['statut'] ?? '') === 'nouveau');
+
 // ---------- Lot D : chat ----------
-$salon = static fn (string $type): array => ['groupe_id' => $alpha, 'type' => $type];
+$salon =static fn (string $type): array => ['groupe_id' => $alpha, 'type' => $type];
 $r = appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => "Bonjour\r\n\r\n\r\n\r\nà tous"]);
 verifie('chat : message envoyé, retour du salon', ($r['ok'] ?? false) === true && $r['total'] === 1 && $r['messages'][0]['moi'] === true && $r['messages'][0]['auteur'] === 'Ana T.'
     && $r['messages'][0]['texte'] === "Bonjour\n\nà tous" && $r['restant'] === 0);
@@ -1109,12 +1121,12 @@ verifie('chat : salon de promo fermé à une autre promo', $err(appel('nouvelle@
 verifie('chat : groupe inconnu', $err(appel('a1@ci.test', 'chat_list', ['groupe_id' => Ids::uuid(), 'type' => 'groupe'])) === 'not_found');
 verifie('chat : message vide ou trop long refusé', $err(appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => '   '])) === 'invalid'
     && $err(appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => str_repeat('a', 501)])) === 'invalid');
-for ($i = 1; $i <= 5; $i++) {
+for ($i = 1; $i <= 4; $i++) {
     $e = appel('a3@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'Message ' . $i]);
 }
-verifie('chat : cinq messages permis', ($e['ok'] ?? false) === true && ($e['restant'] ?? 0) >= 1);
-$e = appel('a3@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'Sixième']);
-verifie('chat : limite de cinq messages sur deux minutes', ($e['error'] ?? '') === 'rate' && str_contains((string) ($e['message'] ?? ''), 'encore'));
+verifie('chat : quatre messages permis', ($e['ok'] ?? false) === true && ($e['restant'] ?? 0) >= 1);
+$e = appel('a3@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'Cinquième']);
+verifie('chat : limite de quatre messages par minute glissante', ($e['error'] ?? '') === 'rate' && str_contains((string) ($e['message'] ?? ''), 'encore'));
 $mid = (string) (appel('a2@ci.test', 'chat_list', $salon('groupe'))['messages'][0]['id'] ?? '');
 verifie('chat : on ne retire que ses messages', $err(appel('a2@ci.test', 'chat_delete', $salon('groupe') + ['id' => $mid])) === 'forbidden');
 verifie('chat : message retiré par son auteur', (appel('a1@ci.test', 'chat_delete', $salon('groupe') + ['id' => $mid])['ok'] ?? false) === true);

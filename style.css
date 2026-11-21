@@ -483,3 +483,31 @@ td.menuopen { z-index: 3 }
 .jeuvign.avecvue .jeuicone { position: absolute; left: 8px; top: 6px; font-size: 22px; background: rgba(255,255,255,.75); border-radius: 8px; padding: 2px 4px }
 
 .themebtn { font-size: 16px; line-height: 1; padding: 6px 9px }
+
+/* Mini-calendrier de l'accueil : jours glissants */
+.minical{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:4px 0 8px}
+.mc{border:1px solid var(--bd);border-radius:8px;padding:3px 2px;text-align:center;font-size:12px;line-height:1.2;min-height:50px;background:var(--bg)}
+.mc small{display:block;color:var(--mut);font-size:11px}
+.mc b{display:block;font-size:14px}
+.mc .mcp{display:block;font-size:8px;letter-spacing:1px;color:var(--pri);height:10px}
+.mc.we{opacity:.75}
+.mc.today{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
+.mc.has{background:var(--card);border-color:var(--pri)}
+.mc.fin .mcp{color:#d97706}
+
+/* Aperçu et impression du compte rendu de réunion */
+.crfeuille{background:#e9ebf0;padding:16px;overflow:auto;max-height:75vh}
+.crpage{background:#fff;color:#111;max-width:700px;margin:0 auto;padding:28px 32px;box-shadow:0 1px 6px rgba(0,0,0,.18);font-size:14px;line-height:1.5}
+.crpage h2{margin:2px 0 4px;font-size:22px}
+.crpage .crsup{font-size:12px;color:#666}
+.crpage .crsous{font-size:15px;color:#333;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #2f5fd0}
+.crpage .crsect{margin:12px 0}
+.crpage .crsect h3{margin:0 0 3px;font-size:14px;color:#2f5fd0}
+.crpage .crtxt{white-space:pre-wrap}
+.crpage .crpied{margin-top:22px;padding-top:8px;border-top:1px solid #ccc;font-size:11px;color:#777}
+#crprintzone{display:none}
+@media print{
+  body.imprime-cr > *:not(#crprintzone){display:none !important}
+  body.imprime-cr #crprintzone{display:block}
+  body.imprime-cr .crpage{box-shadow:none;max-width:none;padding:0}
+}

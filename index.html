@@ -157,6 +157,15 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
       <div id="fbbody" class="cmbox"></div>
     </div>
   </div>
+  <div id="crmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="crtitle">
+    <div class="modalbox" style="max-width:820px">
+      <div class="modalhead">
+        <div><h2 id="crtitle">📄 Aperçu du compte rendu</h2></div>
+        <div class="grow"><button class="btn sm" id="crprint" type="button">🖨 Imprimer</button><button class="btn sm" id="crpdf" type="button">⬇️ Enregistrer en PDF</button><button class="btn sm sec" id="crclose" type="button" aria-label="Fermer l’aperçu">✕ Fermer</button></div>
+      </div>
+      <div id="crbody" class="crfeuille"></div>
+    </div>
+  </div>
   <div id="profmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="proftitle">
     <div class="modalbox" style="max-width:620px">
       <div class="modalhead">
@@ -250,7 +259,7 @@ window.addEventListener("load", function () {
 </script>
 <script>
 /* Scripts classiques chargés dans l'ordre : ils partagent tous la même portée globale (voir js/*.js). */
-document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "admin", "exports", "chat", "onboarding", "profil", "delegation", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
+document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
 </script>
 </body>
 </html>

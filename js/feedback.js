@@ -4,6 +4,8 @@
 /* ---------- Retours sur l'outil (bugs, idées) ---------- */
 
 const TYPES_FB = { bug: "🐞 Bug", idee: "💡 Idée d’amélioration", autre: "💬 Autre" };
+// Suivi des retours (administrateur général) : « nouveau » = non traité.
+const STATUTS_FB = { nouveau: "Non traité", a_faire: "À faire", ecartee: "Écartée", traitee: "Traitée" };
 const FB = { ouvert: false, liste: [], restant: 2, par: 2, edition: "", focus: null };
 
 function ouvrirFeedback() {
@@ -71,8 +73,22 @@ const sigFeedbacks = () => feedbacksAdmin.length + ":" + (feedbacksAdmin[0] ? fe
 function blocFeedbacks() {
   const l = feedbacksAdmin;
   return `<h3>💡 Retours sur l’outil (${l.length})</h3>` + (l.length
-    ? `<div class="meta">Les plus récents d’abord. Le suivi (colonne « statut ») se change directement dans l’onglet « Feedback » du Sheet.</div>
+    ? `<div class="meta">Les plus récents d’abord. Choisissez le statut de chaque retour : il se range tout seul dans la liste.</div>
       <div class="wrap"><table class="adm"><thead><tr><th>Date</th><th>De</th><th>Type</th><th>Retour</th><th>Statut</th></tr></thead><tbody>${l.map(f => `<tr><td>${esc(fmtDT(f.cree_le))}</td><td>${esc(f.par)}<div class="meta">${esc(f.email)}</div></td><td>${esc(TYPES_FB[f.type] || f.type)}</td>
-        <td><div style="white-space:pre-wrap">${esc(f.texte)}</div>${f.contexte ? `<div class="meta">${esc(f.contexte)}</div>` : ""}</td><td>${esc(f.statut)}</td></tr>`).join("")}</tbody></table></div>`
+        <td><div style="white-space:pre-wrap">${esc(f.texte)}</div>${f.contexte ? `<div class="meta">${esc(f.contexte)}</div>` : ""}</td><td><select data-fbs="${esc(f.id)}" aria-label="Statut du retour">${Object.keys(STATUTS_FB).map(k => `<option value="${k}" ${(f.statut || "nouveau") === k ? "selected" : ""}>${esc(STATUTS_FB[k])}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>`
     : `<div class="meta">Aucun retour pour l’instant.</div>`);
 }
+
+// Changement de statut d'un retour, depuis la liste de l'administration.
+$("adminbox").addEventListener("change", async e => {
+  const s = e.target.closest("select[data-fbs]"); if (!s) return;
+  s.disabled = true;
+  try {
+    const res = await api("feedback_status", { data: { id: s.dataset.fbs, statut: s.value } });
+    feedbacksAdmin = res.feedbacks || feedbacksAdmin;
+    renderAdmin();
+  } catch (err) {
+    s.disabled = false;
+    if (err.code === "unauthorized") sessionError(err); else alert("Statut non enregistré : " + err.message);
+  }
+});

@@ -39,7 +39,7 @@ final class Routeur
     public const NOUVELLES = [
         'nom_demande', 'nom_demandes', 'nom_decision',
         'invitation_create', 'invitation_list', 'invitation_revoke',
-        'attribution_add', 'attribution_remove',
+        'attribution_add', 'attribution_remove', 'feedback_status',
     ];
 
     /** @var array<string,callable(Contexte,array<string,mixed>):array<string,mixed>> */
@@ -56,6 +56,7 @@ final class Routeur
             'nom_demande' => [Profil::class, 'nomDemande'],
             'nom_demandes' => [Profil::class, 'nomDemandes'],
             'nom_decision' => [Profil::class, 'nomDecision'],
+            'feedback_status' => [Outils::class, 'feedbackStatut'],
             'etab_create' => [Structure::class, 'etabCreate'],
             'etab_rename' => [Structure::class, 'etabRename'],
             'etab_delete' => [Structure::class, 'etabDelete'],

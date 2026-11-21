@@ -119,7 +119,8 @@ function renderTable() {
   applyCols();
   const nbres = $("nbres");
   if (nbres) nbres.textContent = (F.q || F.who || F.grp || F.st || F.type || F.kw) ? `${l.length} / ${items.length} fiches de lecture` : "";
-  $("stats").innerHTML = students().map(s => {
+  // Les compteurs par personne n'ont de sens que pour le groupe : en vue « toute la promo », on ne les montre pas.
+  $("stats").innerHTML = ctx.vue === "promo" ? "" : students().map(s => {
     const n = items.filter(i => i.etudiant === s.prenom);
     return `<span class="badge" style="--c:${esc(s.couleur)}">${esc(s.prenom)} : ${n.length} fiche${n.length > 1 ? "s" : ""} de lecture (${n.filter(i => i.statut === "En cours").length} en cours${n.some(i => i.statut === "À lire") ? ` · ${n.filter(i => i.statut === "À lire").length} à lire` : ""})</span>`;
   }).join("");

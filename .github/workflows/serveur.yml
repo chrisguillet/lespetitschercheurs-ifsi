@@ -199,7 +199,7 @@ jobs:
           mkdir -p front
           cp index.html privacy.html registre.html style.css apa.js games.js config.js front/
           cp -r js front/js
-          sed -i -E 's#API_URL: ".*"#API_URL: "https://lespetitschercheurs.qocot.eu/api/"#' front/config.js
+          sed -i -E 's#API_URL: ".*"#API_URL: "https://lespetitschercheurs.qocot.eu/api/", CHAT_ACTIF: true#' front/config.js
           grep -q 'API_URL: "https://lespetitschercheurs.qocot.eu/api/"' front/config.js || { echo "::error::API_URL non réécrite"; exit 1; }
 
       - name: Envoyer le front (racine du site, sans toucher à api/)

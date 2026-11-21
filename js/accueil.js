@@ -6,6 +6,23 @@
 const joursDepuis = iso => { const t = Date.parse(iso || ""); return isNaN(t) ? null : Math.floor((Date.now() - t) / 864e5); };
 const nomGroupe = id => (groupes.find(g => g.id === id) || {}).nom || "";
 
+// Mini-calendrier en jours glissants : aujourd'hui et les 13 jours à venir, avec les jalons non faits (échéance, ou plage de dates).
+function miniCalendrier(jalons) {
+  const NB = 14, ajd = new Date(); ajd.setHours(0, 0, 0, 0);
+  const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const jrs = ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"];
+  const cases = [...Array(NB)].map((_, k) => {
+    const d = new Date(ajd); d.setDate(ajd.getDate() + k);
+    const s = iso(d);
+    const lies = jalons.filter(j => j.echeance && s >= (j.debut || j.echeance) && s <= j.echeance);
+    const fin = lies.filter(j => j.echeance === s).length, titres = lies.map(j => j.titre + (j.echeance === s ? " (échéance)" : "")).join("\n");
+    const cls = ["mc", k === 0 ? "today" : "", d.getDay() === 0 || d.getDay() === 6 ? "we" : "", lies.length ? "has" : "", fin ? "fin" : ""].filter(Boolean).join(" ");
+    return `<div class="${cls}" ${titres ? `title="${esc(titres)}"` : ""}><small>${jrs[d.getDay()]}</small><b>${d.getDate()}</b><span class="mcp">${lies.length ? "●".repeat(Math.min(lies.length, 3)) : "&nbsp;"}</span></div>`;
+  }).join("");
+  const retard = jalons.filter(j => ecartJours(j.echeance) !== null && ecartJours(j.echeance) < 0).length;
+  return `<div class="minical" role="img" aria-label="Jalons des 14 prochains jours">${cases}</div>${retard ? `<div class="late">⚠ ${retard} jalon${retard > 1 ? "s" : ""} en retard</div>` : ""}`;
+}
+
 function renderHome() {
   const box = $("home");
   if (!me || !box) return;
@@ -16,7 +33,7 @@ function renderHome() {
   // Jalons de mes groupes : en retard ou dans les 14 jours.
   const jal = jalonsAll.filter(j => mes.has(j.groupe_id) && j.statut !== "fait" && ecartJours(j.echeance) !== null && ecartJours(j.echeance) <= 14)
     .sort((a, b) => a.echeance.localeCompare(b.echeance));
-  const jalHtml = jal.length ? `<ul class="hlist">${jal.slice(0, 5).map(j => `<li><b>${esc(j.titre)}</b>${groupes.length > 1 ? ` <span class="meta">(${esc(nomGroupe(j.groupe_id))})</span>` : ""} <span class="meta">${esc(fmtDatesJalon(j))}</span> ${delaiJalon(j)}</li>`).join("")}</ul>${jal.length > 5 ? `<div class="meta">+ ${jal.length - 5} autre(s)</div>` : ""}` : "";
+  const jalHtml = jal.length ? miniCalendrier(jalonsAll.filter(j => mes.has(j.groupe_id) && j.statut !== "fait")) + `<ul class="hlist">${jal.slice(0, 3).map(j => `<li><b>${esc(j.titre)}</b>${groupes.length > 1 ? ` <span class="meta">(${esc(nomGroupe(j.groupe_id))})</span>` : ""} <span class="meta">${esc(fmtDatesJalon(j))}</span> ${delaiJalon(j)}</li>`).join("")}</ul>${jal.length > 3 ? `<div class="meta">+ ${jal.length - 3} autre(s)</div>` : ""}` : "";
   // Votes qui attendent ma réponse.
   const vf = groupes.reduce((n, g) => n + votesAFaire(g), 0), pf = canWrite() ? props.filter(p => !p.mine && p.monVote == null).length : 0;
   const voteGroupe = groupes.find(g => votesAFaire(g));
@@ -29,7 +46,7 @@ function renderHome() {
   const miennes = itemsAll.filter(i => i.mine), lire = miennes.filter(i => i.statut === "À lire").sort((a, b) => (ORDRE_PRIO[a.priorite] ?? 1) - (ORDRE_PRIO[b.priorite] ?? 1)), enc = miennes.filter(i => i.statut === "En cours");
   const lectHtml = canWrite() && (lire.length || enc.length) ? `<ul class="hlist">${enc.slice(0, 3).map(i => `<li>📖 <b>${esc(i.titre)}</b> <span class="meta">en cours</span></li>`).join("")}${lire.slice(0, 3).map(i => `<li>📌 <b>${esc(i.titre)}</b> <span class="meta">${esc(PRIO[i.priorite] || "")}</span></li>`).join("")}</ul>` : "";
   // Nouveautés : fiches des autres, saisies depuis moins d'une semaine.
-  const nouv = itemsAll.filter(i => !i.mine && i.statut !== "À lire" && joursDepuis(i.ajoute) !== null && joursDepuis(i.ajoute) < 7).sort((a, b) => String(b.ajoute).localeCompare(a.ajoute));
+  const nouv = itemsAll.filter(i => !i.mine && mes.has(i.groupe_id) && i.statut !== "À lire" && joursDepuis(i.ajoute) !== null && joursDepuis(i.ajoute) < 7).sort((a, b) => String(b.ajoute).localeCompare(a.ajoute));
   const nouvHtml = nouv.length ? `<ul class="hlist">${nouv.slice(0, 5).map(i => `<li><span class="av sm" style="--c:${esc(i.couleur)}">${initiales(i.etudiant)}</span> <b>${esc(i.etudiant)}</b> · ${esc(i.titre)} ${nomGroupe(i.groupe_id) ? `<span class="hgrp">${esc(nomGroupe(i.groupe_id))}</span> ` : ""}<span class="meta">${esc(stInfo(i.statut).lib.toLowerCase())}</span></li>`).join("")}</ul>` : "";
   const attente = isSuper() && pendingCount ? `<div>${pendingCount} demande${pendingCount > 1 ? "s" : ""} d’accès en attente.</div>` : "";
   const blocs = [

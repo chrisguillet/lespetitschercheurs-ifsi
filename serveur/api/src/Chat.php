@@ -5,13 +5,13 @@ namespace Lpc;
 
 /**
  * Chat de groupe et de promo, dans la base du chat. Deux salons par groupe : « groupe » (ses membres et ses administrateurs) et
- * « promo » (toutes les personnes qui lisent la promo). Limites : 5 messages par personne sur 2 minutes glissantes, 500 caractères,
+ * « promo » (toutes les personnes qui lisent la promo). Limites : 4 messages par personne sur une minute glissante, 500 caractères,
  * 1000 messages par salon, 7 jours de conservation. Interrogation régulière côté client (pas de temps réel).
  */
 final class Chat
 {
-    public const RAFALE = 5;
-    public const FENETRE_S = 120;
+    public const RAFALE = 4;
+    public const FENETRE_S = 60;
     public const TEXTE_MAX = 500;
     public const MAX = 1000;
     public const JOURS = 7;
@@ -91,7 +91,7 @@ final class Chat
         $uid = (int) $c->user->id;
         $attente = self::attente($chat, $uid);
         if ($attente > 0) {
-            throw new Erreur('rate', 'Limite atteinte (' . self::RAFALE . ' messages sur 2 minutes) : encore ' . $attente . ' s');
+            throw new Erreur('rate', 'Limite atteinte (' . self::RAFALE . ' messages par minute) : encore ' . $attente . ' s');
         }
         $chat->prepare('INSERT INTO chat_messages (canal, auteur_id, auteur_nom, cree_le, texte) VALUES (?, ?, ?, ?, ?)')
             ->execute([$canal, $uid, $c->user->affichage(), Temps::maintenant(), $texte]);

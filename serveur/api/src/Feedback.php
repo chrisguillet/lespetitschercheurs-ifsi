@@ -90,4 +90,26 @@ final class Feedback
         }
         return $out;
     }
+
+    /** Statuts de suivi d'un retour, choisis par l'administrateur général (« nouveau » = non traité). */
+    public const STATUTS = ['nouveau', 'a_faire', 'ecartee', 'traitee'];
+
+    /** Administrateur général seulement. @return list<array<string,mixed>> la liste mise à jour */
+    public static function changerStatut(Contexte $c, mixed $id, mixed $statut): array
+    {
+        if (!$c->droits()->estAdmin()) {
+            throw new Erreur('forbidden', 'Réservé à l’administrateur');
+        }
+        if (!is_string($statut) || !in_array($statut, self::STATUTS, true)) {
+            throw new Erreur('invalid', 'Statut inconnu');
+        }
+        $st = $c->db->principale()->prepare('UPDATE feedback SET statut = ? WHERE id = ?');
+        $st->execute([$statut, is_string($id) ? $id : '']);
+        $existe = $c->db->principale()->prepare('SELECT 1 FROM feedback WHERE id = ?');
+        $existe->execute([is_string($id) ? $id : '']);
+        if ($existe->fetchColumn() === false) {
+            throw new Erreur('not_found', 'Retour introuvable');
+        }
+        return self::pourAdmin($c);
+    }
 }

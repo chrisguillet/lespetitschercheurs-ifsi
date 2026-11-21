@@ -1,0 +1,80 @@
+/* Compte rendu de réunion : aperçu à l'écran, puis impression ou enregistrement en PDF.
+   Script classique : partage la portée globale avec les autres fichiers de js/ (ordre de chargement : voir index.html). */
+"use strict";
+/* ---------- Compte rendu de réunion : aperçu, impression, PDF ---------- */
+
+const CR = { ouvert: false, id: "", focus: null };
+
+const crReunion = () => reunionsAll.find(r => r.id === CR.id);
+const crGroupe = r => groupes.find(g => g.id === r.groupe_id) || {};
+
+// La page telle qu'elle sera imprimée : même contenu à l'écran (aperçu) et sur papier.
+function crPage(r) {
+  const g = crGroupe(r);
+  const sect = (t, v) => String(v || "").trim() ? `<section class="crsect"><h3>${esc(t)}</h3><div class="crtxt">${esc(v)}</div></section>` : "";
+  return `<article class="crpage">
+    <header class="crhead"><div class="crsup">${esc([g.etablissement, g.promo, g.nom].filter(Boolean).join(" · "))}</div>
+      <h2>Compte rendu de réunion</h2>
+      <div class="crsous">${esc(fmtD(r.date))}${r.titre ? " · " + esc(r.titre) : ""}</div></header>
+    ${r.participants ? `<section class="crsect"><h3>Participants</h3><div class="crtxt">${esc(r.participants)}</div></section>` : ""}
+    ${sect("Ce qui a été vu", r.vu)}${sect("Ce qui est attendu", r.attendu)}${sect("Étapes pour la suite", r.suite)}
+    ${[r.vu, r.attendu, r.suite].some(v => String(v || "").trim()) ? "" : '<div class="meta">Ce compte rendu est vide.</div>'}
+    <footer class="crpied">Saisi par ${esc(r.par || "—")}${r.modifie_par ? ` · modifié par ${esc(r.modifie_par)}` : ""} · édité le ${esc(fmtD(new Date().toISOString()))}</footer>
+  </article>`;
+}
+
+function ouvrirCompteRendu(id) {
+  if (!$("crmodal")) return;
+  CR.ouvert = true; CR.id = id; CR.focus = document.activeElement;
+  const r = crReunion(); if (!r) return fermerCompteRendu();
+  $("crbody").innerHTML = crPage(r);
+  $("crmodal").classList.remove("hidden"); document.body.classList.add("modalopen");
+  $("crprint").focus();
+}
+function fermerCompteRendu() {
+  if (!CR.ouvert) return;
+  CR.ouvert = false;
+  $("crmodal").classList.add("hidden");
+  if (!cmId && !GM.ouvert && !FB.ouvert && !PR.ouvert) document.body.classList.remove("modalopen");
+  $("crbody").innerHTML = "";
+  if (CR.focus && CR.focus.isConnected && CR.focus.focus) { try { CR.focus.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
+}
+
+// Impression : la page est copiée dans un élément à part, seul visible à l'impression (voir style.css).
+function imprimerCompteRendu() {
+  const r = crReunion(); if (!r) return;
+  let z = $("crprintzone");
+  if (!z) { z = document.createElement("div"); z.id = "crprintzone"; document.body.appendChild(z); }
+  z.innerHTML = crPage(r);
+  document.body.classList.add("imprime-cr");
+  const fin = () => { document.body.classList.remove("imprime-cr"); z.innerHTML = ""; window.removeEventListener("afterprint", fin); };
+  window.addEventListener("afterprint", fin);
+  window.print();
+}
+
+function pdfCompteRendu() {
+  const r = crReunion(); if (!r) return;
+  if (!window.jspdf) { alert("Module PDF non chargé."); return; }
+  const g = crGroupe(r);
+  const doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+  const larg = 180; let y = 18;
+  const ecrire = (texte, taille, gras, couleur) => {
+    doc.setFont("helvetica", gras ? "bold" : "normal"); doc.setFontSize(taille); doc.setTextColor(couleur || 20);
+    const lignes = doc.splitTextToSize(String(texte), larg);
+    lignes.forEach(l => { if (y > 280) { doc.addPage(); y = 18; } doc.text(l, 15, y); y += taille * 0.5 + 1.2; });
+  };
+  ecrire([g.etablissement, g.promo, g.nom].filter(Boolean).join(" · "), 9, false, 110);
+  y += 1; ecrire("Compte rendu de réunion", 17, true); y += 1;
+  ecrire(fmtD(r.date) + (r.titre ? " · " + r.titre : ""), 11, false, 70); y += 4;
+  const bloc = (titre, texte) => { if (!String(texte || "").trim()) return; ecrire(titre, 11, true); y += 0.5; ecrire(texte, 10, false); y += 4; };
+  bloc("Participants", r.participants); bloc("Ce qui a été vu", r.vu); bloc("Ce qui est attendu", r.attendu); bloc("Étapes pour la suite", r.suite);
+  y += 2; ecrire("Saisi par " + (r.par || "—") + (r.modifie_par ? " · modifié par " + r.modifie_par : "") + " · édité le " + fmtD(new Date().toISOString()), 8, false, 120);
+  const nom = cleTitre(r.titre || "reunion").replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "reunion";
+  doc.save("compte-rendu-" + (r.date || stamp()) + "-" + nom + ".pdf");
+}
+
+$("crclose")?.addEventListener("click", fermerCompteRendu);
+$("crprint")?.addEventListener("click", imprimerCompteRendu);
+$("crpdf")?.addEventListener("click", pdfCompteRendu);
+$("crmodal")?.addEventListener("click", e => { if (e.target === $("crmodal")) fermerCompteRendu(); });
+$("crmodal")?.addEventListener("keydown", e => { if (e.key === "Escape") fermerCompteRendu(); });

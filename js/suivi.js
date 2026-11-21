@@ -122,7 +122,7 @@ function renderSuivi() {
   const reu = reunionsAll.filter(x => x.groupe_id === g.id).sort((a, b) => b.date.localeCompare(a.date));
   const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b><div style="white-space:pre-wrap">${esc(v)}</div></div>` : "";
   $("reunions").innerHTML = reu.length ? reu.map(x => `<article class="cardc reunion"><div class="tools" style="justify-content:space-between"><h3 style="margin:0">${esc(fmtD(x.date))}${x.titre ? " · " + esc(x.titre) : ""}</h3>
-    ${x.modifiable ? `<div><button type="button" class="btn sm sec" data-red="${esc(x.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-rdel="${esc(x.id)}">Supprimer</button></div>` : ""}</div>
+    <div><button type="button" class="btn sm sec" data-rcr="${esc(x.id)}" title="Aperçu avant impression ou enregistrement en PDF">📄 Aperçu / PDF</button>${x.modifiable ? ` <button type="button" class="btn sm sec" data-red="${esc(x.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-rdel="${esc(x.id)}">Supprimer</button>` : ""}</div></div>
     <div class="meta">${x.participants ? "Participants : " + esc(x.participants) + " · " : ""}saisi par ${esc(x.par)}${x.modifie_par ? ` · modifié par ${esc(x.modifie_par)}` : ""}</div>
     ${sect("Ce qui a été vu", x.vu)}${sect("Ce qui est attendu", x.attendu)}${sect("Étapes pour la suite", x.suite)}</article>`).join("")
     : `<div class="empty">Aucun compte rendu pour l’instant.</div>`;
@@ -200,4 +200,5 @@ $("suivi").addEventListener("click", e => {
   else if (d.red) { fermerSuiviForm(); ouvrirSuiviForm("reunion", d.red); }
   else if (d.jdel) supprimerSuivi("jalon", d.jdel);
   else if (d.rdel) supprimerSuivi("reunion", d.rdel);
+  else if (d.rcr) ouvrirCompteRendu(d.rcr);
 });

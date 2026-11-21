@@ -113,6 +113,13 @@ final class Outils
         return ['ok' => true] + Feedback::pourClient($c);
     }
 
+    /** Statut de suivi d'un retour (administrateur général). @param array<string,mixed> $req @return array<string,mixed> */
+    public static function feedbackStatut(Contexte $c, array $req): array
+    {
+        $data = \Lpc\Valide::donnees($req);
+        return ['ok' => true, 'feedbacks' => Feedback::changerStatut($c, $data['id'] ?? null, $data['statut'] ?? null)];
+    }
+
     // ---------- Chat ----------
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
