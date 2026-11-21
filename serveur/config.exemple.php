@@ -51,6 +51,11 @@ return [
     // JSON,
     // ],
 
+    // Purge des comptes inactifs depuis 12 mois (tâche de nuit). Tant que cette ligne est absente ou à false, la purge se contente
+    // de compter (journal d'administration, action purge_inactifs). À activer seulement quand l'ancien outil est arrêté : tant que
+    // l'import relit l'ancien Sheet, il recréerait les comptes retirés.
+    // 'purge_auto' => true,
+
     // Clé du script de diagnostic (diagnostic/diag.php) : une longue chaîne au hasard. Supprimer le script après usage.
     'diagnostic_cle' => 'À REMPLIR AVEC UNE LONGUE CHAINE AU HASARD',
 ];

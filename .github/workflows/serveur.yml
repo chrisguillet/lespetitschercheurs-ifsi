@@ -112,6 +112,17 @@ jobs:
           LPC_CONFIG: ${{ runner.temp }}/prive/config.php
         run: php serveur/tests/import.php
 
+      - name: Remettre les bases à zéro (purge)
+        run: |
+          php serveur/tests/preparer-ci.php "$RUNNER_TEMP/prive/config.php"
+          php serveur/bin/migrer.php principale "$RUNNER_TEMP/prive/config.php"
+          php serveur/bin/migrer.php chat "$RUNNER_TEMP/prive/config.php"
+
+      - name: Tests de la purge des comptes inactifs (données fictives)
+        env:
+          LPC_CONFIG: ${{ runner.temp }}/prive/config.php
+        run: php serveur/tests/purge.php
+
   deploiement:
     name: Déploiement sur IONOS (api/)
     needs: [php, base]
