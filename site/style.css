@@ -823,3 +823,6 @@ table.inner{min-width:900px}
 .kwl{font:inherit;font-size:11px;padding:1px 7px;border:1px solid var(--bd);border-radius:999px;background:transparent;color:var(--tx);cursor:pointer}
 .kwl.on{background:var(--pri);border-color:var(--pri);color:#fff}
 :root[data-theme="dark"] .kwl.on{color:#0e1325}
+.kwhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.kwhead .kwt{margin:0}
+.kwhead .kwsw{margin-left:0}

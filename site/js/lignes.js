@@ -20,7 +20,7 @@ function artRow(g) {
 // Ligne dépliée : tableau des fiches de lecture du document (mots-clés, concepts, objet, opinion, controverse, libre).
 function fichesRow(g) {
   const k = cleArt(g[0]);
-  return `<tr class="fiches-row ${artOuvert(k) ? "show" : ""}" data-fa="${esc(k)}"><td colspan="5"><div class="fichesbox"><table class="inner"><thead><tr><th>Fiche de lecture ${kwSwitch()}</th><th>Concepts</th><th>Objet / sujet</th><th>Opinion</th><th>Controverse</th><th>Libre</th></tr></thead>
+  return `<tr class="fiches-row ${artOuvert(k) ? "show" : ""}" data-fa="${esc(k)}"><td colspan="5"><div class="fichesbox"><table class="inner"><thead><tr><th>Fiche de lecture</th><th>Concepts</th><th>Objet / sujet</th><th>Opinion</th><th>Controverse</th><th>Libre</th></tr></thead>
    <tbody>${g.map(cells).join("")}</tbody></table></div></td></tr>`;
 }
 
@@ -134,7 +134,8 @@ document.addEventListener("click", e => {
 
 // Mots-clés et keywords : sous les boutons de la première colonne, pour laisser la largeur aux colonnes de texte.
 function motsCle(i) {
-  const bloc = (t, v) => motsListe(v).length ? `<div class="kwbloc"><span class="kwt">${t}</span><div class="chipsc">${chips(v)}</div></div>` : "";
-  const html = (kwLang !== "en" ? bloc("Mots-clés", i.mots) : "") + (kwLang !== "fr" ? bloc("Keywords (EN)", i.kw) : "");
-  return html ? `<div class="kwzone">${html}</div>` : "";
+  const bloc = (t, v) => motsListe(v).length ? `<div class="kwbloc">${kwLang === "both" ? `<span class="kwt">${t}</span>` : ""}<div class="chipsc">${chips(v)}</div></div>` : "";
+  const html = (kwLang !== "en" ? bloc("FR", i.mots) : "") + (kwLang !== "fr" ? bloc("EN", i.kw) : "");
+  return motsListe(i.mots).length || motsListe(i.kw).length
+    ? `<div class="kwzone"><div class="kwhead"><span class="kwt">Mots-clés</span>${kwSwitch()}</div>${html || `<div class="meta">Aucun mot-clé dans cette langue.</div>`}</div>` : "";
 }
