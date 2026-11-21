@@ -77,7 +77,7 @@ function renderAdmin() {
     bloc(isSuper() ? "✅ Accès actifs" : "✅ Formateurs de vos groupes", acces.filter(a => a.statut === "actif"), "Aucun accès actif.") +
     (isSuper() && comptesInactifs(acces).length ? `<div class="meta rgpdnote">🕓 Conservation limitée : ces comptes ne se sont pas connectés depuis plus de ${INACTIF_MOIS} mois (ou n’ont aucune date connue). Selon la politique de confidentialité, leurs données doivent être effacées ou anonymisées : « 🧹 Effacer ses données ».</div>` + bloc("🕓 Comptes inactifs depuis plus de " + INACTIF_MOIS + " mois", comptesInactifs(acces), "") : "") +
     (isSuper() ? bloc("⛔ Accès refusés", acces.filter(a => a.statut === "refuse"), "Aucun accès refusé.") : "") +
-    (gereStructure() ? blocNoms() + blocInvitations() + blocRoles() + blocGroupes() : "") +
+    (gereStructure() ? blocNoms() + blocInvitations() + blocRoles() + blocDoublons() + blocGroupes() : "") +
     (isSuper() ? blocFeedbacks() : "");
 }
 

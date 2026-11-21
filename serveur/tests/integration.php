@@ -1173,6 +1173,71 @@ verifie('chat : au plus cinq mille messages par salon de promo', (int) valeur($c
 verifie('doi_lookup : saisie invalide refusée', $err(appel('a1@ci.test', 'doi_lookup', ['doi' => 'pas un doi'])) === 'invalid' && $err(appel('a1@ci.test', 'doi_lookup', [])) === 'invalid');
 verifie('doi_lookup : réservé aux étudiantes', $err(appel('forma@ci.test', 'doi_lookup', ['doi' => '10.1000/xyz'])) === 'forbidden');
 
+// ---------- Fusion des doublons d'articles ----------
+$nowM = gmdate('Y-m-d H:i:s');
+$mkArt = static function (string $groupe, string $titre, string $doi = '', string $source = '') use ($pdo, $nowM): string {
+    $id = Ids::uuid();
+    $pdo->prepare('INSERT INTO articles (id, groupe_id, ajoute, titre, doi, source) VALUES (?, ?, ?, ?, ?, ?)')->execute([$id, $groupe, $nowM, $titre, $doi, $source]);
+    return $id;
+};
+$mkAn = static function (string $art, int $uid, string $groupe, string $libre) use ($pdo, $nowM): string {
+    $id = Ids::uuid();
+    $pdo->prepare("INSERT INTO analyses (id, article_id, utilisateur_id, groupe_id, statut, portee, libre, ajoute) VALUES (?, ?, ?, ?, 'Terminée', 'promo', ?, ?)")->execute([$id, $art, $uid, $groupe, $libre, $nowM]);
+    return $id;
+};
+$dA = $mkArt($alpha, 'Les soins palliatifs en gériatrie', '10.1234/soins');
+$dB = $mkArt($alpha, 'Soins palliatifs en gériatrie, version longue', 'https://doi.org/10.1234/SOINS', 'Revue X');
+$dC = $mkArt($gamma, 'Un article sans rapport avec les autres', '10.9999/autre');
+$mkAn($dA, $B['a1'], $alpha, 'fiche A1');
+$mkAn($dA, $B['a2'], $alpha, 'fiche A2');
+$anB = $mkAn($dB, $B['a1'], $alpha, 'fiche B1 (même personne que A1)');
+$pdo->prepare("INSERT INTO historique (cible, cible_id, modifie_par, proprietaire, avant, modifie_le) VALUES ('article', ?, NULL, NULL, '{}', ?)")->execute([$dB, $nowM]);
+$pdo->prepare("INSERT INTO propositions (id, article_id, propose_par, cree_le, valeurs, statut) VALUES (?, ?, NULL, ?, '{}', 'ouvert')")->execute([Ids::uuid(), $dB, $nowM]);
+verifie('doublons : réservé aux administrateurs', $err(appel('a1@ci.test', 'doublons_list')) === 'forbidden' && $err(appel('a1@ci.test', 'article_merge', ['data' => ['principal' => $dA, 'doublons' => [$dB]]])) === 'forbidden');
+$cl = appel('ap@ci.test', 'doublons_list')['clusters'] ?? [];
+$cl = array_values(array_filter($cl, static fn (array $g): bool => in_array($dA, array_column($g['articles'], 'id'), true)));
+verifie('doublons : même DOI écrit différemment regroupé, article sans rapport écarté', count($cl) === 1 && count($cl[0]['articles']) === 2 && !in_array($dC, array_column($cl[0]['articles'], 'id'), true));
+verifie('doublons : principal proposé = celui qui a le plus de fiches', ($cl[0]['propose'] ?? '') === $dA && ($cl[0]['articles'][0]['fiches'] ?? 0) === 2);
+$e = appel('ap@ci.test', 'article_merge', ['data' => ['principal' => $dA, 'doublons' => [$dB]]]);
+verifie('doublons : fusion refusée si une même personne a une fiche sur les deux', ($e['error'] ?? '') === 'invalid' && str_contains((string) ($e['message'] ?? ''), 'même personne')
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM articles WHERE id = ?', [$dB]) === 1);
+$pdo->prepare('DELETE FROM analyses WHERE id = ?')->execute([$anB]);
+$mkAn($dB, $B['a3'], $alpha, 'fiche B3');
+verifie('doublons : un article ne se fusionne pas avec lui-même, ni avec un inconnu', $err(appel('ap@ci.test', 'article_merge', ['data' => ['principal' => $dA, 'doublons' => [$dA]]])) === 'invalid'
+    && $err(appel('ap@ci.test', 'article_merge', ['data' => ['principal' => $dA, 'doublons' => [Ids::uuid()]]])) === 'not_found');
+$r = appel('ap@ci.test', 'article_merge', ['data' => ['principal' => $dA, 'doublons' => [$dB]]]);
+verifie('doublons : fusion réussie, bilan renvoyé', ($r['ok'] ?? false) === true && ($r['bilan']['fiches'] ?? 0) === 1 && ($r['bilan']['champs_completes'] ?? 0) >= 1);
+verifie('doublons : le doublon est supprimé, ses fiches rattachées au principal', (int) valeur($pdo, 'SELECT COUNT(*) FROM articles WHERE id = ?', [$dB]) === 0
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM analyses WHERE article_id = ?', [$dA]) === 3);
+verifie('doublons : champ vide du principal complété', valeur($pdo, 'SELECT source FROM articles WHERE id = ?', [$dA]) === 'Revue X');
+verifie('doublons : historique et propositions suivent', (int) valeur($pdo, "SELECT COUNT(*) FROM historique WHERE cible = 'article' AND cible_id = ?", [$dA]) === 1
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM propositions WHERE article_id = ?', [$dA]) === 1);
+verifie('doublons : la grappe fusionnée n\'est plus proposée', array_filter(appel('ap@ci.test', 'doublons_list')['clusters'] ?? [], static fn (array $g): bool => in_array($dA, array_column($g['articles'], 'id'), true)) === []);
+verifie('doublons : journal de la fusion', (int) valeur($pdo, "SELECT COUNT(*) FROM journal_admin WHERE action = 'article_merge'") === 1);
+// Pièces jointes : une seule par article, celle du principal est gardée
+$dE = $mkArt($alpha, 'Autre texte à fusionner : pièces jointes', '10.4321/pj');
+$dF = $mkArt($alpha, 'Autre texte à fusionner : pièces jointes, bis', '10.4321/PJ');
+foreach ([[$dE, 'e.pdf'], [$dF, 'f.pdf']] as [$art, $nom]) {
+    $pdo->prepare('INSERT INTO fichiers (id, article_id, nom, type, taille, chemin, cree_par, cree_le) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)')->execute([Ids::uuid(), $art, $nom, 'application/pdf', 5, 'absent-' . $nom, $nowM]);
+}
+verifie('doublons : fusion avec deux pièces jointes', (appel('ap@ci.test', 'article_merge', ['data' => ['principal' => $dE, 'doublons' => [$dF]]])['bilan']['fichiers_retires'] ?? 0) === 1
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM fichiers WHERE article_id = ?', [$dE]) === 1 && valeur($pdo, 'SELECT nom FROM fichiers WHERE article_id = ?', [$dE]) === 'e.pdf');
+// « Pas des doublons »
+$dG = $mkArt($alpha, 'Deux éditions différentes du même titre', '');
+$dH = $mkArt($alpha, 'Deux éditions différentes du même titre', '');
+$vu = static fn (string $a): int => count(array_filter(appel('ap@ci.test', 'doublons_list')['clusters'] ?? [], static fn (array $g): bool => in_array($a, array_column($g['articles'], 'id'), true)));
+verifie('doublons : même titre sans DOI proposé', $vu($dG) === 1);
+verifie('doublons : « pas des doublons » les retire de la liste', (appel('ap@ci.test', 'doublons_ignore', ['data' => ['ids' => [$dG, $dH]]])['ok'] ?? false) === true && $vu($dG) === 0);
+// Périmètre : un article d'une autre promo
+$g2 = Ids::uuid();
+$pdo->prepare('INSERT INTO groupes (id, promo_id, nom, cree_le) VALUES (?, ?, ?, ?)')->execute([$g2, $promo2, 'Hors périmètre', $nowM]);
+$dD = $mkArt($g2, 'Les soins palliatifs en gériatrie', '10.1234/SOINS');
+verifie('doublons : un groupe d\'articles dont un est hors périmètre n\'est pas proposé à l\'admin de promo', $vu($dA) === 0
+    && $err(appel('ap@ci.test', 'article_merge', ['data' => ['principal' => $dA, 'doublons' => [$dD]]])) === 'forbidden');
+$vuAdmin = array_values(array_filter(appel($admin, 'doublons_list')['clusters'] ?? [], static fn (array $g): bool => in_array($dD, array_column($g['articles'], 'id'), true)));
+verifie('doublons : l\'administrateur général le voit et le fusionne', count($vuAdmin) === 1 && (appel($admin, 'article_merge', ['data' => ['principal' => $dA, 'doublons' => [$dD]]])['ok'] ?? false) === true
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM articles WHERE id = ?', [$dD]) === 0);
+
 // ---------- Lot D : traduction des mots-clés ----------
 $r = appel('a1@ci.test', 'translate', ['texte' => 'soins palliatifs, Douleur; fin de vie, Éthique, douleur']);
 verifie('traduction : termes du glossaire, sans service externe', ($r['ok'] ?? false) === true && array_column($r['items'], 'en') === ['palliative care', 'pain', 'end of life', 'ethics']

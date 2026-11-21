@@ -4,21 +4,22 @@
 "use strict";
 /* ---------- Administration déléguée ---------- */
 
-let demandesNom = [], invitationsAdmin = [], lienPersonnel = null;
+let demandesNom = [], invitationsAdmin = [], doublonsAdmin = [], lienPersonnel = null;
 const ROLES_LIB = { admin: "Administrateur", admin_site: "Admin de site", admin_promo: "Admin de promo", formateur: "Formateur", etudiant: "Étudiant" };
 // Rôles que l'on peut attribuer, et type de périmètre attendu : e = établissement (site), p = promo.
 const ROLES_ATTRIBUABLES = [["admin_site", "e"], ["admin_promo", "p"], ["formateur", "e"], ["etudiant", "p"]];
 
 const adminDelegue = () => !!me && Array.isArray(me.roles) && me.roles.some(r => r.role === "admin_site" || r.role === "admin_promo");
 const gereStructure = () => isSuper() || adminDelegue();
-const sigDelegation = () => JSON.stringify([demandesNom, invitationsAdmin]);
+const sigDelegation = () => JSON.stringify([demandesNom, invitationsAdmin, doublonsAdmin]);
 
 async function chargerDelegation() {
   if (!gereStructure()) return;
   try {
-    const [n, i] = await Promise.all([api("nom_demandes"), api("invitation_list")]);
+    const [n, i, d] = await Promise.all([api("nom_demandes"), api("invitation_list"), api("doublons_list")]);
     demandesNom = n.demandes || [];
     invitationsAdmin = i.invitations || [];
+    doublonsAdmin = d.clusters || [];
   } catch (e) { if (e.code === "unauthorized") sessionError(e); }
 }
 
@@ -139,4 +140,38 @@ $("adminbox").addEventListener("click", async e => {
     if (!confirm("Retirer ce rôle ?")) return;
     return lancerDelegation(b, () => api("attribution_remove", { data: { id: Number(b.dataset.rr) } }), null);
   }
+});
+
+/* ----- Doublons d'articles ----- */
+function blocDoublons() {
+  const l = doublonsAdmin;
+  const art = (a, i, propose) => `<label class="dblart"><input type="radio" name="dp${i}" value="${esc(a.id)}" ${a.id === propose ? "checked" : ""}>
+      <span><b>${esc(a.titre)}</b><span class="meta"> ${esc(a.auteur)}${a.parution ? " · " + esc(a.parution) : ""}${a.source ? " · " + esc(a.source) : ""}</span>
+      <span class="meta dbl2">${a.doi ? "DOI " + esc(a.doi) + " · " : ""}${esc(a.lieu)} · ${a.fiches} fiche${a.fiches > 1 ? "s" : ""}${a.propositions ? ` · ${a.propositions} proposition${a.propositions > 1 ? "s" : ""}` : ""}${a.fichier ? " · 📎 pièce jointe" : ""}</span></span></label>`;
+  return `<h3>🧬 Doublons d’articles (${l.length})</h3>` + (l.length
+    ? `<div class="meta">Le même article saisi plusieurs fois (même DOI, ou même titre). Choisissez celui à garder : les fiches, commentaires, propositions et la pièce jointe des autres lui sont rattachés, puis les doublons sont supprimés. Une fusion est définitive.</div>`
+      + l.map((g, i) => `<div class="dblgrp" data-dg="${i}"><div>${g.articles.map(a => art(a, i, g.propose)).join("")}</div>
+        <div class="grow"><button type="button" class="btn sm" data-dmerge="${i}">Fusionner dans l’article choisi</button><button type="button" class="btn sm sec" data-dign="${i}">Ce ne sont pas des doublons</button></div></div>`).join("")
+    : '<div class="meta">Aucun doublon détecté dans votre périmètre.</div>');
+}
+
+$("adminbox").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-dmerge], button[data-dign]");
+  if (!b) return;
+  const i = Number(b.dataset.dmerge ?? b.dataset.dign), g = doublonsAdmin[i];
+  if (!g) return;
+  const zone = b.closest(".dblgrp"), choix = zone.querySelector("input[type=radio]:checked");
+  if (b.dataset.dign !== undefined) {
+    if (!confirm("Marquer ces articles comme différents ? Ils ne seront plus proposés comme doublons.")) return;
+    return lancerDelegation(b, () => api("doublons_ignore", { data: { ids: g.articles.map(a => a.id) } }), res => { doublonsAdmin = res.clusters || []; });
+  }
+  if (!choix) return;
+  const principal = g.articles.find(a => a.id === choix.value), autres = g.articles.filter(a => a.id !== choix.value);
+  const fiches = autres.reduce((n, a) => n + a.fiches, 0);
+  if (!confirm(`Garder « ${principal.titre} » et fusionner ${autres.length} doublon${autres.length > 1 ? "s" : ""} dedans ?\n\n${fiches} fiche${fiches > 1 ? "s" : ""} de lecture ${fiches > 1 ? "seront rattachées" : "sera rattachée"} à l’article gardé. Les champs vides de l’article gardé sont complétés par ceux des doublons ; si plusieurs ont une pièce jointe, seule celle de l’article gardé est conservée.\n\nCette action est définitive.`)) return;
+  return lancerDelegation(b, () => api("article_merge", { data: { principal: principal.id, doublons: autres.map(a => a.id) } }), res => {
+    doublonsAdmin = res.clusters || [];
+    if (typeof refresh === "function") refresh(true);
+    setTimeout(() => alert(`Fusion faite : ${res.bilan.fiches} fiche${res.bilan.fiches > 1 ? "s" : ""} rattachée${res.bilan.fiches > 1 ? "s" : ""}.`), 50);
+  });
 });

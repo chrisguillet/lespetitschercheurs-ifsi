@@ -153,6 +153,28 @@ final class Outils
         return ['ok' => true, 'items' => Traduction::traduire($req['texte'] ?? null, $service)];
     }
 
+    /** Doublons d'articles (administrateurs). @param array<string,mixed> $req @return array<string,mixed> */
+    public static function doublonsList(Contexte $c, array $req): array
+    {
+        return ['ok' => true, 'clusters' => \Lpc\Doublons::grappes($c)];
+    }
+
+    /** Fusion de doublons dans un article principal. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function articleMerge(Contexte $c, array $req): array
+    {
+        $d = \Lpc\Valide::donnees($req);
+        $bilan = \Lpc\Doublons::fusionner($c, (string) ($d['principal'] ?? ''), is_array($d['doublons'] ?? null) ? $d['doublons'] : []);
+        return ['ok' => true, 'bilan' => $bilan, 'clusters' => \Lpc\Doublons::grappes($c)];
+    }
+
+    /** « Ce ne sont pas des doublons ». @param array<string,mixed> $req @return array<string,mixed> */
+    public static function doublonsIgnore(Contexte $c, array $req): array
+    {
+        $d = \Lpc\Valide::donnees($req);
+        \Lpc\Doublons::ignorer($c, is_array($d['ids'] ?? null) ? $d['ids'] : []);
+        return ['ok' => true, 'clusters' => \Lpc\Doublons::grappes($c)];
+    }
+
     /** Préremplissage d'une fiche par DOI (Crossref, interrogé depuis le serveur). @param array<string,mixed> $req @return array<string,mixed> */
     public static function doiLookup(Contexte $c, array $req): array
     {
