@@ -245,6 +245,9 @@ final class Importation
             $this->personnes[$email] = ['statut' => $statut, 'role' => $role];
             $this->traiter('utilisateur', $email, $l, function (?string $existant) use ($l, $email, $statut): ?array {
                 [$prenom, $nom] = self::separerNom(trim($l['prenom']));
+                if ($nom === '') {
+                    $nom = '-';   // l'ancien outil ne gardait pas le nom de famille : à compléter dans l'administration
+                }
                 $couleur = preg_match('/^#[0-9a-fA-F]{6}$/', trim($l['couleur'])) === 1 ? trim($l['couleur']) : Config::COULEUR_DEFAUT;
                 $valeurs = ['prenom' => $prenom, 'nom' => $nom, 'couleur' => $couleur, 'statut' => $statut,
                     'derniere_connexion' => $this->dt($l['derniere_connexion']), 'consentement_le' => $this->dt($l['consentement_le']),

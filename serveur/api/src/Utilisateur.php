@@ -61,7 +61,7 @@ final class Utilisateur
         if (self::PSEUDO_ACTIF && $pseudo !== null && $pseudo !== '') {
             return $pseudo;
         }
-        $initiale = $nom === '' ? '' : ' ' . mb_strtoupper(mb_substr($nom, 0, 1)) . '.';
+        $initiale = ($nom === '' || $nom === '-') ? '' : ' ' . mb_strtoupper(mb_substr($nom, 0, 1)) . '.';   // « - » : nom de famille pas encore connu
         return $prenom . $initiale;
     }
 }

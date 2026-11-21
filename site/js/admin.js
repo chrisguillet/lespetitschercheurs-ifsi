@@ -58,8 +58,9 @@ function accesRow(a) {
       : `<button class="btn sm" data-as="actif">Réactiver</button>`;
   const suppr = sup ? ` <button class="btn sm sec del" data-del="1" title="Retire l’accès ; ses fiches et commentaires restent dans la base de données">🗑 Supprimer l’accès</button> <button class="btn sm sec del" data-erase="1" title="Droit à l’effacement : supprime l’accès et les données de cette personne ; ses contributions sont anonymisées ou supprimées, au choix">🧹 Effacer ses données</button>` : "";
   const adresse = sup ? `<td><input data-f="nouvel_email" type="email" value="${k}"></td>` : `<td>${k}</td>`;
+  const nomCol = sup ? `<td><input data-f="nom" maxlength="60" value="${esc(a.nom || "")}" placeholder="Nom de famille" title="« - » : nom de famille pas encore connu"></td>` : "";
   const couleur = sup ? `<td><input data-f="couleur" type="color" value="${esc(a.couleur)}" style="min-width:48px;padding:2px"></td>` : "";
-  return `<tr data-k="${k}">${adresse}${dates}<td><input data-f="prenom" maxlength="60" value="${esc(a.prenom)}" placeholder="Prénom">${dem && (dem.promo || dem.role) ? `<div class="meta">Demande : ${esc(dem.role === "etudiant" ? "étudiant" : dem.role === "formateur" ? "formateur" : "")}${dem.promo ? " · " + esc(dem.promo) : ""}</div>` : ""}</td>${couleur}
+  return `<tr data-k="${k}">${adresse}${dates}<td><input data-f="prenom" maxlength="60" value="${esc(sup ? (a.prenom_legal || a.prenom) : a.prenom)}" placeholder="Prénom">${dem && (dem.promo || dem.role) ? `<div class="meta">Demande : ${esc(dem.role === "etudiant" ? "étudiant" : dem.role === "formateur" ? "formateur" : "")}${dem.promo ? " · " + esc(dem.promo) : ""}</div>` : ""}</td>${nomCol}${couleur}
     <td><select data-f="role">${roles}</select></td><td>${acts}${suppr}</td></tr>`;
 }
 
@@ -78,7 +79,7 @@ function comptesInactifs(liste) {
 }
 function renderAdmin() {
   renderedAcces = signatureAcces(acces) + sigFeedbacks() + sigDelegation();
-  const head = `<tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th>${isSuper() ? "<th>Couleur</th>" : ""}<th>Rôle</th><th>Actions</th></tr>`;
+  const head = `<tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th>${isSuper() ? "<th>Nom</th><th>Couleur</th>" : ""}<th>Rôle</th><th>Actions</th></tr>`;
   const bloc = (titre, list, vide) => `<h3>${titre} (${list.length})</h3>` + (list.length
     ? `<div class="wrap"><table class="adm"><thead>${head}</thead><tbody>${list.map(accesRow).join("")}</tbody></table></div>`
     : `<div class="meta">${vide}</div>`);
@@ -151,7 +152,7 @@ $("adminbox").onclick = async e => {
   const row = b.closest("tr");
   const val = f => { const el = row.querySelector(`[data-f="${f}"]`); return el ? el.value : undefined; };
   const data = { email: row.dataset.k, prenom: val("prenom"), role: val("role"), statut: b.dataset.as };
-  if (isSuper()) { data.nouvel_email = val("nouvel_email"); data.couleur = val("couleur"); }
+  if (isSuper()) { data.nouvel_email = val("nouvel_email"); data.couleur = val("couleur"); data.nom = val("nom"); }
   if (data.statut === "refuse" && !confirm("Retirer ou refuser l’accès de " + data.email + " ?")) return;
   b.disabled = true;
   try {

@@ -375,6 +375,10 @@ function doPost(e) {
   try {
     memo_ = {}; memoOn_ = true;
     const req = JSON.parse(e.postData.contents);
+    // Gel pour la bascule vers le nouvel outil : propriété de script GEL = 1 (Paramètres du projet > Propriétés du script). Plus aucune écriture.
+    if (PropertiesService.getScriptProperties().getProperty('GEL') === '1') {
+      return json_({ ok: false, error: 'forbidden', message: 'Le site a déménagé : https://lespetitschercheurs.qocot.eu/' });
+    }
     const user = authentifier_(req.token, req.action);
     signalerPresence_(user, req.action);
     switch (req.action) {

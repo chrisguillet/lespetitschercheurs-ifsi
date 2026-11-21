@@ -144,6 +144,7 @@ verifie('import : 4 personnes créées (l\'adresse invalide est ignorée, le com
 verifie('import : adresse invalide signalée sans la nommer', ($r['ignorees']['utilisateur : adresse invalide'] ?? 0) === 1);
 verifie('import : compte existant conservé tel quel', valeur($pdo, 'SELECT prenom FROM utilisateurs WHERE id = ?', [$idAdopte]) === 'Neuf');
 verifie('import : prénom et initiale séparés', valeur($pdo, "SELECT CONCAT(prenom, '/', nom) FROM utilisateurs WHERE email = 'etu1@ci.test'") === 'Camille/D');
+verifie('import : nom de famille inconnu remplacé par « - », sans initiale affichée', valeur($pdo, "SELECT nom FROM utilisateurs WHERE email = 'prof@ci.test'") === '-' && \Lpc\Utilisateur::nomAffiche('Pat Prof', '-', null) === 'Pat Prof' && \Lpc\Utilisateur::nomAffiche('Camille', 'D', null) === 'Camille D.');
 verifie('import : adresse en minuscules, dates en UTC', valeur($pdo, "SELECT derniere_connexion FROM utilisateurs WHERE email = 'etu1@ci.test'") === '2024-05-01 10:00:00');
 verifie('import : couleur conservée', valeur($pdo, "SELECT couleur FROM utilisateurs WHERE email = 'prof@ci.test'") === '#112233');
 verifie('import : identifiants du Sheet conservés', valeur($pdo, 'SELECT nom FROM groupes WHERE id = ?', [u(20)]) === 'Groupe A');
