@@ -30,7 +30,7 @@ function renderCtx() {
   msg.classList.toggle("hidden", !(me && !g));
   // Ligne fixe sous le titre : établissement, promo, groupe et personne connectée. Elle ne change ni avec la vue (groupe / promo) ni avec les filtres.
   $("sub").textContent = !g ? "Outil partagé de suivi des lectures de mémoire" : `${g.etablissement} · ${g.promo} · ${g.nom} — ${me.prenom}`;
-  if (!g || tab === "home" || tab === "dash") { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
+  if (!g || tab === "home" || tab === "dash" || (tab === "admin" && typeof adminComplet === "function" && adminComplet())) { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
   bar.classList.remove("hidden");
   const avecVue = !["mine", "suivi", "glossaire", "admin", "home", "dash"].includes(tab);   // groupe / promo n'a de sens que pour tableau, commentaires, biblio, synthèse
   const sig = JSON.stringify([avecVue, ctx.gid, ctx.vue, groupes.map(x => [x.id, x.nom, x.promo, x.etablissement, nonLusDe(x, "groupe")]), nonLusDe(g, "promo"), votesAFaire(g), votes.filter(v => v.groupe_id === g.id).length]);
