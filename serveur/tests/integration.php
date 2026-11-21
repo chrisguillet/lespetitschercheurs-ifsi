@@ -1169,6 +1169,10 @@ $chat->prepare('INSERT INTO chat_messages (canal, auteur_id, auteur_nom, cree_le
 appel('a6@ci.test', 'chat_send', ['groupe_id' => $gamma, 'type' => 'promo', 'texte' => 'Un de plus pour la promo']);
 verifie('chat : au plus cinq mille messages par salon de promo', (int) valeur($chat, 'SELECT COUNT(*) FROM chat_messages WHERE canal = ?', [$promoGamma]) === 5000);
 
+// ---------- Préremplissage par DOI (la requête Crossref elle-même est testée sans réseau dans run.php) ----------
+verifie('doi_lookup : saisie invalide refusée', $err(appel('a1@ci.test', 'doi_lookup', ['doi' => 'pas un doi'])) === 'invalid' && $err(appel('a1@ci.test', 'doi_lookup', [])) === 'invalid');
+verifie('doi_lookup : réservé aux étudiantes', $err(appel('forma@ci.test', 'doi_lookup', ['doi' => '10.1000/xyz'])) === 'forbidden');
+
 // ---------- Lot D : traduction des mots-clés ----------
 $r = appel('a1@ci.test', 'translate', ['texte' => 'soins palliatifs, Douleur; fin de vie, Éthique, douleur']);
 verifie('traduction : termes du glossaire, sans service externe', ($r['ok'] ?? false) === true && array_column($r['items'], 'en') === ['palliative care', 'pain', 'end of life', 'ethics']

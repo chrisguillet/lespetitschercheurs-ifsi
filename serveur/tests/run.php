@@ -104,4 +104,32 @@ $vide = sys_get_temp_dir() . '/lpc-sauv-' . bin2hex(random_bytes(4));
 mkdir($vide);
 verifie('sauvegarde : aucun dossier de pièces jointes, aucun échec', \Lpc\Sauvegarde::fichiers($vide, $jour(0))['ajoutes'] === 0);
 
+
+// ---- Préremplissage par DOI ----
+verifie('DOI : forme simple', \Lpc\Doi::normaliser('10.1016/j.ijnurstu.2020.103601') === '10.1016/j.ijnurstu.2020.103601');
+verifie('DOI : lien doi.org et préfixe « doi: »', \Lpc\Doi::normaliser('https://doi.org/10.1000/ABC.1') === '10.1000/ABC.1' && \Lpc\Doi::normaliser('doi: 10.1000/abc') === '10.1000/abc'
+    && \Lpc\Doi::normaliser('http://dx.doi.org/10.1000/abc') === '10.1000/abc');
+verifie('DOI : ponctuation finale et espaces retirés', \Lpc\Doi::normaliser("  10.1000/abc. ") === '10.1000/abc');
+verifie('DOI : refus d\'une adresse web ou d\'un texte', \Lpc\Doi::normaliser('https://exemple.fr/article') === null && \Lpc\Doi::normaliser('bonjour') === null && \Lpc\Doi::normaliser('') === null && \Lpc\Doi::normaliser('10.12/x') === null);
+$notice = ['title' => ['Les <i>soins</i> en fin de vie &amp; l\'autonomie'], 'subtitle' => ['un retour aux sources'], 'author' => [['given' => 'Marie', 'family' => 'Dupont'], ['family' => 'Martin'], ['name' => 'Équipe X']],
+    'issued' => ['date-parts' => [[2021, 3]]], 'container-title' => ['Revue de l\'infirmière'], 'volume' => '12', 'issue' => '3', 'page' => '45-52', 'type' => 'journal-article'];
+$c = \Lpc\Doi::depuisCrossref($notice, '10.1000/xyz');
+verifie('DOI : titre nettoyé, sous-titre joint', $c['titre'] === 'Les soins en fin de vie & l\'autonomie : un retour aux sources');
+verifie('DOI : auteurs au format « Nom, Prénom ; … »', $c['auteur'] === 'Dupont, Marie ; Martin ; Équipe X');
+verifie('DOI : année, revue, volume, numéro, pages, DOI et type', $c['parution'] === '2021' && $c['source'] === 'Revue de l\'infirmière' && $c['volume'] === '12' && $c['numero'] === '3'
+    && $c['pages'] === '45-52' && $c['doi'] === '10.1000/xyz' && $c['type'] === 'Article scientifique');
+verifie('DOI : qualité et nationalité jamais devinées', !array_key_exists('qualite', $c) && !array_key_exists('nation', $c));
+verifie('DOI : thèse et autres types', \Lpc\Doi::depuisCrossref(['title' => ['T'], 'type' => 'dissertation'], '10.1000/a')['type'] === 'Thèse / mémoire' && \Lpc\Doi::depuisCrossref(['title' => ['T'], 'type' => 'book'], '10.1000/a')['type'] === 'Autre');
+verifie('DOI : champs vides absents', array_keys(\Lpc\Doi::depuisCrossref(['title' => ['Seul']], '10.1000/a')) === ['titre', 'doi', 'type']);
+$appels = [];
+$faux = static function (string $m, string $url, array $h, ?string $corps) use (&$appels, $notice): array {
+    $appels[] = $url . ' ' . implode('|', $h);
+    return str_contains($url, '10.1000%2Fabsent') ? ['code' => 404, 'corps' => ''] : (str_contains($url, '10.1000%2Fpanne') ? ['code' => 503, 'corps' => ''] : ['code' => 200, 'corps' => json_encode(['message' => $notice])]);
+};
+verifie('DOI : requête à Crossref avec un agent sans donnée personnelle', \Lpc\Doi::chercher('https://doi.org/10.1000/xyz', $faux)['titre'] !== '' && str_starts_with($appels[0], 'https://api.crossref.org/works/10.1000%2Fxyz')
+    && !str_contains($appels[0], '@'));
+verifie('DOI : introuvable', leve(fn () => \Lpc\Doi::chercher('10.1000/absent', $faux), 'not_found'));
+verifie('DOI : service en panne', leve(fn () => \Lpc\Doi::chercher('10.1000/panne', $faux), 'server'));
+verifie('DOI : saisie invalide refusée sans appel', leve(fn () => \Lpc\Doi::chercher('pas un doi', $faux), 'invalid') && count($appels) === 3);
+
 bilan();

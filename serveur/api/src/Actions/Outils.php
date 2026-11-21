@@ -153,6 +153,13 @@ final class Outils
         return ['ok' => true, 'items' => Traduction::traduire($req['texte'] ?? null, $service)];
     }
 
+    /** Préremplissage d'une fiche par DOI (Crossref, interrogé depuis le serveur). @param array<string,mixed> $req @return array<string,mixed> */
+    public static function doiLookup(Contexte $c, array $req): array
+    {
+        Lectures::exigerEtudiant($c);
+        return ['ok' => true, 'champs' => \Lpc\Doi::chercher(is_scalar($req['doi'] ?? null) ? (string) $req['doi'] : ''), 'source' => 'Crossref'];
+    }
+
     // ---------- Interne ----------
 
     /**
