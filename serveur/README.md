@@ -128,3 +128,5 @@ horaire automatique, créer la variable de dépôt `IMPORT_AUTO` = `true`. Tests
 
 - **À la racine du dépôt** (`index.html`, `js/`, `style.css`…) : l'ancien outil, figé dans son état du 20 novembre 2026. GitHub Pages le publie, il parle à Apps Script et au Google Sheet. On n'y touche plus pendant la double exploitation.
 - **Dans `site/`** : le front du nouvel outil. Le déploiement automatique l'envoie à la racine de lespetitschercheurs.qocot.eu, en réécrivant seulement `config.js` (adresse de l'API et chat activé). Toutes les évolutions du front se font ici.
+
+**Mise à jour du 21 novembre 2026 : bascule faite.** La racine du dépôt ne contient plus que des pages de redirection vers lespetitschercheurs.qocot.eu ; l'ancien front est conservé dans le tag git `ancien-site`. Apps Script est gelé (propriété `GEL` = 1) et l'import automatique est coupé.

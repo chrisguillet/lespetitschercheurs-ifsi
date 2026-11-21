@@ -2,246 +2,29 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lectures du mémoire – IFSI</title>
-<script>try{var t=localStorage.getItem("lydia_theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
-<script>
-// Les fichiers sont redemandés au plus toutes les 10 minutes : après un « git push », plus besoin de Ctrl+F5.
-var V = Math.floor(Date.now() / 600000);
-document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
-</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Les petits chercheurs – le site a déménagé</title>
+<meta http-equiv="refresh" content="4;url=https://lespetitschercheurs.qocot.eu/">
+<link rel="canonical" href="https://lespetitschercheurs.qocot.eu/">
+<style>
+  :root{color-scheme:light dark}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:linear-gradient(120deg,#4b73e6,#6b7cf0 50%,#10a394);color:#18203a;padding:16px;box-sizing:border-box}
+  main{max-width:460px;background:#fff;border-radius:18px;padding:28px 26px;box-shadow:0 12px 36px rgba(20,30,80,.35);text-align:center}
+  h1{font-size:22px;margin:0 0 10px}
+  p{margin:8px 0}
+  a.btn{display:inline-block;margin-top:14px;padding:10px 20px;border-radius:10px;background:#4b73e6;color:#fff;text-decoration:none;font-weight:600}
+  small{color:#5b6785}
+  @media (prefers-color-scheme:dark){main{background:#1a2038;color:#e9edfb}small{color:#a4aecd}a.btn{background:#8ea7ff;color:#0e1325}}
+</style>
 </head>
 <body>
-<header>
-  <div class="toprow">
-    <div><h1>📚 Lectures du mémoire – IFSI</h1>
-    <div class="sub" id="sub">Outil partagé de suivi des lectures de mémoire</div></div>
-    <div class="rightbar"><div id="online"></div><div class="me" id="me"></div></div>
-  </div>
-  <div id="tabs" class="hidden">
-    <div class="tabs gtabs" role="tablist" aria-label="Sections">
-      <button class="gtab" data-g="home" role="tab" aria-selected="false">🏠 Accueil</button>
-      <button class="gtab" data-g="lectures" role="tab" aria-selected="false">📖 Lectures <span class="count gcount hidden"></span></button>
-      <button class="gtab" data-g="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
-      <button class="gtab" data-g="groupe" role="tab" aria-selected="false">🗓️ Mon groupe <span class="count gcount hidden"></span></button>
-      <button class="gtab" data-g="pilotage" role="tab" aria-selected="false">⚙️ Pilotage <span class="count gcount hidden"></span></button>
-    </div>
-    <div class="tabs subtabs hidden" id="subtabs" role="tablist" aria-label="Pages de la section">
-      <button class="tab" data-t="home" role="tab" aria-selected="false">🏠 Accueil</button>
-      <button class="tab" data-t="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
-      <button class="tab on" data-t="all" role="tab" aria-selected="true">📊 Tableau commun</button>
-      <button class="tab" data-t="cmts" role="tab" aria-selected="false">💬 Commentaires <span id="cmtcount" class="count hidden"></span></button>
-      <button class="tab" data-t="biblio" role="tab" aria-selected="false">📖 Bibliographie</button>
-      <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
-      <button class="tab hidden" data-t="suivi" role="tab" aria-selected="false">🗓️ Suivi de projet <span id="alertnb" class="count alertnb hidden" title="Jalons à surveiller"></span></button>
-      <button class="tab hidden" data-t="glossaire" role="tab" aria-selected="false">📚 Glossaire</button>
-      <button class="tab hidden" data-t="dash" role="tab" aria-selected="false">🧭 Tableau de bord</button>
-      <button class="tab hidden" data-t="admin" role="tab" aria-selected="false"><span id="adminlbl">👥 Administration</span> <span id="pending" class="count hidden"></span></button>
-    </div>
-  </div>
-  <div class="ctxbar hidden" id="ctxbar"></div>
-</header>
 <main>
-  <div id="status" class="note hidden" role="status" aria-live="polite"></div>
-  <div id="alertes" class="alertes hidden" role="status"></div>
-
-  <section id="gate" class="card">
-    <p id="gatemsg">Connectez-vous avec votre compte Google pour accéder aux lectures.</p>
-    <div id="login"></div>
-    <div id="accueil" class="hidden"></div>
-    <div id="gatewait" class="gatewait hidden" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span id="gatewaitmsg">Connexion en cours…</span></div>
-    <button class="btn sec hidden" id="retry" style="margin-top:12px">Vérifier à nouveau</button>
-    <p class="meta" style="margin-top:14px">Le traitement de vos données est décrit dans la <a href="privacy.html">politique de confidentialité</a> ; votre accord est demandé avant l’entrée dans l’outil.</p>
-  </section>
-
-  <input type="file" id="fup" class="hidden" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" aria-label="Choisir un fichier à joindre">
-  <div id="app" class="hidden">
-    <div id="nogroup" class="note hidden"></div>
-    <section id="home" class="hidden"></section>
-    <section id="dash" class="hidden"></section>
-    <section id="mine" class="hidden">
-      <div class="tools" style="justify-content:space-between;margin:14px 0 4px">
-        <h2 style="font-size:16px;margin:0">Mes lectures</h2>
-        <button class="btn" id="addbtn" type="button">＋ Ajouter une lecture</button>
-      </div>
-      <div id="mysum" class="meta" style="margin-bottom:8px"></div>
-      <div id="mylist"></div>
-    </section>
-
-    <section id="all">
-      <div class="card tools" id="filters"></div>
-      <div class="stats" id="stats"></div>
-      <div class="wrap tall" id="tablewrap"><table id="tbl"><thead><tr>
-        <th class="c1">1 · Article</th>
-        <th class="c2">2 · Mots-clés</th><th class="c3">3 · Keywords (EN)</th>
-        <th class="c4">4 · Concepts en sciences infirmières</th>
-        <th class="c5">5 · Objet / sujet principal</th>
-        <th class="c6">6 · Opinion de l’auteur</th>
-        <th class="c7">7 · Controverse</th><th class="c8">8 · Libre</th><th class="c9">9 · Référence APA</th>
-      </tr></thead><tbody id="rows"></tbody></table></div>
-      <div id="cards" class="cards hidden"></div>
-    </section>
-
-    <section id="cmts" class="hidden">
-      <div id="cmtsbox"></div>
-    </section>
-
-    <section id="suivi" class="hidden">
-      <div class="card">
-        <div class="tools" style="justify-content:space-between"><h2 style="margin:0;font-size:16px">🧭 Rétroplanning</h2>
-          <button class="btn sm" id="addjalon" type="button">＋ Ajouter un jalon</button></div>
-        <div id="jalonform"></div>
-        <div id="retro"></div>
-      </div>
-      <div class="card">
-        <div class="tools" style="justify-content:space-between"><h2 style="margin:0;font-size:16px">📝 Réunions du groupe</h2>
-          <button class="btn sm" id="addreunion" type="button">＋ Ajouter un compte rendu</button></div>
-        <div id="reunionform"></div>
-        <div id="reunions"></div>
-      </div>
-    </section>
-
-    <section id="glossaire" class="hidden">
-      <div class="card">
-        <div class="tools" style="justify-content:space-between"><h2 style="margin:0;font-size:16px">📚 Glossaire du groupe</h2>
-          <button class="btn sm" id="addterme" type="button">＋ Ajouter un terme</button></div>
-        <div class="meta" style="margin-top:4px">Les définitions importantes de votre mémoire, avec la référence qui les donne. Visible et modifiable par les membres du groupe.</div>
-        <div id="gloform"></div>
-        <div class="tools hidden" style="margin-top:8px"><input id="gloq" type="search" placeholder="Rechercher un mot, une définition, une référence…" aria-label="Rechercher dans le glossaire" style="max-width:420px"></div>
-        <div id="glolist"></div>
-      </div>
-    </section>
-
-    <section id="biblio" class="hidden">
-      <div class="card tools noprint" id="bibtools"></div>
-      <div class="card" id="biblist"></div>
-    </section>
-
-    <section id="synth" class="hidden">
-      <div id="synthbox"></div>
-    </section>
-
-    <section id="admin" class="hidden">
-      <div class="card">
-        <h2 style="margin-top:0;font-size:16px">Demandes d’accès et droits</h2>
-        <div class="note">Une personne inconnue qui se connecte apparaît ici en attente. Donnez-lui un prénom puis un rôle :
-          <b>Formateur</b> (lecture + commentaires, dans les groupes auquel l’administrateur le rattache). Les étudiants sont gérés par l’administrateur.</div>
-        <div id="adminbox"></div>
-      </div>
-    </section>
-  </div>
-  <div id="cmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cmtitle">
-    <div class="modalbox">
-      <div class="modalhead">
-        <div><h2 id="cmtitle"></h2><div class="meta" id="cmsub"></div></div>
-        <button class="btn sm sec" id="cmclose" type="button" aria-label="Fermer la discussion">✕ Fermer</button>
-      </div>
-      <div id="cmbody" class="cmbox"></div>
-    </div>
-  </div>
-  <div id="gmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="gtitle">
-    <div class="modalbox">
-      <div class="modalhead">
-        <div><h2 id="gtitle"></h2><div class="meta" id="gsub"></div></div>
-        <button class="btn sm sec" id="gclose" type="button" aria-label="Fermer la fenêtre du groupe">✕ Fermer</button>
-      </div>
-      <div id="gbody" class="cmbox"></div>
-    </div>
-  </div>
-  <div id="fbmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="fbtitle">
-    <div class="modalbox">
-      <div class="modalhead">
-        <div><h2 id="fbtitle">💡 Un retour sur l’outil</h2></div>
-        <button class="btn sm sec" id="fbclose" type="button" aria-label="Fermer la fenêtre de retour">✕ Fermer</button>
-      </div>
-      <div id="fbbody" class="cmbox"></div>
-    </div>
-  </div>
-  <div id="hmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="htitle">
-    <div class="modalbox">
-      <div class="modalhead">
-        <div><h2 id="htitle">🕘 Historique</h2></div>
-        <button class="btn sm sec" id="hclose" type="button" aria-label="Fermer l’historique">✕ Fermer</button>
-      </div>
-      <div id="hbody" class="cmbox"></div>
-    </div>
-  </div>
-  <div id="cmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ctitle">
-    <div class="modalbox" style="max-width:520px">
-      <div class="modalhead"><div><h2 id="ctitle">🔒 Vos données et leur partage</h2></div></div>
-      <div id="cbody" style="padding:14px 16px;overflow:auto">
-        <p>Pour continuer à utiliser l’outil, merci de lire et d’accepter ce qui suit.</p>
-        <p class="meta" id="ctexte"></p>
-        <label class="rgpdcheck"><input type="checkbox" id="caccord"> <span id="ccase"></span></label>
-        <div id="cerr" class="meta" role="alert" style="color:var(--bad,#c0392b);margin-top:6px"></div>
-        <div style="margin-top:10px" class="grow"><button class="btn" type="button" id="cok">J’accepte</button><button class="btn sec" type="button" id="cno">Je refuse et me déconnecte</button></div>
-        <div class="meta" style="margin-top:8px">Si vous refusez, vous pouvez demander l’effacement de vos données à l’administrateur. Détails : <a href="privacy.html" target="_blank" rel="noopener">politique de confidentialité</a>.</div>
-      </div>
-    </div>
-  </div>
-  <div id="notemodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="notetitle">
-    <div class="modalbox" style="max-width:860px">
-      <div class="modalhead">
-        <div><h2 id="notetitle">📝 Mes notes</h2><div class="meta">🔒 Privées : visibles de vous seul</div></div>
-        <button class="btn sm sec" id="noteclose" type="button" aria-label="Fermer les notes">✕ Fermer</button>
-      </div>
-      <div id="notebody"></div>
-    </div>
-  </div>
-  <div id="jeuchoix" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="jeuchoixtitle">
-    <div class="modalbox" style="max-width:720px">
-      <div class="modalhead">
-        <div><h2 id="jeuchoixtitle">🎮 Pause ludique</h2><div class="meta">Choisissez un jeu.</div></div>
-        <button class="btn sm sec" id="jeuchoixclose" type="button" aria-label="Fermer">✕ Fermer</button>
-      </div>
-      <div id="jeuchoixbody" class="jeugrille"></div>
-    </div>
-  </div>
-  <div id="jeumodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="jeutitle">
-    <div class="modalbox">
-      <div class="modalhead">
-        <div><h2 id="jeutitle">🎮 Pause ludique</h2></div>
-        <div class="grow"><button class="btn sm sec" id="jeuretour" type="button">← Autres jeux</button><button class="btn sm sec" id="jeuclose" type="button" aria-label="Fermer le jeu">✕ Fermer</button></div>
-      </div>
-      <div id="jeubody" class="cmbox" style="padding:12px 16px 16px"></div>
-    </div>
-  </div>
-  <aside id="drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="ftitle">
-    <div class="drawerhead"><button class="btn sm sec" id="drawerclose" type="button">← Retour à la liste</button><h2 id="ftitle">Ajouter une lecture</h2></div>
-    <div class="note" id="fnote"></div>
-    <div id="form"></div>
-  </aside>
-  <p class="sub noprint" style="text-align:center;margin-top:24px"><a href="privacy.html">Confidentialité</a> · <button type="button" id="fbopen" class="lnk hidden">💡 Un retour sur l’outil ?</button></p>
+  <h1>📚 Le site a déménagé</h1>
+  <p>« Lectures du mémoire – IFSI » est désormais disponible à sa nouvelle adresse. Vos fiches, vos groupes et votre planning y ont été repris.</p>
+  <p>Connectez-vous avec le même compte Google. Une demande de consentement s’affichera à votre première visite.</p>
+  <a class="btn" href="https://lespetitschercheurs.qocot.eu/">Ouvrir le nouveau site</a>
+  <p><small>Vous allez être redirigé(e) dans quelques secondes. Pensez à mettre à jour votre marque-page.</small></p>
 </main>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="config.js"></script>
-<script>
-/* Mesure d'audience (GoatCounter), facultative : active seulement si GOATCOUNTER est renseigné dans config.js.
-   Chargée après la page, en asynchrone, sans jamais bloquer ni faire échouer l'application ; ignorée si le navigateur demande de ne pas être suivi.
-   Aucune donnée de l'application (adresse, prénom, contenu) n'est transmise : uniquement la page vue. */
-window.addEventListener("load", function () {
-  try {
-    var u = (window.LYDIA_CONFIG || {}).GOATCOUNTER;
-    if (!u || navigator.doNotTrack === "1" || window.doNotTrack === "1") return;
-    setTimeout(function () {
-      try {
-        var g = document.createElement("script");
-        g.async = true; g.src = "https://gc.zgo.at/count.js";
-        g.setAttribute("data-goatcounter", u);
-        g.onerror = function () { /* injoignable : sans conséquence */ };
-        document.head.appendChild(g);
-      } catch (e) { /* ignoré */ }
-    }, 1500);
-  } catch (e) { /* ignoré */ }
-});
-</script>
-<script>
-/* Scripts classiques chargés dans l'ordre : ils partagent tous la même portée globale (voir js/*.js). */
-document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "admin", "exports", "chat", "onboarding", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
-</script>
+<script>setTimeout(function () { location.replace("https://lespetitschercheurs.qocot.eu/"); }, 3500);</script>
 </body>
 </html>
