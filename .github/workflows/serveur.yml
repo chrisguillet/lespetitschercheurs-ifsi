@@ -132,11 +132,20 @@ jobs:
         env:
           SFTP_HOTE: ${{ secrets.SFTP_HOTE }}
           SFTP_UTILISATEUR: ${{ secrets.SFTP_UTILISATEUR }}
-          LFTP_PASSWORD: ${{ secrets.SFTP_MOT_DE_PASSE }}
+          SFTP_MOT_DE_PASSE: ${{ secrets.SFTP_MOT_DE_PASSE }}
         run: |
           # Garde-fou : ne jamais refléter un dossier vide ou faux (cela viderait api/ sur le serveur).
           test -f serveur/api/index.php || { echo "serveur/api/index.php introuvable"; exit 1; }
-          lftp -u "$SFTP_UTILISATEUR" "sftp://$SFTP_HOTE" -e "set sftp:auto-confirm yes; set net:max-retries 2; set net:timeout 30; mirror --reverse --delete --verbose serveur/api api; bye"
+          # --no-perms : un compte SFTP seul n'a pas toujours le droit de changer les permissions des fichiers.
+          set +e
+          lftp -u "$SFTP_UTILISATEUR,$SFTP_MOT_DE_PASSE" "sftp://$SFTP_HOTE" -e "set sftp:auto-confirm yes; set net:max-retries 2; set net:timeout 30; set cmd:fail-exit yes; mirror --reverse --delete --no-perms --verbose serveur/api api; bye" > "$RUNNER_TEMP/lftp.log" 2>&1
+          code=$?
+          cat "$RUNNER_TEMP/lftp.log"
+          if [ "$code" -ne 0 ]; then
+            # La fin du journal devient une annotation, lisible sans ouvrir les journaux complets.
+            tail -n 15 "$RUNNER_TEMP/lftp.log" | while IFS= read -r ligne; do echo "::error::lftp : $ligne"; done
+            exit "$code"
+          fi
 
       - name: Vérifier le service en ligne
         if: steps.config.outputs.pret == 'true'
