@@ -36,7 +36,6 @@ $distant = 'set -e; test -d qocot/lespetitschercheurs || { echo CHEMIN-INTROUVAB
     'mv -f $D/config.php qocot/_prive/lespetitschercheurs/config.php; chmod 600 qocot/_prive/lespetitschercheurs/config.php; ' +
     '(php -l qocot/_prive/lespetitschercheurs/config.php) || echo ATTENTION-SYNTAXE-DE-CONFIG-A-VERIFIER; ' +
     'rm -rf qocot/lespetitschercheurs/api; cp -r $D/api qocot/lespetitschercheurs/api; ' +
-    'cp $D/diagnostic/diag.php qocot/lespetitschercheurs/api/diag.php; ' +
     'echo DEPLOYE; pwd; (php -v | head -1) || true; (ls /usr/bin | grep -i ^php) || true'
 
 Write-Host '2/2 Installation sur le serveur (mot de passe a nouveau)...'
