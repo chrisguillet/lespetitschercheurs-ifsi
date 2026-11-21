@@ -1098,11 +1098,15 @@ verifie('note supprimée', count(appel('a1@ci.test', 'note_delete', ['id' => $ni
 // ---------- Lot D : retours sur l'outil ----------
 $fb = ['type' => 'idee', 'texte' => 'Un mode sombre', 'contexte' => "page\nlectures"];
 $r = appel('a1@ci.test', 'feedback_save', ['data' => $fb]);
-verifie('retour enregistré, quota restant', ($r['ok'] ?? false) === true && count($r['feedbacks'] ?? []) === 1 && $r['feedbackRestant'] === 1 && $r['feedbackParJour'] === 2);
+verifie('retour enregistré, quota restant', ($r['ok'] ?? false) === true && count($r['feedbacks'] ?? []) === 1 && $r['feedbackRestants']['idee'] === 4 && $r['feedbackRestants']['bug'] === 10 && $r['feedbackLimites'] === ['bug' => 10, 'idee' => 5, 'autre' => 3]);
 verifie('retour : contexte sur une seule ligne', valeur($pdo, 'SELECT contexte FROM feedback WHERE auteur_id = ? ORDER BY cree_le LIMIT 1', [$B['a1']]) === 'page lectures');
 $fid = (string) $r['feedbacks'][0]['id'];
-verifie('retour : deuxième permis, troisième refusé', (appel('a1@ci.test', 'feedback_save', ['data' => array_merge($fb, ['texte' => 'Autre'])])['feedbackRestant'] ?? -1) === 0
-    && $err(appel('a1@ci.test', 'feedback_save', ['data' => $fb])) === 'limit');
+for ($k = 0; $k < 4; $k++) {
+    appel('a1@ci.test', 'feedback_save', ['data' => array_merge($fb, ['texte' => 'Idée ' . $k])]);
+}
+verifie('retour : cinq idées permises, la sixième refusée', $err(appel('a1@ci.test', 'feedback_save', ['data' => $fb])) === 'limit');
+$r = appel('a1@ci.test', 'feedback_save', ['data' => ['type' => 'bug', 'texte' => 'Un bug']]);
+verifie('retour : la limite est par type (un bug reste permis)', ($r['ok'] ?? false) === true && $r['feedbackRestants']['bug'] === 9 && $r['feedbackRestants']['idee'] === 0);
 $r = appel('a1@ci.test', 'feedback_save', ['id' => $fid, 'data' => array_merge($fb, ['texte' => 'Modifié'])]);
 verifie('retour : modifié le jour même', (array_values(array_filter($r['feedbacks'] ?? [], static fn (array $f): bool => $f['id'] === $fid))[0]['texte'] ?? '') === 'Modifié');
 verifie('retour : celui d\'un autre introuvable', $err(appel('a2@ci.test', 'feedback_save', ['id' => $fid, 'data' => $fb])) === 'not_found');
@@ -1112,7 +1116,7 @@ verifie('retour : validations', $err(appel('a2@ci.test', 'feedback_save', ['data
 $ancien = Ids::uuid();
 $pdo->prepare('INSERT INTO feedback (id, auteur_id, type, texte, jour, cree_le) VALUES (?, ?, ?, ?, ?, ?)')->execute([$ancien, $B['a2'], 'bug', 'Hier', gmdate('Y-m-d', time() - 3 * 86400), gmdate('Y-m-d H:i:s', time() - 3 * 86400)]);
 verifie('retour : plus modifiable un autre jour', $err(appel('a2@ci.test', 'feedback_save', ['id' => $ancien, 'data' => $fb])) === 'forbidden');
-verifie('retours : liste du jour de la personne', count(appel('a1@ci.test', 'feedback_list')['feedbacks'] ?? []) === 2 && count(appel('a2@ci.test', 'feedback_list')['feedbacks'] ?? []) === 0);
+verifie('retours : liste du jour de la personne', count(appel('a1@ci.test', 'feedback_list')['feedbacks'] ?? []) === 6 && count(appel('a2@ci.test', 'feedback_list')['feedbacks'] ?? []) === 0);
 $r = appel($admin, 'admin_list');
 verifie('retours : lus par l\'admin global seulement', count($r['feedbacks'] ?? []) >= 3 && ($r['feedbacks'][0]['par'] ?? '') !== '' && isset($r['feedbacks'][0]['email']) && !array_key_exists('feedbacks', appel('ap@ci.test', 'admin_list')));
 

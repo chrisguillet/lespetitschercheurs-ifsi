@@ -4,12 +4,13 @@ declare(strict_types=1);
 namespace Lpc;
 
 /**
- * Retours sur l'outil (bugs, idées, autres) : ouverts à toute personne dont l'accès est validé. Deux par jour et par personne,
+ * Retours sur l'outil (bugs, idées, autres) : ouverts à toute personne dont l'accès est validé. Par jour et par personne : 10 bugs, 5 idées, 3 autres,
  * modifiables le jour même. L'administrateur les lit tous.
  */
 final class Feedback
 {
-    public const PAR_JOUR = 2;
+    /** Retours permis par jour et par personne, selon le type. */
+    public const LIMITES = ['bug' => 10, 'idee' => 5, 'autre' => 3];
     public const TEXTE_MAX = 2000;
     public const TYPES = ['bug', 'idee', 'autre'];
 
@@ -29,7 +30,11 @@ final class Feedback
             $miens[] = ['id' => (string) $r['id'], 'type' => (string) $r['type'], 'texte' => (string) $r['texte'],
                 'cree_le' => Temps::iso((string) $r['cree_le']), 'modifie_le' => Temps::iso($r['modifie_le'] === null ? null : (string) $r['modifie_le'])];
         }
-        return ['feedbacks' => $miens, 'feedbackRestant' => max(0, self::PAR_JOUR - count($miens)), 'feedbackParJour' => self::PAR_JOUR];
+        $restants = self::LIMITES;
+        foreach ($miens as $m) {
+            $restants[$m['type']] = max(0, ($restants[$m['type']] ?? 0) - 1);
+        }
+        return ['feedbacks' => $miens, 'feedbackRestants' => $restants, 'feedbackLimites' => self::LIMITES];
     }
 
     public static function enregistrer(Contexte $c, mixed $id, mixed $data): void
@@ -62,17 +67,29 @@ final class Feedback
             if ((string) $j !== $jour) {
                 throw new Erreur('forbidden', 'Un retour ne peut être modifié que le jour où il a été envoyé');
             }
+            // Changer de type revient à en envoyer un de cet autre type : la limite de ce type compte.
+            $st = $pdo->prepare('SELECT type FROM feedback WHERE id = ?');
+            $st->execute([$id]);
+            if ((string) $st->fetchColumn() !== $type) {
+                self::exigerPlace($pdo, (int) $c->user->id, $jour, $type);
+            }
             $pdo->prepare('UPDATE feedback SET type = ?, texte = ?, modifie_le = ? WHERE id = ?')->execute([$type, $texte, $now, $id]);
             return;
         }
-        $st = $pdo->prepare('SELECT COUNT(*) FROM feedback WHERE auteur_id = ? AND jour = ?');
-        $st->execute([$c->user->id, $jour]);
-        if ((int) $st->fetchColumn() >= self::PAR_JOUR) {
-            throw new Erreur('limit', 'Vous avez déjà envoyé ' . self::PAR_JOUR . ' retours aujourd’hui : modifiez-en un ou revenez demain');
-        }
+        self::exigerPlace($pdo, (int) $c->user->id, $jour, $type);
         $contexte = mb_substr((string) preg_replace('/[\r\n]+/', ' ', is_scalar($data['contexte'] ?? null) ? (string) $data['contexte'] : ''), 0, 300);
         $pdo->prepare('INSERT INTO feedback (id, auteur_id, type, texte, contexte, jour, cree_le, statut) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
             ->execute([Ids::uuid(), $c->user->id, $type, $texte, $contexte, $jour, $now, 'nouveau']);
+    }
+
+    private static function exigerPlace(PDO $pdo, int $uid, string $jour, string $type): void
+    {
+        $st = $pdo->prepare('SELECT COUNT(*) FROM feedback WHERE auteur_id = ? AND jour = ? AND type = ?');
+        $st->execute([$uid, $jour, $type]);
+        $max = self::LIMITES[$type];
+        if ((int) $st->fetchColumn() >= $max) {
+            throw new Erreur('limit', 'Vous avez déjà envoyé ' . $max . ' retour' . ($max > 1 ? 's' : '') . ' de ce type aujourd’hui : modifiez-en un ou revenez demain');
+        }
     }
 
     /** Administrateur seulement : tous les retours, les plus récents d'abord. @return list<array<string,mixed>> */
@@ -80,7 +97,7 @@ final class Feedback
     {
         $st = $c->db->principale()->query(
             'SELECT f.id, f.type, f.texte, f.contexte, f.cree_le, f.modifie_le, f.statut, u.email, u.prenom, u.nom, u.pseudo
-             FROM feedback f LEFT JOIN utilisateurs u ON u.id = f.auteur_id ORDER BY f.cree_le DESC, f.id DESC LIMIT 300'
+             FROM feedback f LEFT JOIN utilisateurs u ON u.id = f.auteur_id ORDER BY f.cree_le DESC, f.id DESC LIMIT 1000'
         );
         $out = [];
         foreach ($st->fetchAll() as $r) {

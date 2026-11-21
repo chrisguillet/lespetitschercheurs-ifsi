@@ -6,7 +6,7 @@
 const TYPES_FB = { bug: "🐞 Bug", idee: "💡 Idée d’amélioration", autre: "💬 Autre" };
 // Suivi des retours (administrateur général) : « nouveau » = non traité.
 const STATUTS_FB = { nouveau: "Non traité", a_faire: "À faire", ecartee: "Écartée", traitee: "Traitée" };
-const FB = { ouvert: false, liste: [], restant: 2, par: 2, edition: "", focus: null };
+const FB = { ouvert: false, liste: [], restants: { bug: 10, idee: 5, autre: 3 }, limites: { bug: 10, idee: 5, autre: 3 }, type: "bug", edition: "", focus: null };
 
 function ouvrirFeedback() {
   if (!$("fbmodal")) return;
@@ -25,17 +25,21 @@ function fermerFeedback(silencieux) {
   $("fbbody").innerHTML = "";
   if (!silencieux && FB.focus && FB.focus.isConnected && FB.focus.focus) { try { FB.focus.focus({ preventScroll: true }); } catch (e) { /* ignoré */ } }
 }
-function majEtatFeedback(r) { FB.liste = r.feedbacks || []; FB.restant = r.feedbackRestant ?? 0; FB.par = r.feedbackParJour || 2; }
+function majEtatFeedback(r) { FB.liste = r.feedbacks || []; FB.restants = r.feedbackRestants || FB.restants; FB.limites = r.feedbackLimites || FB.limites; }
 
+const LIB_PAR_JOUR = { bug: "bugs", idee: "idées", autre: "autres" };
 function renderFeedback() {
-  const ed = FB.liste.find(x => x.id === FB.edition), peut = !!ed || FB.restant > 0;
+  const ed = FB.liste.find(x => x.id === FB.edition);
+  if (ed) FB.type = ed.type;
+  const reste = FB.restants[FB.type] ?? 0, peut = !!ed || reste > 0;
   const quand = iso => new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const parJour = Object.keys(TYPES_FB).map(k => `${FB.limites[k]} ${LIB_PAR_JOUR[k]}`).join(", ");
   $("fbbody").innerHTML = `<div class="meta" style="margin-bottom:10px">Un bug, une idée, une remarque ? Ça aide à améliorer l’outil. Vos retours sont lus par l’administrateur.
-    ${FB.par} au maximum par jour, modifiables jusqu’à minuit.</div>
-   <div class="grid"><div><label for="fbtype">Type</label><select id="fbtype" ${peut ? "" : "disabled"}>${Object.keys(TYPES_FB).map(k => `<option value="${k}" ${ed && ed.type === k ? "selected" : ""}>${esc(TYPES_FB[k])}</option>`).join("")}</select></div></div>
+    Par jour : ${parJour}, modifiables jusqu’à minuit.</div>
+   <div class="grid"><div><label for="fbtype">Type</label><select id="fbtype">${Object.keys(TYPES_FB).map(k => `<option value="${k}" ${FB.type === k ? "selected" : ""}>${esc(TYPES_FB[k])}</option>`).join("")}</select></div></div>
    <label for="fbtexte" style="margin-top:8px">Votre retour</label>
-   <textarea id="fbtexte" maxlength="2000" rows="5" ${peut ? "" : "disabled"} placeholder="${peut ? "Que s’est-il passé ? Qu’aimeriez-vous voir ?" : "Vous avez envoyé vos retours du jour."}">${esc(ed ? ed.texte : "")}</textarea>
-   <div class="meta">${ed ? "Modification d’un retour envoyé aujourd’hui" : peut ? `Il vous reste ${FB.restant} retour${FB.restant > 1 ? "s" : ""} aujourd’hui` : `Limite de ${FB.par} retours par jour atteinte : modifiez-en un ci-dessous ou revenez demain`}
+   <textarea id="fbtexte" maxlength="2000" rows="5" ${peut ? "" : "disabled"} placeholder="${peut ? "Que s’est-il passé ? Qu’aimeriez-vous voir ?" : "Limite du jour atteinte pour ce type de retour."}">${esc(ed ? ed.texte : "")}</textarea>
+   <div class="meta">${ed ? "Modification d’un retour envoyé aujourd’hui" : peut ? `Il vous reste ${reste} retour${reste > 1 ? "s" : ""} de ce type aujourd’hui` : `Limite de ${FB.limites[FB.type]} retours de ce type par jour atteinte : modifiez-en un ci-dessous, choisissez un autre type ou revenez demain`}
      · l’onglet et le navigateur utilisés sont joints pour aider à comprendre un bug.</div>
    <div class="savebar"><div id="fberr" class="err" role="alert"></div>
      <button class="btn" id="fbsend" type="button" ${peut ? "" : "disabled"}>${ed ? "Enregistrer la modification" : "Envoyer"}</button>
@@ -43,6 +47,15 @@ function renderFeedback() {
    ${FB.liste.length ? `<h3 style="font-size:14px;margin:14px 0 6px">Vos retours d’aujourd’hui</h3>` + FB.liste.map(x => `<div class="cardc" style="margin:6px 0"><div class="tools" style="justify-content:space-between"><span><b>${esc(TYPES_FB[x.type] || x.type)}</b> <span class="meta">· ${esc(quand(x.cree_le))}${x.modifie_le ? " · modifié" : ""}</span></span>
       <button type="button" class="btn sm sec" data-fbe="${esc(x.id)}">Modifier</button></div><div style="white-space:pre-wrap">${esc(x.texte)}</div></div>`).join("") : ""}`;
 }
+// Changer de type : la limite affichée et le bouton suivent, sans perdre le texte déjà saisi.
+$("fbmodal")?.addEventListener("change", e => {
+  if (e.target.id !== "fbtype") return;
+  const brouillon = $("fbtexte").value;
+  FB.type = e.target.value;
+  renderFeedback();
+  if (!$("fbtexte").disabled) $("fbtexte").value = brouillon;
+  $("fbtype").focus();
+});
 
 async function envoyerFeedback() {
   const texte = $("fbtexte").value.trim();
@@ -70,14 +83,42 @@ $("fbmodal")?.addEventListener("click", e => {
 });
 
 const sigFeedbacks = () => feedbacksAdmin.length + ":" + (feedbacksAdmin[0] ? feedbacksAdmin[0].id : "");
-function blocFeedbacks() {
-  const l = feedbacksAdmin;
-  return `<h3>💡 Retours sur l’outil (${l.length})</h3>` + (l.length
-    ? `<div class="meta">Les plus récents d’abord. Choisissez le statut de chaque retour : il se range tout seul dans la liste.</div>
-      <div class="wrap"><table class="adm"><thead><tr><th>Date</th><th>De</th><th>Type</th><th>Retour</th><th>Statut</th></tr></thead><tbody>${l.map(f => `<tr><td>${esc(fmtDT(f.cree_le))}</td><td>${esc(f.par)}<div class="meta">${esc(f.email)}</div></td><td>${esc(TYPES_FB[f.type] || f.type)}</td>
-        <td><div style="white-space:pre-wrap">${esc(f.texte)}</div>${f.contexte ? `<div class="meta">${esc(f.contexte)}</div>` : ""}</td><td><select data-fbs="${esc(f.id)}" aria-label="Statut du retour">${Object.keys(STATUTS_FB).map(k => `<option value="${k}" ${(f.statut || "nouveau") === k ? "selected" : ""}>${esc(STATUTS_FB[k])}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>`
-    : `<div class="meta">Aucun retour pour l’instant.</div>`);
+// Filtres de la liste (administrateur) : par défaut, les retours encore à traiter (non traités ou à faire) ; les traités et écartés se retrouvent par le filtre.
+const FBF = { q: "", statut: "actifs", type: "" };
+const FILTRES_STATUT_FB = [["actifs", "À traiter (non traités + à faire)"], ["", "Tous les statuts"], ["nouveau", "Non traités"], ["a_faire", "À faire"], ["traitee", "Traités"], ["ecartee", "Écartés"]];
+function retoursFiltres() {
+  const q = String(FBF.q || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  return feedbacksAdmin.filter(f => {
+    const st = f.statut || "nouveau";
+    if (FBF.statut === "actifs" ? (st === "traitee" || st === "ecartee") : (FBF.statut && st !== FBF.statut)) return false;
+    if (FBF.type && f.type !== FBF.type) return false;
+    return !q || [f.texte, f.par, f.email, f.contexte].join(" ").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().includes(q);
+  });
 }
+function listeRetoursHtml() {
+  const l = retoursFiltres();
+  const tete = `<div class="meta" role="status">${l.length} retour${l.length > 1 ? "s" : ""} affiché${l.length > 1 ? "s" : ""} sur ${feedbacksAdmin.length}</div>`;
+  if (!l.length) return tete + '<div class="meta">Aucun retour ne correspond à ces critères.</div>';
+  return tete + `<div class="wrap"><table class="adm"><thead><tr><th>Date</th><th>De</th><th>Type</th><th>Retour</th><th>Statut</th></tr></thead><tbody>${l.map(f => `<tr><td>${esc(fmtDT(f.cree_le))}</td><td>${esc(f.par)}<div class="meta">${esc(f.email)}</div></td><td>${esc(TYPES_FB[f.type] || f.type)}</td>
+        <td><div style="white-space:pre-wrap">${esc(f.texte)}</div>${f.contexte ? `<div class="meta">${esc(f.contexte)}</div>` : ""}</td><td><select data-fbs="${esc(f.id)}" aria-label="Statut du retour">${Object.keys(STATUTS_FB).map(k => `<option value="${k}" ${(f.statut || "nouveau") === k ? "selected" : ""}>${esc(STATUTS_FB[k])}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>`;
+}
+function blocFeedbacks() {
+  if (!feedbacksAdmin.length) return `<h3>💡 Retours sur l’outil</h3><div class="meta">Aucun retour pour l’instant.</div>`;
+  const opt = (v, l, cur) => `<option value="${v}" ${cur === v ? "selected" : ""}>${esc(l)}</option>`;
+  return `<h3>💡 Retours sur l’outil</h3>
+    <div class="meta">Les plus récents d’abord. Choisissez le statut de chaque retour : il se range tout seul, et sort de la liste s’il est traité ou écarté (filtre « Tous les statuts » pour le retrouver).</div>
+    <div class="persfiltres grow"><input type="search" data-ff="q" value="${esc(FBF.q)}" placeholder="Rechercher dans les retours" aria-label="Rechercher dans les retours" style="min-width:220px;flex:1">
+      <select data-ff="statut" aria-label="Filtrer par statut">${FILTRES_STATUT_FB.map(([v, l]) => opt(v, l, FBF.statut)).join("")}</select>
+      <select data-ff="type" aria-label="Filtrer par type">${opt("", "Tous les types", FBF.type)}${Object.keys(TYPES_FB).map(k => opt(k, TYPES_FB[k], FBF.type)).join("")}</select></div>
+    <div id="fbliste">${listeRetoursHtml()}</div>`;
+}
+// Seule la liste est redessinée quand un filtre change : la saisie dans la recherche n'est pas interrompue.
+$("adminbox").addEventListener("input", e => {
+  const f = e.target.dataset && e.target.dataset.ff;
+  if (!f) return;
+  FBF[f] = e.target.value;
+  if ($("fbliste")) $("fbliste").innerHTML = listeRetoursHtml();
+});
 
 // Changement de statut d'un retour, depuis la liste de l'administration.
 $("adminbox").addEventListener("change", async e => {

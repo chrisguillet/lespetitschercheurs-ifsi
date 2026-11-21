@@ -132,7 +132,7 @@ const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).leng
 function actionsHtml(i) {
   const edit = canWrite() && i.mine && i.modifiable ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier ma fiche de lecture</button> <button class="btn sm sec" data-hist="lecture:${esc(i.id)}" title="Versions précédentes de ma fiche">🕘</button> ` : "";
   const n = comments.filter(x => x.lecture_id === i.id).length, u = nbNonLus(i.id);
-  return `${edit}<button class="btn sm sec" data-fpdf="${esc(i.id)}" title="Télécharger cette fiche en PDF">⬇️ PDF</button> <button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n}${u ? ", " + u + " non lus" : ""})">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button>`;
+  return `${edit}<button class="btn sm sec" data-fpdf="${esc(i.id)}" title="Aperçu de la fiche, puis impression ou enregistrement en PDF">PDF</button> <button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n}${u ? ", " + u + " non lus" : ""})">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button>`;
 }
 
 // Actions du document : ajouter sa fiche de lecture, corriger la partie objective.
