@@ -156,7 +156,7 @@ function reinitialiserEtat() {
   Object.assign(F, filtresVierges(), { sort: "ajoute" });
   B.who = ""; B.enCours = false;
   enLigne = []; enLigneSig = "";
-  tab = "all"; vuDepuis = null; renderedAcces = ""; derniereSync = null; usersChanged = false;
+  tab = "all"; try { sessionStorage.removeItem("lpc_tab"); } catch (e) { /* ignoré */ } vuDepuis = null; renderedAcces = ""; derniereSync = null; usersChanged = false;
   ["rows", "cards", "mylist", "mysum", "adminbox", "bibtools", "biblist", "synthbox", "cmtsbox", "cmbody", "online", "filters", "stats", "form", "ctxbar", "gbody"].forEach(id => { $(id).innerHTML = ""; });
   $("pending").textContent = ""; $("cmtcount").textContent = "";
   document.body.classList.remove("nogroup");
@@ -336,8 +336,9 @@ async function boot() {
     $("gate").classList.add("hidden");
     $("app").classList.remove("hidden");
     clearStatus();
+    const retour = ongletMemorise();   // lue avant renderAll, qui réaffiche l'onglet par défaut
     renderAll();
-    setTab("home");
+    setTab(retour && ongletVisible(retour) ? retour : "home");   // une actualisation de la page garde la page affichée (accueil à la première connexion)
     if (!VUE_AS) chargerNotes();
     startPolling();
     if (me.consentement === false && !VUE_AS) demanderConsentement(me.consent_version);

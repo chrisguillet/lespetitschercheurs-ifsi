@@ -166,6 +166,7 @@ document.querySelectorAll(".gtab").forEach(b => b.onclick = () => {
 const ONGLETS = ["home", "all", "mine", "cmts", "suivi", "glossaire", "biblio", "synth", "dash", "admin"];
 function setTab(t) {
   tab = t;
+  try { sessionStorage.setItem("lpc_tab", t); } catch (e) { /* ignoré */ }
   section = sectionDe(t);
   if (derniereDeSection[section] !== undefined) derniereDeSection[section] = t;
   document.querySelectorAll(".tab").forEach(b => {
@@ -187,3 +188,12 @@ function setTab(t) {
   if (t === "synth") renderSynth();
 }
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.t));
+
+// Page affichée avant l'actualisation (propre à l'onglet du navigateur), si elle existe et reste accessible ; sinon l'accueil.
+function ongletMemorise() {
+  try {
+    const t = sessionStorage.getItem("lpc_tab");
+    if (t && ONGLETS.includes(t)) return t;
+  } catch (e) { /* ignoré */ }
+  return "";
+}
