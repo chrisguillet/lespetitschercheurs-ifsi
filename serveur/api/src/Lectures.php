@@ -417,21 +417,30 @@ final class Lectures
                 $pdo->prepare("DELETE FROM historique WHERE cible = 'article' AND cible_id = ?")->execute([$a['article_id']]);
                 $pdo->prepare('DELETE FROM articles WHERE id = ?')->execute([$a['article_id']]);
             } else {
-                // L'article reste : si c'était son créateur, la propriété passe à l'autrice de la plus ancienne fiche restante.
-                $st = $pdo->prepare('SELECT cree_par FROM articles WHERE id = ?');
-                $st->execute([$a['article_id']]);
-                $createur = $st->fetchColumn();
-                if ($createur !== false && $createur !== null && (int) $createur === $uid) {
-                    $st = $pdo->prepare('SELECT utilisateur_id FROM analyses WHERE article_id = ? AND utilisateur_id IS NOT NULL ORDER BY ajoute, id LIMIT 1');
-                    $st->execute([$a['article_id']]);
-                    $suivante = $st->fetchColumn();
-                    $pdo->prepare('UPDATE articles SET cree_par = ? WHERE id = ?')->execute([$suivante === false ? null : (int) $suivante, $a['article_id']]);
-                }
+                self::transmettreArticles($pdo, $uid, (string) $a['article_id']);   // l'article reste : son créateur change si c'était lui
             }
             $pdo->commit();
         } catch (\Throwable $e) {
             $pdo->rollBack();
             throw $e;
+        }
+    }
+
+    /**
+     * La propriété des articles créés par $uid (tous, ou le seul $articleId) passe à l'autrice de la plus ancienne fiche d'une autre personne.
+     * Sans autre fiche, l'article reste tel quel (il disparaît avec sa dernière fiche, ou reste détaché de la personne qui part).
+     */
+    public static function transmettreArticles(\PDO $pdo, int $uid, ?string $articleId = null): void
+    {
+        $st = $pdo->prepare('SELECT id FROM articles WHERE cree_par = ?' . ($articleId === null ? '' : ' AND id = ?'));
+        $st->execute($articleId === null ? [$uid] : [$uid, $articleId]);
+        foreach ($st->fetchAll(\PDO::FETCH_COLUMN) as $id) {
+            $s = $pdo->prepare('SELECT utilisateur_id FROM analyses WHERE article_id = ? AND utilisateur_id IS NOT NULL AND utilisateur_id <> ? ORDER BY ajoute, id LIMIT 1');
+            $s->execute([(string) $id, $uid]);
+            $suivante = $s->fetchColumn();
+            if ($suivante !== false) {
+                $pdo->prepare('UPDATE articles SET cree_par = ? WHERE id = ?')->execute([(int) $suivante, (string) $id]);
+            }
         }
     }
 

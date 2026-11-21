@@ -75,6 +75,7 @@ final class Purge
         $chemins = array_map('strval', self::colonne($pdo, 'SELECT chemin FROM fichiers WHERE cree_par = ?', [$id]));
         $pdo->beginTransaction();
         try {
+            Lectures::transmettreArticles($pdo, $id);   // les articles qu'elle a créés passent à l'autrice d'une autre fiche, s'il y en a
             $filtre = $toutSupprimer ? '' : " AND statut <> 'Terminée'";
             $conservees = $toutSupprimer ? 0 : (int) self::valeur($pdo, "SELECT COUNT(*) FROM analyses WHERE utilisateur_id = ? AND statut = 'Terminée'", [$id]);
             $brouillons = self::colonne($pdo, 'SELECT id FROM analyses WHERE utilisateur_id = ?' . $filtre, [$id]);

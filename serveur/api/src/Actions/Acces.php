@@ -248,6 +248,7 @@ final class Acces
         $cible = self::cible($c, $req['email'] ?? null);
         self::refuserCompteAdmin($c, $cible['email']);
         $pdo = $c->db->principale();
+        \Lpc\Lectures::transmettreArticles($pdo, $cible['id']);
         $pdo->prepare('DELETE FROM utilisateurs WHERE id = ?')->execute([$cible['id']]);
         self::journal($pdo, $c, 'admin_delete', 'utilisateur:' . $cible['id'], '');
         return self::reponse($c);

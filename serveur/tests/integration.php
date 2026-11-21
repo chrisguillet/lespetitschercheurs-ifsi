@@ -588,6 +588,19 @@ verifie('suppression d\'accès : adresse inconnue', $err(appel($admin, 'admin_de
 verifie('accès supprimé : le compte disparaît', (appel($admin, 'admin_delete', ['email' => 'del@ci.test'])['ok'] ?? false) === true
     && (int) valeur($pdo, 'SELECT COUNT(*) FROM utilisateurs WHERE id = ?', [$dl]) === 0);
 verifie('accès supprimé : ses contributions restent, sans auteur', (int) valeur($pdo, 'SELECT COUNT(*) FROM analyses WHERE id = ? AND utilisateur_id IS NULL', [$xan3]) === 1);
+// Propriété des articles : quand le créateur part (accès supprimé, effacement), elle passe à l'autrice d'une autre fiche.
+$to = creerUtilisateur($pdo, 'to@ci.test');
+Attributions::ajouter($pdo, $to, 'etudiant', null, $promo);
+foreach ([['tc1@ci.test', 'admin_delete', []], ['tc2@ci.test', 'admin_erase', ['contributions' => 'anonymiser']], ['tc3@ci.test', 'admin_erase', ['contributions' => 'supprimer']]] as [$mail, $act, $extra]) {
+    $tc = creerUtilisateur($pdo, $mail);
+    Attributions::ajouter($pdo, $tc, 'etudiant', null, $promo);
+    $ta = Ids::uuid();
+    $pdo->prepare('INSERT INTO articles (id, cree_par, ajoute, titre) VALUES (?, ?, ?, ?)')->execute([$ta, $tc, $now, 'Article ' . $mail]);
+    $pdo->prepare('INSERT INTO analyses (id, article_id, utilisateur_id, ajoute) VALUES (?, ?, ?, ?)')->execute([Ids::uuid(), $ta, $tc, $now]);
+    $pdo->prepare('INSERT INTO analyses (id, article_id, utilisateur_id, ajoute) VALUES (?, ?, ?, ?)')->execute([Ids::uuid(), $ta, $to, $now]);
+    appel($admin, $act, array_merge(['email' => $mail], $extra));
+    verifie('propriété de l\'article transmise (' . $mail . ')', (int) valeur($pdo, 'SELECT cree_par FROM articles WHERE id = ?', [$ta]) === $to);
+}
 verifie('journal : les décisions d\'administration sont tracées', (int) valeur($pdo, "SELECT COUNT(*) FROM journal_admin WHERE action IN ('admin_set','admin_erase','admin_delete','attribution_add','attribution_remove')") >= 8);
 
 // ---------- Lot B2 : membres, votes, adhésions, rattachements ----------
