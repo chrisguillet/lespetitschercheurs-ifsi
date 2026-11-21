@@ -360,6 +360,8 @@ $r = appel($admin, 'admin_list');
 verifie('admin global : voit tout le monde', count($r['acces'] ?? []) >= 10);
 verifie('admin global : stockage renvoyé', isset($r['stockage']['nb']) && array_key_exists('feedbacks', $r));
 verifie('liste : rôles détaillés par personne', ($l = $ligne($r, 'simple@ci.test')) !== null && $l['attributions'][0]['role'] === 'etudiant');
+verifie('liste : le compte administrateur est « admin » (pas « formateur »)', ($l = $ligne($r, $admin)) !== null && $l['role'] === 'admin');
+verifie('liste : une étudiante garde le rôle « etudiant »', ($ligne($r, 'simple@ci.test')['role'] ?? '') === 'etudiant');
 
 verifie('admin d\'une autre promo : validation refusée', $err(appel('autre@ci.test', 'admin_set', ['data' => ['email' => 'nouvelle@ci.test', 'statut' => 'actif']])) === 'forbidden');
 verifie('statut invalide refusé', $err(appel('promo@ci.test', 'admin_set', ['data' => ['email' => 'nouvelle@ci.test', 'statut' => 'zzz']])) === 'invalid');

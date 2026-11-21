@@ -470,10 +470,12 @@ final class Acces
             $id = (int) $p['id'];
             $mesRoles = $roles[$id] ?? [];
             $etudiant = false;
+            $general = false;
             foreach ($mesRoles as $a) {
                 $etudiant = $etudiant || $a['role'] === 'etudiant';
+                $general = $general || $a['role'] === 'admin';
             }
-            $role = $etudiant ? 'etudiant' : (isset($demandes[$id]) ? $demandes[$id]['role'] : 'formateur');
+            $role = $general ? 'admin' : ($etudiant ? 'etudiant' : (isset($demandes[$id]) ? $demandes[$id]['role'] : 'formateur'));
             $out[] = [
                 'email' => (string) $p['email'],
                 'pid' => (string) $p['pid'],

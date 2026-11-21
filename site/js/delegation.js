@@ -5,7 +5,7 @@
 /* ---------- Administration déléguée ---------- */
 
 let demandesNom = [], invitationsAdmin = [], doublonsAdmin = [], reglesChat = null, lienPersonnel = null;
-const ROLES_LIB = { admin: "Administrateur", admin_site: "Admin de site", admin_promo: "Admin de promo", formateur: "Formateur", etudiant: "Étudiant" };
+const ROLES_LIB = { admin: "Administrateur général", admin_site: "Admin de site", admin_promo: "Admin de promo", formateur: "Formateur", etudiant: "Étudiant" };
 // Rôles que l'on peut attribuer, et type de périmètre attendu : e = établissement (site), p = promo.
 const ROLES_ATTRIBUABLES = [["admin_site", "e"], ["admin_promo", "p"], ["formateur", "e"], ["etudiant", "p"]];
 

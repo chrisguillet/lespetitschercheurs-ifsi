@@ -782,3 +782,23 @@ table.inner tr.fi:last-child td{border-bottom:0}
 .rbi.retard{background:rgba(221,51,51,.25);border-left-color:#d33}
 .rbi:hover{filter:brightness(1.06)}
 @media (max-width:640px){.rbi{font-size:10px;padding:0 3px}.rdays .rc{padding-top:calc(20px + var(--voies,0) * 20px)}}
+
+/* Administration : sections, liste des personnes, fiche */
+.admtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--bd);padding-bottom:10px}
+.admtabs .btn{display:inline-flex;align-items:center;gap:6px}
+.chip.fixe{cursor:default}
+.chip.fixe:hover{border-color:var(--bd);color:var(--tx);background:var(--bg)}
+.persfiltres{margin-bottom:10px}
+table.adm.pers{min-width:0}
+tr.pers{cursor:pointer}
+tr.pers:hover td{background:color-mix(in srgb,var(--pri) 6%,var(--bg))}
+tr.pers:focus-visible{outline:2px solid var(--pri);outline-offset:-2px}
+.pagpers{justify-content:center;margin-top:10px}
+.persfiche .sect{border-top:1px solid var(--bd);padding-top:10px;margin-top:12px}
+.persfiche .sect>b{display:block;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
+.persfiche label{display:flex;flex-direction:column;gap:2px}
+.persfiltres label{display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0}
+.idgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end}
+.idgrid input{width:100%;min-width:0!important;box-sizing:border-box}
+.idgrid input[type=color]{height:38px;padding:2px}
+.idgrid .btn{justify-self:start}
