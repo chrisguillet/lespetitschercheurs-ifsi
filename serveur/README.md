@@ -72,6 +72,12 @@ Un schéma s'ajoute en créant `api/sql/00N_nom.sql` et en le déclarant dans `M
 
 Une action listée mais pas encore migrée répond `{ok:false, error:"not_implemented"}`.
 
+## Avancement de l'étape 2
+
+- Lot A (consentement, profil, structure) et lot B1 (accès, invitations, administration des personnes, RGPD) : livrés.
+- Lot B2 (membres, votes, rattachements des formateurs), lot C (lectures, fiches), lot D (pièces jointes, suivi, glossaire, notes,
+  retours, chat) : à venir. Une action pas encore migrée répond `not_implemented`.
+
 ## Décisions de conception
 
 - **Rôles** : table `attributions` (personne, rôle, établissement ou promo). Un compte peut cumuler des rôles.
