@@ -17,7 +17,7 @@ function miniCalendrier(jalons) {
     const lies = jalons.filter(j => j.echeance && s >= (j.debut || j.echeance) && s <= j.echeance);
     const fin = lies.filter(j => j.echeance === s).length, titres = lies.map(j => j.titre + (j.echeance === s ? " (échéance)" : "")).join("\n");
     const cls = ["mc", k === 0 ? "today" : "", d.getDay() === 0 || d.getDay() === 6 ? "we" : "", lies.length ? "has" : "", fin ? "fin" : ""].filter(Boolean).join(" ");
-    return `<div class="${cls}" ${titres ? `title="${esc(titres)}"` : ""}><small>${jrs[d.getDay()]}</small><b>${d.getDate()}</b><span class="mcp">${lies.length ? "●".repeat(Math.min(lies.length, 3)) : "&nbsp;"}</span></div>`;
+    return `<button type="button" class="${cls}" data-mcj="${s}" ${titres ? `title="${esc(titres)}"` : ""}><small>${jrs[d.getDay()]}</small><b>${d.getDate()}</b><span class="mcp">${lies.length ? "●".repeat(Math.min(lies.length, 3)) : "&nbsp;"}</span></button>`;
   }).join("");
   const retard = jalons.filter(j => ecartJours(j.echeance) !== null && ecartJours(j.echeance) < 0).length;
   return `<div class="minical" role="img" aria-label="Jalons des 14 prochains jours">${cases}</div>${retard ? `<div class="late">⚠ ${retard} jalon${retard > 1 ? "s" : ""} en retard</div>` : ""}`;

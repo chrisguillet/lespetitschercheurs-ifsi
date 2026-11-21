@@ -12,7 +12,7 @@ final class Migrations
 {
     /** Fichiers par base, dans l'ordre. */
     public const FICHIERS = [
-        'principale' => ['001_principal.sql', '003_acces.sql', '004_import.sql'],
+        'principale' => ['001_principal.sql', '003_acces.sql', '004_import.sql', '005_jalons_types.sql'],
         'chat' => ['002_chat.sql'],
     ];
 

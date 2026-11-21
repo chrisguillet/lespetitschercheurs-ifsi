@@ -10,10 +10,12 @@ namespace Lpc;
 final class Suivi
 {
     public const STATUTS_JALON = ['a_faire', 'en_cours', 'fait'];
+    /** Types d'entrée du rétroplanning. */
+    public const TYPES_JALON = ['tache', 'reunion', 'rappel', 'evenement', 'echeance'];
 
     private const TYPES = [
         'reunion' => ['table' => 'reunions', 'champs' => ['date', 'titre', 'participants', 'vu', 'attendu', 'suite']],
-        'jalon' => ['table' => 'jalons', 'champs' => ['titre', 'echeance', 'statut', 'note', 'debut', 'alerte_jours']],
+        'jalon' => ['table' => 'jalons', 'champs' => ['titre', 'type', 'echeance', 'heure', 'statut', 'note', 'debut', 'alerte_jours']],
         'terme' => ['table' => 'glossaire', 'champs' => ['mot', 'definition', 'reference']],
     ];
     private const DATES = ['date', 'echeance', 'debut'];
@@ -53,8 +55,9 @@ final class Suivi
             }
             $d[$k] = $v;
         }
-        if ($type === 'jalon' && $d['statut'] === '') {
-            $d['statut'] = 'a_faire';
+        if ($type === 'jalon') {
+            $d['statut'] = $d['statut'] === '' ? 'a_faire' : $d['statut'];
+            $d['type'] = $d['type'] === '' ? 'tache' : $d['type'];
         }
         self::valider($type, $d);
         if ($type === 'terme') {
@@ -160,7 +163,7 @@ final class Suivi
             }
         } else {
             if ($d['titre'] === '') {
-                throw new Erreur('invalid', 'Le jalon doit avoir un titre');
+                throw new Erreur('invalid', 'Il faut un titre');
             }
             self::titre($d['titre']);
             if (!self::dateValide($d['echeance'])) {
@@ -168,6 +171,12 @@ final class Suivi
             }
             if (!in_array($d['statut'], self::STATUTS_JALON, true)) {
                 throw new Erreur('invalid', 'Statut invalide');
+            }
+            if (!in_array($d['type'], self::TYPES_JALON, true)) {
+                throw new Erreur('invalid', 'Type invalide');
+            }
+            if ($d['heure'] !== '' && preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $d['heure']) !== 1) {
+                throw new Erreur('invalid', 'Heure invalide (format HH:MM)');
             }
             if ($d['debut'] !== '') {
                 if (!self::dateValide($d['debut'])) {
@@ -200,7 +209,7 @@ final class Suivi
 
     private static function valeurSql(string $champ, string $v): mixed
     {
-        if (in_array($champ, self::DATES, true)) {
+        if (in_array($champ, self::DATES, true) || $champ === 'heure') {
             return $v === '' ? null : $v;
         }
         if ($champ === 'alerte_jours') {

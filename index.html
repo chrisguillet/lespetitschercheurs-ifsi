@@ -16,7 +16,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
   <div class="toprow">
     <div><h1>📚 Lectures du mémoire – IFSI</h1>
     <div class="sub" id="sub">Outil partagé de suivi des lectures de mémoire</div></div>
-    <div class="rightbar"><div id="online"></div><div class="me" id="me"></div></div>
+    <div class="rightbar"><div id="alertbell" class="alertbell"></div><div id="online"></div><div class="me" id="me"></div></div>
   </div>
   <div id="tabs" class="hidden">
     <div class="tabs gtabs" role="tablist" aria-label="Sections">
@@ -89,7 +89,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
     <section id="suivi" class="hidden">
       <div class="card">
         <div class="tools" style="justify-content:space-between"><h2 style="margin:0;font-size:16px">🧭 Rétroplanning</h2>
-          <button class="btn sm" id="addjalon" type="button">＋ Ajouter un jalon</button></div>
+          <button class="btn sm" id="addjalon" type="button">＋ Ajouter</button></div>
         <div id="jalonform"></div>
         <div id="retro"></div>
       </div>
@@ -155,6 +155,18 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
         <button class="btn sm sec" id="fbclose" type="button" aria-label="Fermer la fenêtre de retour">✕ Fermer</button>
       </div>
       <div id="fbbody" class="cmbox"></div>
+    </div>
+  </div>
+  <div id="rpday" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="rpdaytitle">
+    <div class="modalbox" style="max-width:560px">
+      <div class="modalhead"><div><h2 id="rpdaytitle"></h2></div><button class="btn sm sec" id="rpdayclose" type="button" aria-label="Fermer">✕ Fermer</button></div>
+      <div id="rpdaybody" class="cmbox" style="padding:14px 18px 18px"></div>
+    </div>
+  </div>
+  <div id="rpform" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="rpformtitle">
+    <div class="modalbox" style="max-width:600px">
+      <div class="modalhead"><div><h2 id="rpformtitle">Ajouter au rétroplanning</h2></div><button class="btn sm sec" id="rpformclose" type="button" aria-label="Fermer">✕ Fermer</button></div>
+      <div id="rpformbody" class="cmbox" style="padding:14px 18px 18px"></div>
     </div>
   </div>
   <div id="crmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="crtitle">
@@ -259,7 +271,7 @@ window.addEventListener("load", function () {
 </script>
 <script>
 /* Scripts classiques chargés dans l'ordre : ils partagent tous la même portée globale (voir js/*.js). */
-document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
+document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "retro", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
 </script>
 </body>
 </html>

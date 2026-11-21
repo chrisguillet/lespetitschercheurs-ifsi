@@ -1019,6 +1019,17 @@ $r = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => $jalon]
 verifie('jalon créé avec plage et alerte', ($r['ok'] ?? false) === true && count($r['jalons'] ?? []) === 1 && $r['jalons'][0]['debut'] === '2027-01-10'
     && $r['jalons'][0]['alerte_jours'] === '7' && $r['jalons'][0]['statut'] === 'en_cours');
 $jid = (string) $r['jalons'][0]['id'];
+verifie('jalon : type « tâche » par défaut, sans heure', ($r['jalons'][0]['type'] ?? '') === 'tache' && ($r['jalons'][0]['heure'] ?? 'x') === '');
+$r = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Point avec la formatrice', 'type' => 'reunion', 'echeance' => '2027-01-20', 'heure' => '14:30']]);
+$reuJalon = array_values(array_filter($r['jalons'] ?? [], static fn (array $j): bool => $j['titre'] === 'Point avec la formatrice'))[0] ?? [];
+verifie('jalon : réunion avec heure', ($r['ok'] ?? false) === true && ($reuJalon['type'] ?? '') === 'reunion' && ($reuJalon['heure'] ?? '') === '14:30');
+foreach (['rappel', 'evenement', 'echeance'] as $tp) {
+    $rr = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'T ' . $tp, 'type' => $tp, 'echeance' => '2027-01-21']]);
+}
+verifie('jalon : rappel, évènement et échéance acceptés', ($rr['ok'] ?? false) === true);
+verifie('jalon : type invalide refusé', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'x', 'type' => 'zzz', 'echeance' => '2027-01-21']])) === 'invalid');
+verifie('jalon : heure invalide refusée', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'x', 'echeance' => '2027-01-21', 'heure' => '25:99']])) === 'invalid'
+    && $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'x', 'echeance' => '2027-01-21', 'heure' => '9h']])) === 'invalid');
 $r = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Sans statut', 'echeance' => '2027-02-01']]);
 verifie('jalon : statut « à faire » par défaut, sans alerte', ($r['ok'] ?? false) === true && (array_values(array_filter($r['jalons'], static fn (array $j): bool => $j['titre'] === 'Sans statut'))[0]['statut'] ?? '') === 'a_faire');
 $r = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Un jour', 'echeance' => '2027-03-01', 'debut' => '2027-03-01']]);
