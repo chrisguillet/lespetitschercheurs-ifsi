@@ -110,7 +110,7 @@ $idAdmin = (int) valeur($pdo, 'SELECT id FROM utilisateurs WHERE email = ?', [$c
 verifie('admin : un seul rôle global, même après deux connexions', (int) valeur($pdo, "SELECT COUNT(*) FROM attributions WHERE utilisateur_id = ? AND role = 'admin'", [$idAdmin]) === 1);
 verifie('admin : discret (aucune présence)', (int) valeur($chat, 'SELECT COUNT(*) FROM presence WHERE utilisateur_id = ?', [$idAdmin]) === 0);
 verifie('action inconnue : « bad_request »', (appel($config->emailAdmin(), 'nimporte_quoi')['error'] ?? '') === 'bad_request');
-verifie('action connue mais pas migrée : « not_implemented »', (appel($config->emailAdmin(), 'list')['error'] ?? '') === 'not_implemented');
+verifie('action connue mais pas migrée : « not_implemented »', (appel($config->emailAdmin(), 'add')['error'] ?? '') === 'not_implemented');
 
 // ---------- Étudiante : rôle, consentement, nom affiché, présence ----------
 $etab = creerEtablissement($pdo, 'IFSI Saint-Nazaire');
@@ -171,6 +171,137 @@ verifie('rôle déjà attribué : pas de doublon', Attributions::ajouter($pdo, $
 verifie('cumul : étudiante sur une deuxième promo', Attributions::ajouter($pdo, $etu, 'etudiant', null, $promo2) === true);
 verifie('cumul : étudiante et admin de promo', Attributions::ajouter($pdo, $etu, 'admin_promo', null, $promo2) === true);
 verifie('cumul : formateur sur deux établissements', Attributions::ajouter($pdo, $formateur, 'formateur', $etab2) === true);
+
+// ---------- Lot A : consentement, pseudo, changement de nom ----------
+$admin = $config->emailAdmin();
+$simple = creerUtilisateur($pdo, 'simple@ci.test');
+Attributions::ajouter($pdo, $simple, 'etudiant', null, $promo);
+$pdo->prepare('UPDATE utilisateurs SET prenom = ?, nom = ?, couleur = ? WHERE id = ?')->execute(['Paul', 'Martin', '#3cb44b', $simple]);
+$autre = creerUtilisateur($pdo, 'autre@ci.test');
+Attributions::ajouter($pdo, $autre, 'admin_promo', null, $promo3);
+$neuf = creerUtilisateur($pdo, 'neuf@ci.test');
+Attributions::ajouter($pdo, $neuf, 'etudiant', null, $promo);
+
+$err = static fn (array $r): string => (string) ($r['error'] ?? '');
+
+verifie('consentement refusé sans geste explicite', $err(appel('simple@ci.test', 'consentement', ['data' => ['consentement' => false]])) === 'invalid');
+verifie('consentement : données absentes refusées', $err(appel('simple@ci.test', 'consentement')) === 'invalid');
+verifie('consentement enregistré', (appel('simple@ci.test', 'consentement', ['data' => ['consentement' => true]])['ok'] ?? false) === true
+    && valeur($pdo, 'SELECT consentement_version FROM utilisateurs WHERE id = ?', [$simple]) === Config::CONSENT_VERSION);
+verifie('consentement daté', valeur($pdo, 'SELECT consentement_le FROM utilisateurs WHERE id = ?', [$simple]) !== null);
+verifie('init : consentement reconnu', (appel('simple@ci.test', 'init')['me']['consentement'] ?? null) === true);
+
+$r = appel('simple@ci.test', 'profile_update', ['data' => ['pseudo' => 'Pau-Pau']]);
+verifie('pseudo modifié', ($r['me']['prenom'] ?? '') === 'Pau-Pau');
+verifie('pseudo : la réponse porte aussi les données', array_key_exists('groupes', $r));
+verifie('pseudo : le prénom ne se modifie pas', $err(appel('simple@ci.test', 'profile_update', ['data' => ['prenom' => 'Pierre']])) === 'forbidden');
+verifie('pseudo : le nom ne se modifie pas', $err(appel('simple@ci.test', 'profile_update', ['data' => ['nom' => 'Autre', 'pseudo' => 'x']])) === 'forbidden');
+verifie('pseudo : caractères interdits refusés', $err(appel('simple@ci.test', 'profile_update', ['data' => ['pseudo' => '<b>x']])) === 'invalid');
+verifie('pseudo : « Administrateur » réservé', $err(appel('simple@ci.test', 'profile_update', ['data' => ['pseudo' => 'administrateur']])) === 'invalid');
+verifie('pseudo : trop long refusé', $err(appel('simple@ci.test', 'profile_update', ['data' => ['pseudo' => str_repeat('a', 41)]])) === 'invalid');
+verifie('pseudo : champ absent refusé', $err(appel('simple@ci.test', 'profile_update', ['data' => ['x' => 1]])) === 'invalid');
+verifie('pseudo vidé : retour à « prénom + initiale »', (appel('simple@ci.test', 'profile_update', ['data' => ['pseudo' => '  ']])['me']['prenom'] ?? '') === 'Paul M.');
+
+verifie('demande de nom identique refusée', $err(appel('simple@ci.test', 'nom_demande', ['data' => ['prenom' => 'paul', 'nom' => 'MARTIN']])) === 'invalid');
+verifie('demande de nom invalide refusée', $err(appel('simple@ci.test', 'nom_demande', ['data' => ['prenom' => 'Pa1', 'nom' => 'Martin']])) === 'invalid');
+verifie('demande de nom enregistrée', (appel('simple@ci.test', 'nom_demande', ['data' => ['prenom' => 'Paul-Henri', 'nom' => 'Martin']])['ok'] ?? false) === true);
+verifie('une seule demande en attente à la fois', $err(appel('simple@ci.test', 'nom_demande', ['data' => ['prenom' => 'Pierre', 'nom' => 'Martin']])) === 'invalid');
+verifie('le prénom ne change pas avant validation', valeur($pdo, 'SELECT prenom FROM utilisateurs WHERE id = ?', [$simple]) === 'Paul');
+$r = appel('promo@ci.test', 'nom_demandes');
+verifie('admin de promo : voit la demande de sa promo', count($r['demandes'] ?? []) === 1 && ($r['demandes'][0]['prenom'] ?? '') === 'Paul-Henri');
+$demande = (int) ($r['demandes'][0]['id'] ?? 0);
+verifie('étudiante simple : aucune demande à traiter', (appel('simple@ci.test', 'nom_demandes')['demandes'] ?? null) === []);
+verifie('admin d\'une autre promo : ne voit pas la demande', (appel('autre@ci.test', 'nom_demandes')['demandes'] ?? null) === []);
+verifie('admin d\'une autre promo : décision refusée', $err(appel('autre@ci.test', 'nom_decision', ['data' => ['id' => $demande, 'accepte' => true]])) === 'forbidden');
+verifie('étudiante simple : décision refusée', $err(appel('simple@ci.test', 'nom_decision', ['data' => ['id' => $demande, 'accepte' => true]])) === 'forbidden');
+$r = appel('promo@ci.test', 'nom_decision', ['data' => ['id' => $demande, 'accepte' => true]]);
+verifie('admin de promo : demande acceptée', ($r['ok'] ?? false) === true && ($r['demandes'] ?? null) === []);
+verifie('prénom mis à jour après acceptation', valeur($pdo, 'SELECT prenom FROM utilisateurs WHERE id = ?', [$simple]) === 'Paul-Henri');
+verifie('demande marquée acceptée', valeur($pdo, 'SELECT statut FROM demandes_nom WHERE id = ?', [$demande]) === 'accepte');
+verifie('décision journalisée', (int) valeur($pdo, "SELECT COUNT(*) FROM journal_admin WHERE action = 'nom_decision'") === 1);
+verifie('demande déjà traitée : introuvable', $err(appel('promo@ci.test', 'nom_decision', ['data' => ['id' => $demande, 'accepte' => true]])) === 'not_found');
+appel('simple@ci.test', 'nom_demande', ['data' => ['prenom' => 'Pierre', 'nom' => 'Martin']]);
+$d2 = (int) valeur($pdo, "SELECT id FROM demandes_nom WHERE statut = 'en_attente'");
+verifie('admin global : demande refusée', (appel($admin, 'nom_decision', ['data' => ['id' => $d2, 'accepte' => false]])['ok'] ?? false) === true
+    && valeur($pdo, 'SELECT statut FROM demandes_nom WHERE id = ?', [$d2]) === 'refuse'
+    && valeur($pdo, 'SELECT prenom FROM utilisateurs WHERE id = ?', [$simple]) === 'Paul-Henri');
+
+// ---------- Lot A : structure et droits par périmètre ----------
+verifie('étudiante : création d\'établissement refusée', $err(appel('simple@ci.test', 'etab_create', ['data' => ['nom' => 'X']])) === 'forbidden');
+verifie('admin de site : création d\'établissement refusée', $err(appel('site@ci.test', 'etab_create', ['data' => ['nom' => 'X']])) === 'forbidden');
+$r = appel($admin, 'etab_create', ['data' => ['nom' => 'IFSI Brest']]);
+verifie('admin : établissement créé et renvoyé dans la structure', ($r['ok'] ?? false) === true && in_array('IFSI Brest', array_column($r['structure'] ?? [], 'nom'), true));
+verifie('établissement en double refusé (casse et accents)', $err(appel($admin, 'etab_create', ['data' => ['nom' => 'ifsi brést']])) === 'invalid');
+verifie('établissement sans nom refusé', $err(appel($admin, 'etab_create', ['data' => ['nom' => '  ']])) === 'invalid');
+$brest = (string) valeur($pdo, 'SELECT id FROM etablissements WHERE nom = ?', ['IFSI Brest']);
+
+$r = appel('site@ci.test', 'promo_create', ['data' => ['etablissement_id' => $etab, 'nom' => 'Promo 26-29']]);
+verifie('admin de site : promo créée dans son établissement', ($r['ok'] ?? false) === true);
+verifie('admin de site : ne voit que son établissement', array_column($r['structure'] ?? [], 'nom') === ['IFSI Saint-Nazaire']);
+verifie('admin de site : promo dans un autre établissement refusée', $err(appel('site@ci.test', 'promo_create', ['data' => ['etablissement_id' => $etab2, 'nom' => 'P']])) === 'forbidden');
+verifie('admin de promo : création de promo refusée', $err(appel('promo@ci.test', 'promo_create', ['data' => ['etablissement_id' => $etab, 'nom' => 'P']])) === 'forbidden');
+verifie('promo en double refusée', $err(appel('site@ci.test', 'promo_create', ['data' => ['etablissement_id' => $etab, 'nom' => 'promo 26-29']])) === 'invalid');
+verifie('établissement inconnu refusé', $err(appel($admin, 'promo_create', ['data' => ['etablissement_id' => Ids::uuid(), 'nom' => 'P']])) === 'not_found');
+$p26 = (string) valeur($pdo, 'SELECT id FROM promos WHERE etablissement_id = ? AND nom = ?', [$etab, 'Promo 26-29']);
+verifie('promo renommée', (appel('site@ci.test', 'promo_rename', ['data' => ['id' => $p26, 'nom' => 'Promo 26-29 bis']])['ok'] ?? false) === true);
+verifie('renommage : collision refusée', $err(appel('site@ci.test', 'promo_rename', ['data' => ['id' => $p26, 'nom' => 'promo 24-27']])) === 'invalid');
+verifie('admin d\'une autre promo : renommage refusé', $err(appel('autre@ci.test', 'promo_rename', ['data' => ['id' => $p26, 'nom' => 'Z']])) === 'forbidden');
+verifie('admin de site : établissement renommé', (appel('site@ci.test', 'etab_rename', ['data' => ['id' => $etab, 'nom' => 'IFSI Saint-Nazaire']])['ok'] ?? false) === true);
+verifie('admin de site : autre établissement non renommable', $err(appel('site@ci.test', 'etab_rename', ['data' => ['id' => $etab2, 'nom' => 'Z']])) === 'forbidden');
+
+$r = appel('promo@ci.test', 'group_create', ['data' => ['promo_id' => $promo, 'nom' => 'Groupe B', 'membres' => ['simple@ci.test', 'etu@ci.test']]]);
+$gb = (string) valeur($pdo, 'SELECT id FROM groupes WHERE promo_id = ? AND nom = ?', [$promo, 'Groupe B']);
+verifie('admin de promo : groupe créé avec ses membres', ($r['ok'] ?? false) === true && $gb !== ''
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM membres WHERE groupe_id = ?', [$gb]) === 2);
+verifie('admin de promo : groupe renvoyé dans « groupes » et « groupesAdmin »', in_array('Groupe B', array_column($r['groupes'] ?? [], 'nom'), true)
+    && in_array('Groupe B', array_column($r['groupesAdmin'] ?? [], 'nom'), true));
+verifie('groupe en double refusé (casse)', $err(appel('promo@ci.test', 'group_create', ['data' => ['promo_id' => $promo, 'nom' => 'groupe b']])) === 'invalid');
+verifie('étudiant déjà dans un groupe de la promo : refusé', $err(appel('promo@ci.test', 'group_create', ['data' => ['promo_id' => $promo, 'nom' => 'Groupe C', 'membres' => ['simple@ci.test']]])) === 'invalid');
+verifie('membre inconnu refusé', $err(appel('promo@ci.test', 'group_create', ['data' => ['promo_id' => $promo, 'nom' => 'Groupe C', 'membres' => ['personne@ci.test']]])) === 'not_found');
+$r = appel('promo@ci.test', 'group_create', ['data' => ['promo_id' => $promo, 'nom' => 'Groupe C', 'membres' => ['neuf@ci.test', 'NEUF@ci.test']]]);
+verifie('membre indiqué deux fois refusé', $err($r) === 'invalid' && str_contains((string) ($r['message'] ?? ''), 'deux fois'));
+verifie('groupe dans une promo non administrée : refusé', $err(appel('promo@ci.test', 'group_create', ['data' => ['promo_id' => $promo3, 'nom' => 'G']])) === 'forbidden');
+verifie('groupe par noms : réservé à l\'admin global', $err(appel('site@ci.test', 'group_create', ['data' => ['etablissement' => 'IFSI Saint-Nazaire', 'promo' => 'Promo 24-27', 'nom' => 'G']])) === 'invalid');
+verifie('étudiante simple : création de groupe refusée', $err(appel('simple@ci.test', 'group_create', ['data' => ['promo_id' => $promo, 'nom' => 'G']])) === 'forbidden');
+$r = appel($admin, 'group_create', ['data' => ['etablissement' => 'IFSI Lorient', 'promo' => 'Promo 24-27', 'nom' => 'G1']]);
+verifie('admin : groupe créé avec établissement et promo créés au besoin', ($r['ok'] ?? false) === true
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM promos p JOIN etablissements e ON e.id = p.etablissement_id WHERE e.nom = ?', ['IFSI Lorient']) === 1);
+verifie('groupe renommé', (appel('promo@ci.test', 'group_update', ['data' => ['id' => $gb, 'nom' => 'Groupe Bleu']])['ok'] ?? false) === true
+    && valeur($pdo, 'SELECT nom FROM groupes WHERE id = ?', [$gb]) === 'Groupe Bleu');
+verifie('groupe déplacé vers une promo non administrée : refusé', $err(appel('promo@ci.test', 'group_update', ['data' => ['id' => $gb, 'promo_id' => $promo3]])) === 'forbidden');
+verifie('groupe inconnu : introuvable', $err(appel('promo@ci.test', 'group_update', ['data' => ['id' => Ids::uuid(), 'nom' => 'Z']])) === 'not_found');
+
+// ---------- Lot A : ce que renvoie « init » ----------
+$r = appel('simple@ci.test', 'init');
+verifie('init : le groupe de l\'étudiante', array_column($r['groupes'] ?? [], 'nom') === ['Groupe Bleu']);
+verifie('init : membres désignés par identifiant public, sans adresse', count($r['groupes'][0]['membres'] ?? []) === 2
+    && isset($r['groupes'][0]['membres'][0]['pid']) && !isset($r['groupes'][0]['membres'][0]['email']));
+verifie('init : un seul membre « moi »', count(array_filter($r['groupes'][0]['membres'] ?? [], static fn (array $m): bool => $m['moi'] === true)) === 1);
+verifie('init : camarades étudiants du groupe', count($r['utilisateurs'] ?? []) === 2);
+verifie('init : « en ligne » contient la personne', count(array_filter($r['enLigne'] ?? [], static fn (array $m): bool => $m['moi'] === true)) === 1);
+verifie('init : aucune section d\'administration pour une étudiante simple', !array_key_exists('structure', $r) && !array_key_exists('groupesAdmin', $r));
+verifie('init : aucune demande à traiter pour une étudiante simple', ($r['enAttente'] ?? -1) === 0);
+verifie('init : « me » inchangé', ($r['me']['role'] ?? '') === 'etudiant');
+$r = appel('promo@ci.test', 'init');
+verifie('admin de promo : « groupesAdmin » limité à sa promo', $r['groupesAdmin'] !== [] && array_unique(array_column($r['groupesAdmin'], 'promo')) === ['Promo 24-27']);
+verifie('admin de promo : voit les adresses des membres de ses groupes', isset($r['groupesAdmin'][0]['membres'][0]['email']) || $r['groupesAdmin'][0]['membres'] === []);
+$r = appel($admin, 'init');
+verifie('admin : demandes d\'accès en attente comptées', ($r['enAttente'] ?? 0) >= 1);
+verifie('admin : voit tous les groupes', count($r['groupes'] ?? []) >= 3);
+verifie('admin : camarades = tous les étudiants actifs', count($r['utilisateurs'] ?? []) >= 3);
+verifie('list : mêmes sections sans « me »', ($l = appel('simple@ci.test', 'list')) && !array_key_exists('me', $l) && array_key_exists('groupes', $l));
+
+// ---------- Lot A : suppressions ----------
+verifie('promo avec groupes : suppression refusée', $err(appel($admin, 'promo_delete', ['id' => $promo])) === 'invalid');
+verifie('établissement avec promos : suppression refusée', $err(appel($admin, 'etab_delete', ['id' => $etab])) === 'invalid');
+verifie('admin de site : suppression d\'établissement refusée', $err(appel('site@ci.test', 'etab_delete', ['id' => $brest])) === 'forbidden');
+verifie('étudiante simple : suppression de groupe refusée', $err(appel('simple@ci.test', 'group_delete', ['id' => $gb])) === 'forbidden');
+verifie('groupe inconnu : suppression introuvable', $err(appel('promo@ci.test', 'group_delete', ['id' => Ids::uuid()])) === 'not_found');
+verifie('admin de promo : groupe supprimé', (appel('promo@ci.test', 'group_delete', ['id' => $gb])['ok'] ?? false) === true
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM membres WHERE groupe_id = ?', [$gb]) === 0);
+verifie('établissement vide supprimé par l\'admin', (appel($admin, 'etab_delete', ['id' => $brest])['ok'] ?? false) === true
+    && valeur($pdo, 'SELECT id FROM etablissements WHERE id = ?', [$brest]) === null);
+verifie('promo vide supprimée par l\'admin de site', (appel('site@ci.test', 'promo_delete', ['id' => $p26])['ok'] ?? false) === true);
 
 // ---------- Contraintes de la base (portabilité MariaDB / MySQL) ----------
 verifie('établissement : nom unique sans tenir compte de la casse ni des accents', leveSql(fn () => creerEtablissement($pdo, 'ifsi saint-nazairé'), '23000'));

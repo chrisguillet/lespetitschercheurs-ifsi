@@ -50,10 +50,15 @@ final class Utilisateur
     /** Nom montré aux autres : le pseudo s'il existe, sinon « prénom + initiale du nom ». */
     public function affichage(): string
     {
-        if ($this->pseudo !== null && $this->pseudo !== '') {
-            return $this->pseudo;
+        return self::nomAffiche($this->prenom, $this->nom, $this->pseudo);
+    }
+
+    public static function nomAffiche(string $prenom, string $nom, ?string $pseudo): string
+    {
+        if ($pseudo !== null && $pseudo !== '') {
+            return $pseudo;
         }
-        $initiale = $this->nom === '' ? '' : ' ' . mb_strtoupper(mb_substr($this->nom, 0, 1)) . '.';
-        return $this->prenom . $initiale;
+        $initiale = $nom === '' ? '' : ' ' . mb_strtoupper(mb_substr($nom, 0, 1)) . '.';
+        return $prenom . $initiale;
     }
 }

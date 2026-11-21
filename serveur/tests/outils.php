@@ -7,6 +7,21 @@ use Lpc\Erreur;
 $GLOBALS['lpc_total'] = 0;
 $GLOBALS['lpc_echecs'] = 0;
 
+// Sur GitHub Actions, les échecs et les exceptions deviennent des annotations lisibles sans ouvrir les journaux complets.
+function annotation(string $texte): void
+{
+    if (getenv('GITHUB_ACTIONS') === 'true') {
+        echo '::error::' . str_replace(["\r", "\n"], ' ', $texte) . "\n";
+    }
+}
+
+set_exception_handler(static function (Throwable $e): void {
+    $message = get_class($e) . ' : ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')';
+    echo "EXCEPTION  $message\n";
+    annotation('Exception non rattrapée : ' . $message . ' après ' . $GLOBALS['lpc_total'] . ' vérifications');
+    exit(1);
+});
+
 function verifie(string $nom, bool $condition): void
 {
     $GLOBALS['lpc_total']++;
@@ -16,6 +31,7 @@ function verifie(string $nom, bool $condition): void
     }
     $GLOBALS['lpc_echecs']++;
     echo "ÉCHEC  $nom\n";
+    annotation('ÉCHEC : ' . $nom);
 }
 
 /** Vrai si $f lève une Erreur du code donné (et dont le message contient $message, s'il est fourni). */

@@ -3,12 +3,15 @@ declare(strict_types=1);
 
 namespace Lpc;
 
+use Lpc\Actions\Profil;
 use Lpc\Actions\Session;
+use Lpc\Actions\Structure;
 
 /**
  * Aiguille une requête {action, token, ...} vers son traitement.
- * ACTIONS liste les noms de l'ancien Apps Script (contrat avec le front) ; $implementees dit lesquelles existent déjà.
- * Une action connue mais pas encore migrée renvoie « not_implemented », jamais un comportement approximatif.
+ * ACTIONS liste les noms de l'ancien Apps Script (contrat avec le front) ; NOUVELLES celles qui n'existaient pas ;
+ * $implementees dit lesquelles existent déjà. Une action connue mais pas encore migrée renvoie « not_implemented »,
+ * jamais un comportement approximatif.
  */
 final class Routeur
 {
@@ -26,6 +29,9 @@ final class Routeur
         'admin_list', 'admin_set', 'admin_erase', 'mes_donnees', 'admin_delete',
     ];
 
+    /** Actions apparues avec le nouveau serveur (changement de nom sur demande). */
+    public const NOUVELLES = ['nom_demande', 'nom_demandes', 'nom_decision'];
+
     /** @var array<string,callable(Contexte,array<string,mixed>):array<string,mixed>> */
     private array $implementees;
 
@@ -33,7 +39,22 @@ final class Routeur
     {
         $this->implementees = [
             'init' => [Session::class, 'init'],
+            'list' => [Session::class, 'liste'],
             'bye' => [Session::class, 'bye'],
+            'consentement' => [Profil::class, 'consentement'],
+            'profile_update' => [Profil::class, 'profileUpdate'],
+            'nom_demande' => [Profil::class, 'nomDemande'],
+            'nom_demandes' => [Profil::class, 'nomDemandes'],
+            'nom_decision' => [Profil::class, 'nomDecision'],
+            'etab_create' => [Structure::class, 'etabCreate'],
+            'etab_rename' => [Structure::class, 'etabRename'],
+            'etab_delete' => [Structure::class, 'etabDelete'],
+            'promo_create' => [Structure::class, 'promoCreate'],
+            'promo_rename' => [Structure::class, 'promoRename'],
+            'promo_delete' => [Structure::class, 'promoDelete'],
+            'group_create' => [Structure::class, 'groupCreate'],
+            'group_update' => [Structure::class, 'groupUpdate'],
+            'group_delete' => [Structure::class, 'groupDelete'],
         ];
     }
 
@@ -52,7 +73,7 @@ final class Routeur
         $contexte = new Contexte($this->config, $this->db, $user);
         Presence::signaler($contexte, $action);
 
-        if (!in_array($action, self::ACTIONS, true)) {
+        if (!in_array($action, self::ACTIONS, true) && !in_array($action, self::NOUVELLES, true)) {
             throw new Erreur('bad_request', 'Action inconnue');
         }
         $traitement = $this->implementees[$action] ?? null;

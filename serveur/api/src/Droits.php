@@ -94,6 +94,73 @@ final class Droits
         return $promo !== null && $this->peutAdministrerPromo($promo);
     }
 
+    /**
+     * Promos que la personne administre : null = toutes (admin global), sinon la liste de leurs identifiants
+     * (promos d'un admin de promo + toutes les promos des établissements d'un admin de site).
+     *
+     * @return list<string>|null
+     */
+    public function promosAdministrees(): ?array
+    {
+        if ($this->estAdmin()) {
+            return null;
+        }
+        $ids = [];
+        foreach ($this->attributions() as $a) {
+            if ($a['role'] === 'admin_promo' && $a['promo_id'] !== null) {
+                $ids[] = $a['promo_id'];
+            } elseif ($a['role'] === 'admin_site' && $a['etablissement_id'] !== null) {
+                $st = $this->pdo->prepare('SELECT id FROM promos WHERE etablissement_id = ?');
+                $st->execute([$a['etablissement_id']]);
+                foreach ($st->fetchAll(\PDO::FETCH_COLUMN) as $id) {
+                    $ids[] = (string) $id;
+                }
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
+    /** Établissements dont la personne administre au moins une partie : null = tous. @return list<string>|null */
+    public function etablissementsVisibles(): ?array
+    {
+        $promos = $this->promosAdministrees();
+        if ($promos === null) {
+            return null;
+        }
+        $ids = [];
+        foreach ($this->attributions() as $a) {
+            if ($a['role'] === 'admin_site' && $a['etablissement_id'] !== null) {
+                $ids[] = $a['etablissement_id'];
+            }
+        }
+        foreach ($promos as $p) {
+            $e = $this->etablissementDePromo($p);
+            if ($e !== null) {
+                $ids[] = $e;
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
+    /** Administre-t-elle une des promos ou un des établissements auxquels la personne cible est rattachée ? */
+    public function peutAdministrerUtilisateur(int $cibleId): bool
+    {
+        if ($this->estAdmin()) {
+            return true;
+        }
+        $st = $this->pdo->prepare('SELECT etablissement_id, promo_id FROM attributions WHERE utilisateur_id = ?');
+        $st->execute([$cibleId]);
+        foreach ($st->fetchAll() as $r) {
+            if ($r['promo_id'] !== null && $this->peutAdministrerPromo((string) $r['promo_id'])) {
+                return true;
+            }
+            if ($r['etablissement_id'] !== null && $this->peutAdministrerEtablissement((string) $r['etablissement_id'])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public function estEtudiantDans(string $promoId): bool
     {
         return $this->a('etudiant', null, $promoId);

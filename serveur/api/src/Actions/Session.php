@@ -3,16 +3,16 @@ declare(strict_types=1);
 
 namespace Lpc\Actions;
 
-use Lpc\Config;
 use Lpc\Contexte;
+use Lpc\Donnees;
 use Lpc\Utilisateurs;
 
-/** Ouverture et fermeture de session. */
+/** Ouverture et fermeture de session, et rafraîchissement des données. */
 final class Session
 {
     /**
-     * init : qui suis-je. Les sections de données (lectures, groupes, votes…) arrivent avec l'étape « cœur » ;
-     * « migration » signale au front que la réponse est encore partielle.
+     * init : qui suis-je, et les données utiles à l'écran. « migration » indique l'avancement de la migration : tant que les
+     * sections des lots suivants (lectures, votes, suivi…) manquent, la réponse est partielle.
      *
      * @param array<string,mixed> $req
      * @return array<string,mixed>
@@ -20,19 +20,23 @@ final class Session
     public static function init(Contexte $c, array $req): array
     {
         Utilisateurs::toucherConnexion($c->db->principale(), $c->user);
-        $u = $c->user;
-        return [
-            'ok' => true,
-            'me' => [
-                'prenom' => $u->affichage(),
-                'role' => $c->droits()->roleInterface(),
-                'couleur' => $u->couleur,
-                'consentement' => $u->consentementVersion === Config::CONSENT_VERSION,
-                'consent_version' => Config::CONSENT_VERSION,
-                'roles' => $c->droits()->pourClient(),
-            ],
-            'migration' => 'socle',
-        ];
+        return array_merge(
+            ['ok' => true, 'me' => Profil::me($c)],
+            Donnees::toutes($c),
+            Donnees::admin($c),
+            ['migration' => 'lot-a']
+        );
+    }
+
+    /**
+     * list : les mêmes données, sans « me ».
+     *
+     * @param array<string,mixed> $req
+     * @return array<string,mixed>
+     */
+    public static function liste(Contexte $c, array $req): array
+    {
+        return array_merge(['ok' => true], Donnees::toutes($c), Donnees::admin($c), ['migration' => 'lot-a']);
     }
 
     /**

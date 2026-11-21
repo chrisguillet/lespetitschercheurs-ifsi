@@ -16,6 +16,14 @@ final class Utilisateurs
         return $r === false ? null : Utilisateur::depuisLigne($r);
     }
 
+    public static function parId(\PDO $pdo, int $id): ?Utilisateur
+    {
+        $st = $pdo->prepare('SELECT ' . self::COLONNES . ' FROM utilisateurs WHERE id = ?');
+        $st->execute([$id]);
+        $r = $st->fetch();
+        return $r === false ? null : Utilisateur::depuisLigne($r);
+    }
+
     /** Première ouverture de l'application par une adresse inconnue : une demande en attente est enregistrée. */
     public static function enregistrerDemande(\PDO $pdo, string $email): void
     {
