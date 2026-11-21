@@ -599,7 +599,8 @@ header .sub{color:rgba(255,255,255,.85)}
 header .btn.sec,header .alertbtn{background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.38);backdrop-filter:blur(4px)}
 header .btn.sec:hover,header .alertbtn:hover{background:rgba(255,255,255,.28);border-color:#fff;color:#fff}
 header .colpop,header .alertpop{color:var(--tx)}
-header .colpop .btn.sec{background:var(--card);color:var(--tx);border-color:var(--bd)}
+header .colpop .btn.sec,header .alertpop .btn.sec{background:var(--card);color:var(--tx);border-color:var(--bd);backdrop-filter:none}
+header .colpop .btn.sec:hover,header .alertpop .btn.sec:hover{background:var(--card);color:var(--pri);border-color:var(--pri)}
 .colpop,.alertpop,.mcpop{color:var(--tx)}
 header .tabs{border-bottom:0;margin-top:10px}
 .gtab{color:rgba(255,255,255,.82);border-bottom:0;border-radius:12px 12px 0 0;padding:10px 18px;font-weight:500;transition:background .15s}
