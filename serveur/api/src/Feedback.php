@@ -82,7 +82,7 @@ final class Feedback
             ->execute([Ids::uuid(), $c->user->id, $type, $texte, $contexte, $jour, $now, 'nouveau']);
     }
 
-    private static function exigerPlace(PDO $pdo, int $uid, string $jour, string $type): void
+    private static function exigerPlace(\PDO $pdo, int $uid, string $jour, string $type): void
     {
         $st = $pdo->prepare('SELECT COUNT(*) FROM feedback WHERE auteur_id = ? AND jour = ? AND type = ?');
         $st->execute([$uid, $jour, $type]);
