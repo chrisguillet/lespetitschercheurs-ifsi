@@ -75,4 +75,33 @@ verifie('jeton d\'invitation : 43 caractères, haché en 64', strlen(Ids::jeton(
 verifie('Temps::iso', Temps::iso('2026-11-21 08:30:00') === '2026-11-21T08:30:00.000Z');
 verifie('Temps::iso : vide', Temps::iso(null) === '' && Temps::iso('') === '');
 
+// ---- Sauvegarde des pièces jointes ----
+$prive = sys_get_temp_dir() . '/lpc-sauv-' . bin2hex(random_bytes(4));
+mkdir($prive . '/fichiers', 0700, true);
+file_put_contents($prive . '/fichiers/a.pdf', '%PDF-a');
+file_put_contents($prive . '/fichiers/b.pdf', '%PDF-b');
+$jour = static fn (int $n): int => 1_800_000_000 + $n * 86400;   // jour 0, 1, 2…
+$r = \Lpc\Sauvegarde::fichiers($prive, $jour(0));
+$snap0 = $prive . '/sauvegardes/' . $r['instantane'];
+verifie('sauvegarde : 2 fichiers dans l\'instantané du jour', $r['ajoutes'] === 2 && is_file($snap0 . '/a.pdf') && file_get_contents($snap0 . '/b.pdf') === '%PDF-b');
+$r = \Lpc\Sauvegarde::fichiers($prive, $jour(0));
+verifie('sauvegarde : rejouée le même jour, rien à ajouter', $r['ajoutes'] === 0 && $r['supprimes'] === []);
+unlink($prive . '/fichiers/a.pdf');                       // effacé de l'application
+file_put_contents($prive . '/fichiers/c.pdf', '%PDF-c');
+$r = \Lpc\Sauvegarde::fichiers($prive, $jour(1));
+$snap1 = $prive . '/sauvegardes/' . $r['instantane'];
+verifie('sauvegarde : le fichier effacé n\'entre pas dans l\'instantané suivant', !is_file($snap1 . '/a.pdf') && is_file($snap1 . '/c.pdf') && $r['ajoutes'] === 2);
+verifie('sauvegarde : le fichier effacé reste dans l\'ancien instantané', is_file($snap0 . '/a.pdf'));
+$r = \Lpc\Sauvegarde::fichiers($prive, $jour(6));
+verifie('sauvegarde : instantané de 6 jours conservé', is_dir($snap0) && $r['supprimes'] === []);
+$r = \Lpc\Sauvegarde::fichiers($prive, $jour(7));
+verifie('sauvegarde : instantané de 7 jours supprimé, avec le fichier effacé', $r['supprimes'] === [basename($snap0)] && !is_dir($snap0) && is_dir($snap1));
+file_put_contents($prive . '/sauvegardes/autre-dossier', 'ne pas toucher');
+mkdir($prive . '/sauvegardes/important');
+\Lpc\Sauvegarde::fichiers($prive, $jour(30));
+verifie('sauvegarde : ne touche que ses propres dossiers datés', is_file($prive . '/sauvegardes/autre-dossier') && is_dir($prive . '/sauvegardes/important') && !is_dir($snap1));
+$vide = sys_get_temp_dir() . '/lpc-sauv-' . bin2hex(random_bytes(4));
+mkdir($vide);
+verifie('sauvegarde : aucun dossier de pièces jointes, aucun échec', \Lpc\Sauvegarde::fichiers($vide, $jour(0))['ajoutes'] === 0);
+
 bilan();
