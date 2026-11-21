@@ -72,21 +72,3 @@ function compter(valeurs, max) {
   return [...m.values()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr")).slice(0, max);
 }
 
-function renderSynth() {
-  if (!items.length) { $("synthbox").innerHTML = '<div class="card empty">Pas encore de données à synthétiser.</div>'; return; }
-  const fin = items.filter(i => i.statut === "Terminée").length;
-  const annees = new Map();
-  const arts = parArticle(items);
-  arts.forEach(i => { const a = (/^(\d{4})/.exec(i.parution || "") || [])[1]; if (a) annees.set(a, (annees.get(a) || 0) + 1); });
-  const parAnnee = [...annees.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12);
-  const kpi = (n, t) => `<div class="kpi"><b>${n}</b>${t}</div>`;
-  $("synthbox").innerHTML = `<div class="kpis">${kpi(items.length, "lectures")}${kpi(fin, "terminées")}${kpi(items.filter(i => i.statut === "En cours").length, "en cours")}${items.some(i => i.statut === "À lire") ? kpi(items.filter(i => i.statut === "À lire").length, "à lire") : ""}${kpi(comments.length, "commentaires")}</div>
-   <div class="synth">
-   ${barres("Lectures par étudiant", students().map(s => [s.prenom, items.filter(i => i.etudiant === s.prenom).length, s.couleur]), "var(--pri)")}
-   ${barres("Types d’articles", compter(arts.map(i => i.type), 8), "var(--pri)")}
-   ${barres("Nationalité des auteurs", compter(arts.map(i => i.nation), 10), "var(--pri)")}
-   ${barres("Qualité des auteurs (plusieurs possibles par lecture)", compter(arts.flatMap(i => metiersListe(i.qualite)), 8), "var(--pri)")}
-   ${barres("Années de parution", parAnnee, "var(--pri)")}
-   ${barres("Mots-clés les plus fréquents", compter(items.flatMap(i => motsListe(i.mots)), 12), "var(--pri)")}
-   </div>`;
-}

@@ -829,3 +829,15 @@ table.inner{min-width:900px}
 .crpage .crhead{background:none;color:#111;box-shadow:none;border:0;border-radius:0;padding:0;margin:0;display:block}
 .crpage .crsup{color:#555}
 .crpage .crtxt{color:#111}
+
+/* Synthèse : nuage de mots-clés et carte */
+.nuage,.carte{margin-bottom:12px}
+.nuage h3,.carte h3{margin:0 0 10px;font-size:14px}
+.nuagebox{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;justify-content:center;padding:6px 4px;line-height:1.15}
+.nuagemot{font:inherit;font-weight:600;background:none;border:0;padding:0;cursor:pointer}
+.nuagemot:hover,.nuagemot:focus-visible{text-decoration:underline}
+.carteSvg{width:100%;height:auto;display:block;background:color-mix(in srgb,var(--pri) 6%,var(--card));border-radius:10px}
+.carteSvg .terres{fill:var(--bd);stroke:none}
+.carteSvg .bulle{fill:var(--pri);fill-opacity:.55;stroke:var(--pri);stroke-width:.4}
+.carteSvg .bulle:hover{fill-opacity:.85}
+.carte .chip.fixe{margin-top:8px}

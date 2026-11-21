@@ -130,6 +130,7 @@ document.addEventListener("click", e => {
   kwLang = b.dataset.kwl;
   try { localStorage.setItem("lpc_kwlang", kwLang); } catch (x) { /* ignoré */ }
   renderTable();
+  if (tab === "synth") renderSynth();
 });
 
 // Mots-clés et keywords : sous les boutons de la première colonne, pour laisser la largeur aux colonnes de texte.
