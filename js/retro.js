@@ -81,7 +81,7 @@ function lignesJour(cle) {
       ${j.modifiable ? `<div class="ract"><button type="button" class="btn sm sec" data-rpf="${esc(j.id)}" title="${j.statut === "fait" ? "Remettre à faire" : "Marquer comme fait"}">${j.statut === "fait" ? "↩" : "✓"}</button><button type="button" class="btn sm sec" data-rped="${esc(j.id)}">Modifier</button><button type="button" class="btn sm sec del" data-rpdel="${esc(j.id)}" aria-label="Supprimer">🗑</button></div>` : ""}</div>`;
   return (el.length ? el.map(ligne).join("") : '<div class="meta">Rien de prévu ce jour-là.</div>')
     + (cr.length ? `<div class="rtit" style="margin-top:12px">📝 Comptes rendus de réunion</div>${cr.map(r => `<div class="rrow" style="--t:#7c3aed"><i></i><div class="rtxt"><b>${esc(r.titre || "Compte rendu")}</b></div><div class="ract"><button type="button" class="btn sm sec" data-rcr="${esc(r.id)}">📄 Aperçu / PDF</button></div></div>`).join("")}` : "")
-    + (ecrit ? `<div class="savebar"><button type="button" class="btn" data-rpnew="${esc(cle)}">＋ Ajouter ce jour-là</button></div>` : "");
+    + (ecrit ? `<div style="margin-top:14px"><button type="button" class="btn" data-rpnew="${esc(cle)}">＋ Ajouter ce jour-là</button></div>` : "");
 }
 
 function ouvrirJour(cle) {
