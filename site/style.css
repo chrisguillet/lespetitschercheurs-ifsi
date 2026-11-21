@@ -863,3 +863,10 @@ button.bl.lnk:hover{color:var(--pri);text-decoration:underline}
 .crsynth .kpi{background:#fff;border:1px solid var(--bd)}
 #synthbox .card h3{font-size:14px;margin:0 0 10px}
 button.bl.lnk{text-decoration:none}
+.nuage h3,.carte h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cartewrap{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.cartewrap .carteSvg{width:min(100%,440px);flex:none}
+.cartelegende{flex:1;min-width:220px}
+.cartelegende .chip.fixe{margin-top:6px}
+.chbars{justify-content:center}
+.chcol{max-width:56px}

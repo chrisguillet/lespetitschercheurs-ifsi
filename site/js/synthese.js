@@ -33,36 +33,48 @@ function paysDe(texte) {
   return t.trim() ? PAYS.filter(p => p.re.test(t)) : [];
 }
 
+// Vues au choix (mémorisées) : mots-clés en nuage ou en liste ; nationalités en carte ou en liste.
+const SV = { mots: "nuage", nation: "carte" };
+try { const v = JSON.parse(localStorage.getItem("lpc_synthvue") || "{}"); if (v.mots === "liste") SV.mots = "liste"; if (v.nation === "liste") SV.nation = "liste"; } catch (e) { /* ignoré */ }
+const vueSwitch = (cle, options, imprimable) => imprimable ? "" : `<span class="kwsw" role="group" aria-label="Affichage">${options.map(([v, l]) =>
+  `<button type="button" class="kwl ${SV[cle] === v ? "on" : ""}" data-sv="${cle}:${v}" aria-pressed="${SV[cle] === v}">${l}</button>`).join("")}</span>`;
+const lignesBarres = entrees => { const max = Math.max(...entrees.map(e => e[1])); return entrees.map(([lib, n]) =>
+  `<div class="bar"><span class="bl" title="${esc(lib)}">${esc(lib)}</span><div class="bt"><div class="bf" style="width:${Math.round(n / max * 100)}%;background:var(--pri)"></div></div><span class="bn">${n}</span></div>`).join(""); };
+
 function nuageMotsCles(listes, imprimable) {
   const c = compter(listes.flatMap(l => l), 60);
   if (!c.length) return "";
+  const entete = `<h3>Mots-clés les plus fréquents ${vueSwitch("mots", [["nuage", "Nuage"], ["liste", "Liste"]], imprimable)} ${imprimable ? "" : kwSwitch()}</h3>`;
+  if (SV.mots === "liste") return `<div class="card nuage">${entete}${lignesBarres(c.slice(0, 15))}</div>`;
   const max = Math.max(...c.map(e => e[1])), min = Math.min(...c.map(e => e[1]));
   const COULEURS = ["#2f5fd0", "#7c3aed", "#0d9488", "#d97706", "#be185d", "#0369a1"];
   const mots = c.slice().sort((a, b) => a[0].localeCompare(b[0], "fr")).map(([mot, n], i) => {
     const t = max === min ? 0.5 : Math.sqrt((n - min) / (max - min));
     return `<button type="button" class="nuagemot" data-nuage="${esc(mot)}" style="font-size:${(13 + t * 23).toFixed(1)}px;color:${COULEURS[(i * 7 + mot.length) % COULEURS.length]};opacity:${(0.6 + t * 0.4).toFixed(2)}" title="${n} fiche${n > 1 ? "s" : ""} : cliquer pour filtrer le tableau">${esc(mot)}</button>`;
   }).join(" ");
-  return `<div class="card nuage"><h3>Mots-clés les plus fréquents <span class="meta">(plus c’est gros, plus c’est fréquent)</span> ${imprimable ? "" : kwSwitch()}</h3><div class="nuagebox">${mots}</div></div>`;
+  return `<div class="card nuage">${entete}<div class="meta">Plus c’est gros, plus c’est fréquent.</div><div class="nuagebox">${mots}</div></div>`;
 }
 
-function carteNationalites(arts) {
+function carteNationalites(arts, imprimable) {
   const parPays = new Map(), inconnues = new Map();
   arts.forEach(i => {
     const texte = String(i.nation || "").trim();
     if (!texte) return;
     const trouves = paysDe(texte);
-    if (!trouves.length) { const k = texte; inconnues.set(k, (inconnues.get(k) || 0) + 1); return; }
+    if (!trouves.length) { inconnues.set(texte, (inconnues.get(texte) || 0) + 1); return; }
     trouves.forEach(p => parPays.set(p, (parPays.get(p) || 0) + 1));
   });
   if (!parPays.size && !inconnues.size) return "";
+  const entete = `<h3>Nationalité des auteurs ${vueSwitch("nation", [["carte", "Carte"], ["liste", "Liste"]], imprimable)}</h3>`;
+  if (SV.nation === "liste") return `<div class="card carte">${entete}${lignesBarres(compter(arts.map(i => i.nation), 15))}</div>`;
   const liste = [...parPays.entries()].sort((a, b) => b[1] - a[1] || a[0].nom.localeCompare(b[0].nom, "fr"));
   const max = liste.length ? liste[0][1] : 1;
   const bulles = liste.map(([p, n]) => `<circle cx="${(p.lon + 180).toFixed(1)}" cy="${(90 - p.lat).toFixed(1)}" r="${(2 + 7 * Math.sqrt(n / max)).toFixed(2)}" class="bulle"><title>${esc(p.nom)} : ${n} article${n > 1 ? "s" : ""}</title></circle>`).join("");
   const legende = liste.map(([p, n]) => `<span class="chip fixe">${esc(p.nom)} <b>${n}</b></span>`).join(" ");
   const non = inconnues.size ? `<div class="meta" style="margin-top:6px">Non placées sur la carte : ${[...inconnues.entries()].map(([k, n]) => `${esc(k)} (${n})`).join(", ")}.</div>` : "";
-  return `<div class="card carte"><h3>Nationalité des auteurs <span class="meta">(un point par pays, d’autant plus gros qu’il y a d’articles)</span></h3>
+  return `<div class="card carte">${entete}<div class="cartewrap">
     <svg viewBox="0 5 360 143" role="img" aria-label="Carte du monde : nationalité des auteurs des articles" class="carteSvg"><path d="${MONDE_TERRES}" class="terres"/>${bulles}</svg>
-    <div>${legende}</div>${non}</div>`;
+    <div class="cartelegende"><div class="meta">Un point par pays, d’autant plus gros qu’il y a d’articles.</div>${legende}${non}</div></div></div>`;
 }
 
 // ----- Avancement : fiches terminées / en cours / à lire, par groupe (vue promo) ou par étudiant (vue groupe) -----
@@ -134,7 +146,7 @@ function donneesSynthese(imprimable) {
   const av = avancementHtml(), ch = chronologieHtml(), pa = pairesMotsCles(listesMots);
   const html = `<div class="kpis">${kpi(items.length, "lectures")}${kpi(items.filter(i => i.statut === "Terminée").length, "terminées")}${kpi(items.filter(i => i.statut === "En cours").length, "en cours")}${items.some(i => i.statut === "À lire") ? kpi(items.filter(i => i.statut === "À lire").length, "à lire") : ""}${kpi(comments.length, "commentaires")}</div>
    ${nuageMotsCles(listesMots, imprimable)}
-   ${carteNationalites(arts)}
+   ${carteNationalites(arts, imprimable)}
    ${av.html}${ch.html}${pa.html}
    <div class="synth">
    ${barres("Types d’articles", compter(arts.map(i => i.type), 8), "var(--pri)")}
@@ -170,6 +182,13 @@ function exporterSynthesesCsv() {
 $("synthbox").addEventListener("click", e => {
   if (e.target.closest("#synthexp")) return ouvrirCompteRendu("", "synthese");
   if (e.target.closest("#synthcsv")) return exporterSynthesesCsv();
+  const sv = e.target.closest("[data-sv]");
+  if (sv) {
+    const [cle, v] = sv.dataset.sv.split(":");
+    SV[cle] = v;
+    try { localStorage.setItem("lpc_synthvue", JSON.stringify(SV)); } catch (x) { /* ignoré */ }
+    return renderSynth();
+  }
   // Un mot du nuage, ou une paire de mots-clés : on retourne au tableau, filtré.
   const paire = e.target.closest("[data-paire]");
   if (paire) {
