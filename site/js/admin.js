@@ -13,7 +13,17 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) marqu
 
 /* ---------- Administration des accès (étudiants) ---------- */
 
+// Sans droit d'administration (étudiant, formateur), l'onglet ne contient que l'accès aux membres du groupe et aux votes.
+const adminComplet = () => isSuper() || (typeof adminDelegue === "function" && adminDelegue());
+function majTitreAdmin() {
+  const h = document.querySelector("#admin h2"), n = document.querySelector("#admin .note");
+  if (h) h.textContent = adminComplet() ? "Demandes d’accès et droits" : "Membres du groupe";
+  if (n) n.classList.toggle("hidden", !adminComplet());
+}
+
 async function loadAdmin() {
+  majTitreAdmin();
+  if (!adminComplet()) { $("adminbox").innerHTML = blocMembresVotes() || '<div class="meta">Aucun groupe.</div>'; renderedAcces = ""; return; }
   try {
     const r = await api("admin_list");
     const next = r.acces;

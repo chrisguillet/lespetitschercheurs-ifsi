@@ -12,7 +12,7 @@ const FILTRES_MULTI = ["st", "type", "kw"];
 const ET_POSSIBLE = ["st", "kw"];          // le type est propre à l'article : « ET » n'aurait pas de sens
 const STATUTS_FILTRE = [["Terminée", "✅ Terminées"], ["En cours", "📖 En cours"], ["À lire", "📌 À lire"]];
 const modeFiltre = k => (F.mode[k] === "et" && F[k].length > 1 ? "et" : "ou");
-const SEP = k => (modeFiltre(k) === "et" ? " + " : " ou ");
+const SEP = k => (modeFiltre(k) === "et" ? " et " : " ou ");
 const nbFiltres = () => (F.q ? 1 : 0) + FILTRES_MULTI.filter(k => F[k].length).length;
 
 function renderFilters(garder) {
@@ -23,7 +23,8 @@ function renderFilters(garder) {
   const tableau = F.view !== "cartes" && F.view !== "liste";
   const lib = { who: "Étudiant", grp: "Groupe", st: "Statut", type: "Type", kw: "Mots-clés" };
   const valeurLib = (k, v) => k === "kw" ? (F.kwLabels[v] || v) : k === "st" ? (STATUTS_FILTRE.find(x => x[0] === v) || [v, v])[1] : v;
-  const actifs = (F.q ? [["q", `« ${F.q} »`]] : []).concat(FILTRES_MULTI.filter(k => F[k].length).map(k => [k, `${lib[k]} : ${F[k].map(v => valeurLib(k, v)).join(SEP(k))}`]));
+  const nbMotsQ = cleTitre(F.q).split(" ").filter(Boolean).length;
+  const actifs = (F.q ? [["q", `« ${F.q} »${nbMotsQ > 1 ? (F.mode.q === "ou" ? " · au moins un mot" : " · tous les mots") : ""}`]] : []).concat(FILTRES_MULTI.filter(k => F[k].length).map(k => [k, `${lib[k]} : ${F[k].map(v => valeurLib(k, v)).join(SEP(k))}`]));
   const nb = nbFiltres();
   const boutonsMode = k => `<span class="seg fmode" role="group" aria-label="Combinaison des choix">
       <button type="button" class="btn sm sec ${modeFiltre(k) === "ou" ? "on" : ""}" data-fm="${k}" data-v="ou" aria-pressed="${modeFiltre(k) === "ou"}" title="Les documents qui correspondent à au moins un des choix cochés">Au moins un</button><button type="button" class="btn sm sec ${modeFiltre(k) === "et" ? "on" : ""}" data-fm="${k}" data-v="et" aria-pressed="${modeFiltre(k) === "et"}" title="Les documents qui ont une fiche de lecture pour chacun des choix cochés">Tous</button></span>`;
@@ -34,13 +35,12 @@ function renderFilters(garder) {
    <details class="colmenu" id="mfilt"><summary class="btn sm sec" aria-label="Rechercher et filtrer">🔍 Rechercher / filtrer${nb ? ` <span class="count">${nb}</span>` : ""}</summary>
     <div class="colpop pop-filtres">
      <div><label for="q">Recherche</label><input id="q" placeholder="Titre, auteur, mot-clé, commentaire…" value="${esc(F.q)}">
-      <div class="fhead" id="qmode" style="${motsQ > 1 ? "" : "display:none"}"><span class="meta">Plusieurs mots saisis :</span><span class="seg fmode" role="group" aria-label="Combinaison des mots">
+      <div class="fhead" id="qmode"><span class="meta">Plusieurs mots saisis :</span><span class="seg fmode" role="group" aria-label="Combinaison des mots">
        <button type="button" class="btn sm sec ${F.mode.q === "et" ? "on" : ""}" data-fq="et" title="Tous les mots saisis doivent apparaître">Tous</button><button type="button" class="btn sm sec ${F.mode.q === "ou" ? "on" : ""}" data-fq="ou" title="Au moins un des mots saisis doit apparaître">Au moins un</button></span></div></div>
      ${bloc("st", STATUTS_FILTRE)}
      ${bloc("type", types.map(t => [t, t]))}
      ${F.kw.length ? `<div class="fgrp"><div class="fhead"><span class="flab">Mots-clés</span>${F.kw.length > 1 ? boutonsMode("kw") : ""}</div><div class="fopts">${F.kw.map(v => `<label class="fopt"><input type="checkbox" data-f="kw" value="${esc(v)}" checked> <span>${esc(F.kwLabels[v] || v)}</span></label>`).join("")}</div></div>` : '<div class="meta">Mots-clés : cliquez sur un mot-clé dans le tableau pour l’ajouter au filtre.</div>'}
-     <div class="meta fhelp">Quand vous cochez plusieurs choix pour un critère : <b>Au moins un</b> garde les documents qui correspondent à l’un des choix ; <b>Tous</b> ne garde que ceux qui ont, parmi leurs fiches de lecture, une fiche pour chacun des choix.</div>
-     <div><label for="sort">Tri</label><select id="sort"><option value="ajoute" ${F.sort === "ajoute" ? "selected" : ""}>Date de saisie</option><option value="etudiant" ${F.sort === "etudiant" ? "selected" : ""}>Étudiant</option><option value="titre" ${F.sort === "titre" ? "selected" : ""}>Titre</option><option value="parution" ${F.sort === "parution" ? "selected" : ""}>Date de parution</option></select></div>
+     <div><label for="sort">Tri</label><select id="sort"><option value="ajoute" ${F.sort === "ajoute" ? "selected" : ""}>Date de saisie</option><option value="titre" ${F.sort === "titre" ? "selected" : ""}>Titre</option><option value="parution" ${F.sort === "parution" ? "selected" : ""}>Date de parution</option></select></div>
      <button type="button" class="btn sm sec" id="reset">Réinitialiser les filtres</button>
     </div></details>
    ${actifs.map(([k, v]) => `<button type="button" class="chip on" data-clear="${k}" title="Retirer ce filtre">${esc(v)} ✕</button>`).join("")}
@@ -54,7 +54,6 @@ function renderFilters(garder) {
    <details class="colmenu"><summary class="btn sm sec">⬇️ Exporter ▾</summary><div class="colpop right"><button class="btn sm" id="xl" type="button">Excel</button> <button class="btn sm" id="csv" type="button">CSV</button> <button class="btn sm" id="pdf" type="button">PDF</button></div></details>`;
   $("q").oninput = e => {
     F.q = e.target.value; renderTable();
-    const n = cleTitre(F.q).split(" ").filter(Boolean).length; $("qmode").style.display = n > 1 ? "" : "none";
   };
   $("sort").onchange = e => { F.sort = e.target.value; renderTable(); };
   const pf = $("filters").querySelector(".pop-filtres");
@@ -101,7 +100,12 @@ function renderFilters(garder) {
 }
 
 // Les menus déroulants (recherche, colonnes, export) se ferment au clic en dehors ou avec Échap.
-document.addEventListener("click", e => { const chemin = e.composedPath(); document.querySelectorAll("details.colmenu[open]").forEach(d => { if (!chemin.includes(d)) d.removeAttribute("open"); }); });
+// Un menu redessiné pendant le clic (changement de choix ET / OU, case cochée) reste ouvert : on le reconnaît à son identifiant ou à son libellé.
+document.addEventListener("click", e => {
+  const chemin = e.composedPath(), cle = n => n && (n.id || ((n.querySelector && n.querySelector("summary")) || {}).textContent);
+  const cliquee = chemin.find(n => n.classList && n.classList.contains("colmenu"));
+  document.querySelectorAll("details.colmenu[open]").forEach(d => { if (!chemin.includes(d) && !(cliquee && cle(cliquee) === cle(d))) d.removeAttribute("open"); });
+});
 
 function changerVue(v) {
   F.view = v;
