@@ -10,7 +10,7 @@ namespace Lpc;
 final class Config
 {
     // Version du texte de consentement (politique de confidentialité) : la changer redemande l'accord à tout le monde.
-    public const CONSENT_VERSION = '2026-11-20';
+    public const CONSENT_VERSION = '2026-11-21';
     public const COULEUR_DEFAUT = '#888888';
     public const COULEUR_ADMIN = '#475569';
     public const MAX_EN_ATTENTE = 50;

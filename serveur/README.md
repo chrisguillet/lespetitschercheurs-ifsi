@@ -62,7 +62,7 @@ Un schéma s'ajoute en créant `api/sql/00N_nom.sql` et en le déclarant dans `M
 | Élément | Fichier | Note |
 |---|---|---|
 | Point d'entrée, cycle d'une requête | `api/index.php`, `Application.php` | erreurs internes jamais exposées, journalisées |
-| Configuration hors web | `Config.php` | `CONSENT_VERSION = '2026-11-20'` reprise telle quelle |
+| Configuration hors web | `Config.php` | `CONSENT_VERSION = '2026-11-21'` (nouvelle version : le consentement est redemandé) |
 | Deux bases | `Db.php` | principale + chat, UTC, mode SQL strict |
 | Jeton Google vérifié localement | `GoogleJeton.php` | signature RS256, émetteur, audience, expiration, adresse vérifiée ; clés Google en cache disque (1 h) |
 | Accès | `Auth.php`, `Utilisateurs.php` | mêmes règles et messages que l'ancien `authentifier_` |
