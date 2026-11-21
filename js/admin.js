@@ -45,7 +45,7 @@ function accesRow(a) {
     : a.statut === "en_attente"
       ? `<button class="btn sm" data-as="actif">Valider</button> <button class="btn sm sec del" data-as="refuse">Refuser</button>`
       : `<button class="btn sm" data-as="actif">Réactiver</button>`;
-  const suppr = sup ? ` <button class="btn sm sec del" data-del="1" title="Retire l’accès ; ses fiches et commentaires restent dans le Sheet">🗑 Supprimer l’accès</button> <button class="btn sm sec del" data-erase="1" title="Droit à l’effacement : supprime l’accès et toutes les données de cette personne">🧹 Effacer ses données</button>` : "";
+  const suppr = sup ? ` <button class="btn sm sec del" data-del="1" title="Retire l’accès ; ses fiches et commentaires restent dans le Sheet">🗑 Supprimer l’accès</button> <button class="btn sm sec del" data-erase="1" title="Droit à l’effacement : supprime l’accès et les données de cette personne ; ses contributions sont anonymisées ou supprimées, au choix">🧹 Effacer ses données</button>` : "";
   const adresse = sup ? `<td><input data-f="nouvel_email" type="email" value="${k}"></td>` : `<td>${k}</td>`;
   const couleur = sup ? `<td><input data-f="couleur" type="color" value="${esc(a.couleur)}" style="min-width:48px;padding:2px"></td>` : "";
   return `<tr data-k="${k}">${adresse}${dates}<td><input data-f="prenom" maxlength="60" value="${esc(a.prenom)}" placeholder="Prénom">${dem && (dem.promo || dem.role) ? `<div class="meta">Demande : ${esc(dem.role === "etudiant" ? "étudiant" : dem.role === "formateur" ? "formateur" : "")}${dem.promo ? " · " + esc(dem.promo) : ""}</div>` : ""}</td>${couleur}
@@ -104,10 +104,12 @@ async function effacerUtilisateur(b) {
   const a = acces.find(x => x.email === email);
   if (!a) return;
   const n = a.nb_lectures || 0, c = a.nb_commentaires || 0;
-  if (!confirm(`EFFACER DÉFINITIVEMENT les données de ${a.prenom || email} (${email}) ?\n\nSont supprimés : son accès, ses ${n} fiche${n > 1 ? "s" : ""} de lecture (avec les commentaires d’autres personnes dessus), ses ${c} commentaire${c > 1 ? "s" : ""}, ses notes, ses retours, ses fichiers joints, ses appartenances et ses votes.\nLes réunions et jalons du groupe restent, détachés de son adresse. Les sauvegardes du Sheet disparaissent d’elles-mêmes sous 8 semaines.\n\nCette action est irréversible.`)) return;
+  if (!confirm(`EFFACER DÉFINITIVEMENT les données de ${a.prenom || email} (${email}) ?\n\nSont toujours supprimés : son accès, son adresse, ses notes, ses retours, ses messages, ses fichiers joints, ses appartenances et ses brouillons.\nLes réunions, jalons et termes du groupe restent, détachés de son adresse. Les sauvegardes des bases disparaissent d’elles-mêmes sous 7 jours.\n\nCette action est irréversible.`)) return;
+  // Contributions (fiches terminées, commentaires) : par défaut anonymisées, comme à la purge automatique ; tout supprimer si la personne retire son consentement.
+  const anonymiser = confirm(`Que faire de ses contributions (${n} fiche${n > 1 ? "s" : ""}, ${c} commentaire${c > 1 ? "s" : ""}) ?\n\nOK : les CONSERVER, anonymisées (plus rattachées à personne), pour la base de connaissances.\nAnnuler : TOUT SUPPRIMER aussi (retrait du consentement : fiches, commentaires, propositions de correction et votes).`);
   b.disabled = true;
   try {
-    const res = await enCours("Effacement…", () => api("admin_erase", { email }));
+    const res = await enCours("Effacement…", () => api("admin_erase", { email, contributions: anonymiser ? "anonymiser" : "supprimer" }));
     acces = res.acces;
     renderAdmin();
     applyResult(res);

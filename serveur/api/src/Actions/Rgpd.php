@@ -5,15 +5,17 @@ namespace Lpc\Actions;
 
 use Lpc\Contexte;
 use Lpc\Erreur;
+use Lpc\Purge;
 use Lpc\Temps;
 use Lpc\Valide;
 
 /**
  * Droits RGPD : accès (export de tout ce que l'application garde sur la personne) et effacement complet.
  *
- * Effacement : le compte, les fiches de lecture de la personne et leurs commentaires, ses notes, messages, retours, appartenances,
- * propositions, votes, pièces jointes et rôles disparaissent. Ce qui appartient au groupe sans être d'elle (articles partagés,
- * réunions, jalons, glossaire) est conservé, détaché de la personne (clés étrangères « SET NULL »).
+ * Effacement (voir Purge::retirer) : le compte, ses notes, messages, retours, appartenances, pièces jointes et rôles disparaissent.
+ * Choix des contributions (paramètre « contributions ») : « anonymiser » (défaut, comme la purge automatique) garde les fiches terminées
+ * et les commentaires sans personne ; « supprimer » (retrait du consentement) les supprime aussi, avec les propositions et les votes.
+ * Dans les deux cas, ce qui appartient au groupe sans être d'elle (articles partagés, réunions, jalons, glossaire) reste, détaché.
  */
 final class Rgpd
 {
@@ -35,53 +37,11 @@ final class Rgpd
             throw new Erreur('forbidden', 'Le compte administrateur ne peut pas être effacé');
         }
         $id = (int) $cible['id'];
-
-        $st = $pdo->prepare('SELECT chemin FROM fichiers WHERE cree_par = ?');
-        $st->execute([$id]);
-        $chemins = $st->fetchAll(\PDO::FETCH_COLUMN);
-
-        $pdo->beginTransaction();
-        try {
-            $mes = $pdo->prepare('SELECT id FROM analyses WHERE utilisateur_id = ?');
-            $mes->execute([$id]);
-            $analyses = array_map('strval', $mes->fetchAll(\PDO::FETCH_COLUMN));
-            foreach ($analyses as $a) {
-                $pdo->prepare("DELETE FROM historique WHERE cible = 'analyse' AND cible_id = ?")->execute([$a]);
-            }
-            $requetes = [
-                'DELETE FROM commentaires WHERE auteur_id = ?',
-                'DELETE FROM analyses WHERE utilisateur_id = ?',               // leurs commentaires disparaissent avec elles (CASCADE)
-                'DELETE FROM historique WHERE proprietaire = ?',
-                'DELETE FROM fichiers WHERE cree_par = ?',
-                'DELETE FROM propositions WHERE propose_par = ?',
-                'DELETE FROM votes WHERE propose_par = ? OR cible_id = ?',
-                'DELETE FROM feedback WHERE auteur_id = ?',
-            ];
-            foreach ($requetes as $sql) {
-                $pdo->prepare($sql)->execute(substr_count($sql, '?') === 2 ? [$id, $id] : [$id]);
-            }
-            $pdo->prepare('DELETE FROM utilisateurs WHERE id = ?')->execute([$id]);   // notes, appartenances, rôles, demandes : CASCADE
-            Acces::journal($pdo, $c, 'admin_erase', 'utilisateur:' . $id . ' (effacé)', '');
-            $pdo->commit();
-        } catch (\Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
+        $mode = (string) ($req['contributions'] ?? 'anonymiser');
+        if (!in_array($mode, ['anonymiser', 'supprimer'], true)) {
+            throw new Erreur('bad_request', 'Choix des contributions : anonymiser ou supprimer');
         }
-
-        try {
-            $chat = $c->db->chat();
-            $chat->prepare('DELETE FROM chat_messages WHERE auteur_id = ?')->execute([$id]);
-            $chat->prepare('DELETE FROM presence WHERE utilisateur_id = ?')->execute([$id]);
-        } catch (\Throwable $e) {
-            error_log('Effacement : messages du chat non retirés : ' . $e->getMessage());
-        }
-        $dossier = $c->config->dossierPrive() . '/fichiers/';
-        foreach ($chemins as $chemin) {
-            $reel = realpath($dossier . $chemin);
-            if ($reel !== false && str_starts_with($reel, (string) realpath($dossier))) {
-                @unlink($reel);
-            }
-        }
+        Purge::retirer($c->config, $c->db, $id, $mode === 'supprimer', 'admin_erase', $c->user->id);
         return Acces::reponse($c);
     }
 

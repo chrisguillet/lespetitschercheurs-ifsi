@@ -541,7 +541,7 @@ $chat->prepare('INSERT INTO chat_messages (canal, auteur_id, auteur_nom, cree_le
 verifie('effacement : refusé à un admin de promo', $err(appel('promo@ci.test', 'admin_erase', ['email' => 'erase@ci.test'])) === 'forbidden');
 verifie('effacement : adresse inconnue', $err(appel($admin, 'admin_erase', ['email' => 'rien@ci.test'])) === 'not_found');
 verifie('effacement : compte administrateur protégé', $err(appel($admin, 'admin_erase', ['email' => $admin])) === 'forbidden');
-verifie('effacement : réponse ok', (appel($admin, 'admin_erase', ['email' => 'erase@ci.test'])['ok'] ?? false) === true);
+verifie('effacement : réponse ok', (appel($admin, 'admin_erase', ['email' => 'erase@ci.test', 'contributions' => 'supprimer'])['ok'] ?? false) === true);
 verifie('effacement : compte supprimé', (int) valeur($pdo, 'SELECT COUNT(*) FROM utilisateurs WHERE id = ?', [$er]) === 0);
 verifie('effacement : fiche supprimée', (int) valeur($pdo, 'SELECT COUNT(*) FROM analyses WHERE id = ?', [$xan]) === 0);
 verifie('effacement : commentaires de la personne et sur sa fiche supprimés', (int) valeur($pdo, 'SELECT COUNT(*) FROM commentaires WHERE id IN (?, ?)', [$xcom, $xcom2]) === 0);
@@ -554,6 +554,24 @@ verifie('effacement : appartenances supprimées', (int) valeur($pdo, 'SELECT COU
 verifie('effacement : l\'article partagé reste, sans auteur', valeur($pdo, 'SELECT titre FROM articles WHERE id = ?', [$xart]) === 'Article X'
     && valeur($pdo, 'SELECT cree_par FROM articles WHERE id = ?', [$xart]) === null);
 verifie('effacement : la fiche d\'une autre personne reste', (int) valeur($pdo, 'SELECT COUNT(*) FROM analyses WHERE id = ?', [$xan2]) === 1);
+
+// Effacement avec anonymisation (choix par défaut) : la personne disparaît, ses contributions restent sans auteur
+$an = creerUtilisateur($pdo, 'anonyme@ci.test');
+$xanA = Ids::uuid();
+$xanB = Ids::uuid();
+$xcomA = Ids::uuid();
+$pdo->prepare("INSERT INTO analyses (id, article_id, utilisateur_id, ajoute, statut, libre) VALUES (?, ?, ?, ?, 'Terminée', 'Contribution terminée')")->execute([$xanA, $xart, $an, $now]);
+$pdo->prepare("INSERT INTO analyses (id, article_id, utilisateur_id, ajoute, statut) VALUES (?, ?, ?, ?, 'En cours')")->execute([$xanB, $xart, $an, $now]);
+$pdo->prepare('INSERT INTO commentaires (id, analyse_id, auteur_id, texte, cree_le) VALUES (?, ?, ?, ?, ?)')->execute([$xcomA, $xan2, $an, 'Commentaire à garder', $now]);
+$pdo->prepare('INSERT INTO notes (id, utilisateur_id, cree_le) VALUES (?, ?, ?)')->execute([Ids::uuid(), $an, $now]);
+verifie('effacement : choix invalide refusé', $err(appel($admin, 'admin_erase', ['email' => 'anonyme@ci.test', 'contributions' => 'peut-etre'])) === 'bad_request');
+verifie('effacement anonymisé : réponse ok', (appel($admin, 'admin_erase', ['email' => 'anonyme@ci.test'])['ok'] ?? false) === true);
+verifie('effacement anonymisé : compte et notes supprimés', (int) valeur($pdo, 'SELECT COUNT(*) FROM utilisateurs WHERE id = ?', [$an]) === 0 && (int) valeur($pdo, 'SELECT COUNT(*) FROM notes WHERE utilisateur_id = ?', [$an]) === 0);
+verifie('effacement anonymisé : la fiche terminée reste, sans auteur', valeur($pdo, 'SELECT libre FROM analyses WHERE id = ?', [$xanA]) === 'Contribution terminée' && valeur($pdo, 'SELECT utilisateur_id FROM analyses WHERE id = ?', [$xanA]) === null);
+verifie('effacement anonymisé : le brouillon est supprimé', (int) valeur($pdo, 'SELECT COUNT(*) FROM analyses WHERE id = ?', [$xanB]) === 0);
+verifie('effacement anonymisé : le commentaire reste, sans auteur', valeur($pdo, 'SELECT texte FROM commentaires WHERE id = ?', [$xcomA]) === 'Commentaire à garder' && valeur($pdo, 'SELECT auteur_id FROM commentaires WHERE id = ?', [$xcomA]) === null);
+verifie('effacement : le journal garde le choix, sans adresse', (int) valeur($pdo, "SELECT COUNT(*) FROM journal_admin WHERE action = 'admin_erase' AND detail LIKE 'contributions=anonymisees%'") === 1
+    && (int) valeur($pdo, "SELECT COUNT(*) FROM journal_admin WHERE action = 'admin_erase' AND detail LIKE 'contributions=supprimees%'") === 1);
 
 $dl = creerUtilisateur($pdo, 'del@ci.test');
 Attributions::ajouter($pdo, $dl, 'etudiant', null, $promo);

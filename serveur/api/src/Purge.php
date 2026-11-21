@@ -58,8 +58,14 @@ final class Purge
         return $rapport;
     }
 
-    /** @return array{conservees:int,brouillons:int,fichiers:int} */
-    public static function retirer(Config $config, Db $db, int $id): array
+    /**
+     * Retire une personne. Par défaut, ses contributions (fiches terminées, commentaires…) restent, anonymisées ; avec $toutSupprimer
+     * (retrait du consentement), toutes ses fiches, ses commentaires, ses propositions et ses votes sont supprimés aussi.
+     * Seul ce qui appartient au groupe sans être à la personne (articles, réunions, jalons, glossaire) reste dans tous les cas, détaché d'elle.
+     *
+     * @return array{conservees:int,brouillons:int,fichiers:int}
+     */
+    public static function retirer(Config $config, Db $db, int $id, bool $toutSupprimer = false, string $action = 'purge_inactif', ?int $acteur = null): array
     {
         $pdo = $db->principale();
         $email = (string) self::valeur($pdo, 'SELECT email FROM utilisateurs WHERE id = ?', [$id]);
@@ -69,23 +75,35 @@ final class Purge
         $chemins = array_map('strval', self::colonne($pdo, 'SELECT chemin FROM fichiers WHERE cree_par = ?', [$id]));
         $pdo->beginTransaction();
         try {
-            $conservees = (int) self::valeur($pdo, "SELECT COUNT(*) FROM analyses WHERE utilisateur_id = ? AND statut = 'Terminée'", [$id]);
-            $brouillons = self::colonne($pdo, "SELECT id FROM analyses WHERE utilisateur_id = ? AND statut <> 'Terminée'", [$id]);
+            $filtre = $toutSupprimer ? '' : " AND statut <> 'Terminée'";
+            $conservees = $toutSupprimer ? 0 : (int) self::valeur($pdo, "SELECT COUNT(*) FROM analyses WHERE utilisateur_id = ? AND statut = 'Terminée'", [$id]);
+            $brouillons = self::colonne($pdo, 'SELECT id FROM analyses WHERE utilisateur_id = ?' . $filtre, [$id]);
             foreach ($brouillons as $a) {
                 $pdo->prepare("DELETE FROM historique WHERE cible = 'analyse' AND cible_id = ?")->execute([(string) $a]);
             }
-            $pdo->prepare("DELETE FROM analyses WHERE utilisateur_id = ? AND statut <> 'Terminée'")->execute([$id]);   // leurs commentaires : CASCADE
-            foreach ([
+            $pdo->prepare('DELETE FROM analyses WHERE utilisateur_id = ?' . $filtre)->execute([$id]);   // leurs commentaires : CASCADE
+            $requetes = [
                 'DELETE FROM fichiers WHERE cree_par = ?',
                 'DELETE FROM feedback WHERE auteur_id = ?',
                 "DELETE FROM votes WHERE cible_id = ? AND statut = 'ouvert'",
-            ] as $sql) {
+            ];
+            if ($toutSupprimer) {
+                $requetes = array_merge($requetes, [
+                    'DELETE FROM commentaires WHERE auteur_id = ?',
+                    'DELETE FROM historique WHERE proprietaire = ?',
+                    'DELETE FROM propositions WHERE propose_par = ?',
+                    'DELETE FROM votes WHERE propose_par = ?',
+                    'DELETE FROM votes WHERE cible_id = ?',
+                ]);
+            }
+            foreach ($requetes as $sql) {
                 $pdo->prepare($sql)->execute([$id]);
             }
             $pdo->prepare('DELETE FROM invitations WHERE email = ?')->execute([$email]);
             $pdo->prepare("DELETE FROM import_traces WHERE entite IN ('utilisateur', 'demande') AND source_id = ?")->execute([$email]);
-            $pdo->prepare('INSERT INTO journal_admin (acteur_id, action, cible, detail, cree_le) VALUES (NULL, ?, ?, ?, ?)')
-                ->execute(['purge_inactif', 'utilisateur:' . $id . ' (retiré)', 'fiches_conservees=' . $conservees, Temps::maintenant()]);
+            $pdo->prepare('INSERT INTO journal_admin (acteur_id, action, cible, detail, cree_le) VALUES (?, ?, ?, ?, ?)')
+                ->execute([$acteur, $action, 'utilisateur:' . $id . ($action === 'purge_inactif' ? ' (retiré)' : ' (effacé)'),
+                    ($toutSupprimer ? 'contributions=supprimees' : 'contributions=anonymisees') . ' fiches_conservees=' . $conservees, Temps::maintenant()]);
             // Tout le reste (rôles, demandes, appartenances, notes, bulletins, lectures de commentaires) : CASCADE ; le contenu partagé : SET NULL.
             $pdo->prepare('DELETE FROM utilisateurs WHERE id = ?')->execute([$id]);
             $pdo->commit();
