@@ -11,7 +11,7 @@ const CONSENT_CASE = "J’ai lu la politique de confidentialité et j’accepte 
 
 // Comptes déjà actifs avant le consentement explicite : fenêtre bloquante, accepter ou se déconnecter.
 function demanderConsentement(version) {
-  const m = $("cmodal"); if (!m) return;
+  const m = $("consmodal"); if (!m) return;
   $("ctexte").textContent = CONSENT_TEXTE; $("ccase").textContent = CONSENT_CASE;
   $("caccord").checked = false; $("cerr").textContent = "";
   m.classList.remove("hidden"); document.body.classList.add("modalopen");
