@@ -5,6 +5,12 @@ on:
     paths:
       - 'serveur/**'
       - '.github/workflows/serveur.yml'
+      - 'index.html'
+      - 'privacy.html'
+      - 'registre.html'
+      - 'style.css'
+      - '*.js'
+      - 'js/**'
   pull_request:
     paths:
       - 'serveur/**'
@@ -173,6 +179,49 @@ jobs:
           reponse=$(curl -sS -m 120 -X POST -H "X-Migration-Token: $MIGRATION_JETON" https://lespetitschercheurs.qocot.eu/api/migrer.php || true)
           echo "$reponse"
           echo "$reponse" | grep -q '"ok":true' || { echo "::error::Migration échouée : $reponse"; exit 1; }
+
+      # Double exploitation : le front publié ici (racine du site) parle au nouveau serveur ; la copie de GitHub Pages
+      # continue de parler à l'ancien outil (Apps Script). Seul config.js diffère : son API_URL est réécrit à l'envoi.
+      - name: Préparer le front
+        if: steps.config.outputs.pret == 'true'
+        run: |
+          mkdir -p front
+          cp index.html privacy.html registre.html style.css apa.js games.js config.js front/
+          cp -r js front/js
+          sed -i -E 's#API_URL: ".*"#API_URL: "https://lespetitschercheurs.qocot.eu/api/"#' front/config.js
+          grep -q 'API_URL: "https://lespetitschercheurs.qocot.eu/api/"' front/config.js || { echo "::error::API_URL non réécrite"; exit 1; }
+
+      - name: Envoyer le front (racine du site, sans toucher à api/)
+        if: steps.config.outputs.pret == 'true'
+        env:
+          SFTP_HOTE: ${{ secrets.SFTP_HOTE }}
+          SFTP_UTILISATEUR: ${{ secrets.SFTP_UTILISATEUR }}
+          SFTP_MOT_DE_PASSE: ${{ secrets.SFTP_MOT_DE_PASSE }}
+        run: |
+          test -f front/index.html || { echo "front/index.html introuvable"; exit 1; }
+          # Miroir limité à js/ ; les autres fichiers sont envoyés un par un : jamais de --delete à la racine (api/ y vit).
+          cmd="set sftp:auto-confirm yes; set net:max-retries 2; set net:timeout 30; set cmd:fail-exit yes; mirror --reverse --delete --no-perms --verbose front/js js;"
+          for f in index.html privacy.html registre.html style.css apa.js games.js config.js; do cmd="$cmd put -O . front/$f;"; done
+          set +e
+          lftp -u "$SFTP_UTILISATEUR,$SFTP_MOT_DE_PASSE" "sftp://$SFTP_HOTE" -e "$cmd bye" > "$RUNNER_TEMP/lftp-front.log" 2>&1
+          code=$?
+          cat "$RUNNER_TEMP/lftp-front.log"
+          if [ "$code" -ne 0 ]; then
+            tail -n 15 "$RUNNER_TEMP/lftp-front.log" | while IFS= read -r ligne; do echo "::error::lftp : $ligne"; done
+            exit "$code"
+          fi
+
+      - name: Vérifier le front en ligne
+        if: steps.config.outputs.pret == 'true'
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /tmp/index.html -w '%{http_code}' -m 20 https://lespetitschercheurs.qocot.eu/ || true)
+            echo "essai $i : HTTP $code"
+            [ "$code" = "200" ] && grep -qi '<title' /tmp/index.html && break
+            sleep 5
+          done
+          [ "$code" = "200" ] || exit 1
+          curl -s -m 20 https://lespetitschercheurs.qocot.eu/config.js | grep -q 'lespetitschercheurs.qocot.eu/api/' || { echo "::error::config.js en ligne ne vise pas le nouveau serveur"; exit 1; }
 
       - name: Vérifier le service en ligne
         if: steps.config.outputs.pret == 'true'
