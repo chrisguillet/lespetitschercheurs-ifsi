@@ -1368,7 +1368,7 @@ verifie('translate : réponse avec indicateur de quota', ($rt['ok'] ?? false) ==
 // ---------- Chat activable, couleur du profil, « voir en tant que » ----------
 verifie('chat : règles réservées aux administrateurs', $err(appel('a1@ci.test', 'chat_regles')) === 'forbidden');
 $rg = appel('ap@ci.test', 'chat_regles')['regles'] ?? [];
-verifie('chat : l\'admin de promo ne voit pas la règle générale', ($rg['peut_general'] ?? true) === false && ($rg['general'] ?? 'x') === null);
+verifie('chat : l\'admin de promo ne voit pas la règle générale', ($rg['peut_general'] ?? true) === false && array_key_exists('general', $rg) && $rg['general'] === null);
 verifie('chat : par défaut, actif partout', ($salonA = appel('a1@ci.test', 'chat_list', $salon('groupe'))['ok'] ?? false) === true);
 verifie('chat : l\'admin de promo ne règle ni le général ni une autre promo', $err(appel('ap@ci.test', 'chat_regle_set', ['data' => ['portee' => 'general', 'valeur' => 'inactif']])) === 'forbidden'
     && $err(appel('ap@ci.test', 'chat_regle_set', ['data' => ['portee' => 'promo', 'cible' => $promo2, 'valeur' => 'inactif']])) === 'forbidden');
