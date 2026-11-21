@@ -132,7 +132,18 @@ function correspond(i, q) {
 // Noms des groupes présents dans la vue courante (filtre « Groupe »).
 const groupesListe = () => [...new Set(items.map(i => i.groupe).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
 
+// Un filtre sur une valeur qui n'existe pas dans la vue courante (autre groupe, étudiant absent) est invisible dans le panneau mais
+// resterait appliqué : on le retire dès que la vue change. Renvoie vrai si quelque chose a été retiré.
+function nettoyerFiltres() {
+  const etus = students().map(s => s.prenom), grps = groupesListe();
+  const who = F.who.filter(n => etus.includes(n)), grp = F.grp.filter(n => grps.includes(n));
+  const change = who.length !== F.who.length || grp.length !== F.grp.length;
+  F.who = who; F.grp = grp;
+  return change;
+}
+
 function filtered() {
+  nettoyerFiltres();
   const q = cleTitre(F.q);
   const valeurs = { who: i => [i.etudiant], grp: i => [i.groupe], st: i => [i.statut], type: i => [i.type],
     kw: i => motsListe(i.mots).concat(motsListe(i.kw)).map(cleTitre) };
@@ -155,6 +166,7 @@ function filtered() {
 }
 
 function renderTable() {
+  if (nettoyerFiltres()) renderFilters(true);
   const l = filtered();
   const cartes = F.view === "cartes" || F.view === "liste";
   $("cards").classList.toggle("compact", F.view === "liste");
