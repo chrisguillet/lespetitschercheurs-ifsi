@@ -1,6 +1,6 @@
 /* Chat de groupe et de promo : bouton en bas à droite, replié par défaut.
    Script classique : partage la portée globale avec les autres fichiers de js/ (ordre de chargement : voir index.html).
-   Limites appliquées par le serveur (Code.gs) : 4 messages par minute glissante, 500 caractères, 1000 messages par salon, 7 jours. */
+   Limites appliquées par le serveur (Code.gs) : 4 messages par minute glissante, 500 caractères, 1000 messages par groupe et 5000 par promo, 7 jours. */
 "use strict";
 
 const CH = { ouvert: false, canal: "groupe", gid: "", msgs: [], total: 0, limite: 100, nouveaux: { groupe: 0, promo: 0 }, libreA: 0, err: "", envoi: false, tic: 0, creeA: false };
@@ -55,7 +55,7 @@ function creerChat() {
   $("chlist").addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
     if (b.dataset.chdel) chatSupprimer(b.dataset.chdel);
-    else if (b.dataset.chplus !== undefined) { CH.limite = Math.min(CH.limite + 100, 1000); chatCharger(); }
+    else if (b.dataset.chplus !== undefined) { CH.limite = Math.min(CH.limite + 100, CH.canal === "promo" ? 5000 : 1000); chatCharger(); }
   });
   r.addEventListener("keydown", e => { if (e.key === "Escape" && CH.ouvert) { fermerChat(); $("chatbtn").focus(); } });
   setInterval(chatTic, 1000);
@@ -99,7 +99,7 @@ function chatRendu(bas) {
       `<div class="chmsg ${m.moi ? "moi" : ""}"><div class="chmeta"><b style="color:${esc(m.couleur)}">${esc(m.auteur)}</b> <span>${esc(chatHeure(m.date))}</span>${m.moi || (me && me.role === "admin") ? `<button type="button" class="chdel" data-chdel="${esc(m.id)}" aria-label="Retirer ce message" title="Retirer ce message">✕</button>` : ""}</div><div class="chtxt">${esc(m.texte)}</div></div>`).join(""));
   if (bas !== false) l.scrollTop = l.scrollHeight;
   $("cherr").textContent = CH.err;
-  $("chnote").textContent = "4 messages par minute · 500 caractères · conservés 7 jours (1000 messages au plus)";
+  $("chnote").textContent = "4 messages par minute · 500 caractères · conservés 7 jours (1000 messages au plus par groupe, 5000 par promo)";
   chatMajEnvoi();
 }
 function chatMajEnvoi() {

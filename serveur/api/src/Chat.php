@@ -6,14 +6,15 @@ namespace Lpc;
 /**
  * Chat de groupe et de promo, dans la base du chat. Deux salons par groupe : « groupe » (ses membres et ses administrateurs) et
  * « promo » (toutes les personnes qui lisent la promo). Limites : 4 messages par personne sur une minute glissante, 500 caractères,
- * 1000 messages par salon, 7 jours de conservation. Interrogation régulière côté client (pas de temps réel).
+ * 1000 messages par salon de groupe et 5000 par salon de promo, 7 jours de conservation. Interrogation régulière côté client (pas de temps réel).
  */
 final class Chat
 {
     public const RAFALE = 4;
     public const FENETRE_S = 60;
     public const TEXTE_MAX = 500;
-    public const MAX = 1000;
+    public const MAX_GROUPE = 1000;
+    public const MAX_PROMO = 5000;
     public const JOURS = 7;
     public const AFFICHES = 100;
 
@@ -28,7 +29,7 @@ final class Chat
     {
         $type = ($req['type'] ?? null) === 'promo' ? 'promo' : 'groupe';
         $canal = self::canal($c, $type, $req['groupe_id'] ?? null);
-        $limite = min(max((int) ($req['limite'] ?? 0) ?: self::AFFICHES, 1), self::MAX);
+        $limite = min(max((int) ($req['limite'] ?? 0) ?: self::AFFICHES, 1), self::plafond($canal));
         $coupe = self::coupure();
         $chat = $c->db->chat();
         $uid = (int) $c->user->id;
@@ -98,7 +99,7 @@ final class Chat
         // Nettoyage : messages trop anciens, puis excédent du salon (les plus anciens d'abord).
         $chat->prepare('DELETE FROM chat_messages WHERE cree_le < ?')->execute([self::coupure()]);
         $chat->prepare(
-            'DELETE FROM chat_messages WHERE canal = ? AND id <= (SELECT id FROM (SELECT id FROM chat_messages WHERE canal = ? ORDER BY id DESC LIMIT 1 OFFSET ' . self::MAX . ') t)'
+            'DELETE FROM chat_messages WHERE canal = ? AND id <= (SELECT id FROM (SELECT id FROM chat_messages WHERE canal = ? ORDER BY id DESC LIMIT 1 OFFSET ' . self::plafond($canal) . ') t)'
         )->execute([$canal, $canal]);
     }
 
@@ -141,6 +142,12 @@ final class Chat
             throw new Erreur('forbidden', 'Vous ne faites pas partie de ce groupe');
         }
         return 'g:' . $gid;
+    }
+
+    /** Nombre de messages gardés dans un salon : 1000 pour un groupe, 5000 pour une promo. */
+    private static function plafond(string $canal): int
+    {
+        return str_starts_with($canal, 'p:') ? self::MAX_PROMO : self::MAX_GROUPE;
     }
 
     private static function coupure(): string

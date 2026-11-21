@@ -1155,7 +1155,16 @@ for ($i = 0; $i < 1001; $i++) {
 $chat->prepare('INSERT INTO chat_messages (canal, auteur_id, auteur_nom, cree_le, texte) VALUES ' . implode(', ', $lot))
     ->execute(array_merge(...array_map(static fn (int $i): array => ['g:' . $gamma, $B['a7'], 'Gus T.', gmdate('Y-m-d H:i:s'), 'bruit ' . $i], range(1, 1001))));
 appel('a6@ci.test', 'chat_send', ['groupe_id' => $gamma, 'type' => 'groupe', 'texte' => 'Un de plus']);
-verifie('chat : au plus mille messages par salon', (int) valeur($chat, 'SELECT COUNT(*) FROM chat_messages WHERE canal = ?', ['g:' . $gamma]) === 1000);
+verifie('chat : au plus mille messages par salon de groupe', (int) valeur($chat, 'SELECT COUNT(*) FROM chat_messages WHERE canal = ?', ['g:' . $gamma]) === 1000);
+$promoGamma = 'p:' . (string) valeur($pdo, 'SELECT promo_id FROM groupes WHERE id = ?', [$gamma]);
+$lotP = [];
+for ($i = 0; $i < 5001; $i++) {
+    $lotP[] = '(?, ?, ?, ?, ?)';
+}
+$chat->prepare('INSERT INTO chat_messages (canal, auteur_id, auteur_nom, cree_le, texte) VALUES ' . implode(', ', $lotP))
+    ->execute(array_merge(...array_map(static fn (int $i): array => [$promoGamma, $B['a7'], 'Gus T.', gmdate('Y-m-d H:i:s'), 'promo ' . $i], range(1, 5001))));
+appel('a6@ci.test', 'chat_send', ['groupe_id' => $gamma, 'type' => 'promo', 'texte' => 'Un de plus pour la promo']);
+verifie('chat : au plus cinq mille messages par salon de promo', (int) valeur($chat, 'SELECT COUNT(*) FROM chat_messages WHERE canal = ?', [$promoGamma]) === 5000);
 
 // ---------- Lot D : traduction des mots-clés ----------
 $r = appel('a1@ci.test', 'translate', ['texte' => 'soins palliatifs, Douleur; fin de vie, Éthique, douleur']);
