@@ -56,8 +56,9 @@ const nonLusEnvoi = new Set(); // remis en non lu ici, pas encore confirmés par
 const frais = new Set();    // commentaires qui étaient non lus à l'ouverture : surlignés tant que la discussion reste ouverte
 const CM = { nonLus: false, miennes: false };
 const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
-const F = { q: "", who: "", grp: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute",
-  view: lsGet("lydia_vue", matchMedia("(max-width:700px)").matches ? "liste" : "tableau") };
+const filtresVierges = () => ({ q: "", who: [], grp: [], st: [], type: [], kw: [], kwLabels: {}, mode: { who: "ou", grp: "ou", st: "ou", kw: "ou", q: "et" } });
+const F = Object.assign(filtresVierges(), { sort: "ajoute",
+  view: lsGet("lydia_vue", matchMedia("(max-width:700px)").matches ? "liste" : "tableau") });
 const masquees = new Set((() => { try { return JSON.parse(lsGet("lydia_cols", "[]")); } catch (e) { return []; } })());
 
 // etudiant : écrit, administre et commente ; formateur : lit et commente (dans ses groupes) ; admin : gère tout.
@@ -148,7 +149,7 @@ function reinitialiserEtat() {
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
   Object.keys(drafts).forEach(k => delete drafts[k]);
-  Object.assign(F, { q: "", who: "", grp: "", st: "", type: "", kw: "", kwLabel: "", sort: "ajoute" });
+  Object.assign(F, filtresVierges(), { sort: "ajoute" });
   B.who = ""; B.enCours = false;
   enLigne = []; enLigneSig = "";
   tab = "all"; vuDepuis = null; renderedAcces = ""; derniereSync = null; usersChanged = false;
@@ -239,8 +240,8 @@ function applyDataBrut(j) {
   usersChanged = sig !== studentsSig;
   studentsSig = sig;
   // Un filtre sur un étudiant qui n'est plus dans la vue n'a plus de sens.
-  if (F.who && !students().some(u => u.prenom === F.who)) F.who = "";
-  if (F.grp && !groupesListe().includes(F.grp)) F.grp = "";
+  F.who = F.who.filter(n => students().some(u => u.prenom === n));
+  F.grp = F.grp.filter(n => groupesListe().includes(n));
   if (B.who && !students().some(u => u.prenom === B.who)) B.who = "";
   enLigne = j.enLigne || [];
   lusSet = new Set((j.lus || []).concat([...lusEnvoi]).filter(id => !nonLusEnvoi.has(id)));

@@ -716,3 +716,14 @@ header .btn.on,header .btn.sec.on{color:var(--pri)}
 .dblart input{width:auto;margin-top:4px;flex:none}
 .dblart .dbl2{display:block}
 .dblgrp .grow{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+
+/* Filtres cumulatifs : plusieurs choix par filtre, combinés en OU / ET */
+.pop-filtres{width:min(380px,92vw);max-height:min(75vh,640px);overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.fgrp{border-top:1px solid var(--bd);padding-top:8px}
+.fhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0}
+.flab{font-size:12px;font-weight:600;color:var(--mut)}
+.fopts{display:flex;flex-wrap:wrap;gap:4px 12px}
+.fopt{display:inline-flex;align-items:center;gap:5px;margin:0;font-size:13px;font-weight:400;color:var(--tx);cursor:pointer}
+.fopt input{width:auto;margin:0}
+.fmode .btn{min-width:38px;padding:2px 8px}
+.fhelp{font-size:12px;line-height:1.35}

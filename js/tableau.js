@@ -6,7 +6,7 @@
 const openRows = new Set();   // lectures dont les textes longs sont dépliés
 
 const chips = txt => motsListe(txt).map(k =>
-  `<button type="button" class="chip ${cleTitre(k) === F.kw ? "on" : ""}" data-kw="${esc(k)}" title="Filtrer sur ce mot-clé">${esc(k)}</button>`).join("");
+  `<button type="button" class="chip ${F.kw.includes(cleTitre(k)) ? "on" : ""}" data-kw="${esc(k)}" title="Filtrer sur ce mot-clé">${esc(k)}</button>`).join("");
 
 function clampTxt(id, txt) { return `<div class="clamp">${esc(txt)}</div>`; }
 
@@ -150,7 +150,7 @@ function infosHtml(i) {
 
 // Un document (article) par ligne ; ses fiches de lecture se déplient en dessous.
 const openArts = new Set(), fermesArts = new Set();     // documents dépliés ; documents repliés à la main malgré un filtre actif
-const filtreActif = () => !!(F.q || F.who || F.grp || F.st || F.type || F.kw);
+const filtreActif = () => nbFiltres() > 0;
 const artOuvert = k => openArts.has(k) || (filtreActif() && !fermesArts.has(k));   // une recherche déplie les documents trouvés
 const cleArt = i => i.article_id || i.id;
 const libFiches = n => `${n} fiche${n > 1 ? "s" : ""} de lecture`;

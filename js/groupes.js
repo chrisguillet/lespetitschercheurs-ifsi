@@ -57,7 +57,7 @@ function changerContexte(c) {
   fermerDiscussion(true); fermerGroupe(true);
   closeDrawer(true);
   openRows.clear();
-  Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "" });
+  Object.assign(F, filtresVierges(), { grp: F.grp });
   B.who = "";
   deriver();
   studentsSig = JSON.stringify(students());
