@@ -731,3 +731,7 @@ header .btn.on,header .btn.sec.on{color:var(--pri)}
 .colpop.pop-filtres .fopt{display:inline-flex;font-size:13px;font-weight:400;color:var(--tx);margin:0}
 .colpop.pop-filtres .fopt input{width:auto;min-width:0}
 .colpop.pop-filtres .fmode .btn{width:auto}
+
+/* Notes : la fenêtre défile quand la note est plus haute que l'écran */
+#notebody{flex:1 1 auto;min-height:0;overflow-y:auto}
+.nwrap{overflow:visible}

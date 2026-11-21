@@ -45,26 +45,7 @@ final class Traduction
      */
     public static function traduire(mixed $texte, ?callable $service): array
     {
-        $brut = is_scalar($texte) ? (string) $texte : '';
-        if (mb_strlen($brut) > self::MAX_CARACTERES) {
-            throw new Erreur('invalid', 'Texte trop long pour la traduction');
-        }
-        $vus = [];
-        $termes = [];
-        foreach (preg_split('/[,;\n]+/', $brut) ?: [] as $t) {
-            $t = trim($t);
-            $k = Lectures::normaliser($t);
-            if ($t !== '' && $k !== '' && !isset($vus[$k])) {
-                $vus[$k] = true;
-                $termes[] = $t;
-            }
-        }
-        if ($termes === []) {
-            throw new Erreur('invalid', 'Aucun mot-clé à traduire');
-        }
-        if (count($termes) > self::MAX_TERMES) {
-            throw new Erreur('invalid', 'Trop de mots-clés (' . self::MAX_TERMES . ' maximum)');
-        }
+        $termes = self::termes($texte);
 
         $aTraduire = array_values(array_filter($termes, static fn (string $t): bool => !isset(self::GLOSSAIRE[Lectures::normaliser($t)])));
         $aller = [];
@@ -73,6 +54,8 @@ final class Traduction
             try {
                 $aller = $service($aTraduire, 'fr', 'en');
                 $retour = $service($aller, 'en', 'fr');
+            } catch (QuotaDeepl $e) {
+                throw $e;
             } catch (\Throwable $e) {
                 error_log('Traduction indisponible : ' . $e->getMessage());
                 $aller = [];
@@ -114,6 +97,123 @@ final class Traduction
     }
 
     /**
+     * Traduction avec dictionnaire et quota. Les termes du glossaire maison sont traduits sans appel ; ceux déjà obtenus du service externe
+     * sont relus dans la table « traductions » ; seuls les autres partent au service, tant que le quota mensuel n'est pas atteint.
+     * Une fois le quota atteint (limite configurée, ou refus du service), plus aucun appel n'est fait jusqu'au mois suivant : les termes
+     * connus restent traduits, les autres reviennent sans traduction, avec « quota » vrai.
+     *
+     * @param null|callable(list<string>,string,string):list<string> $service
+     * @param int $limite caractères envoyés au service par mois (UTC) ; 0 = pas de limite locale
+     * @return array{items:list<array{fr:string,en:string,niveau:string,raison:string}>,quota:bool,caracteres:int}
+     */
+    public static function traduireAvecDictionnaire(mixed $texte, ?callable $service, \PDO $pdo, int $limite = 0, ?string $mois = null): array
+    {
+        $termes = self::termes($texte);
+        $mois ??= gmdate('Y-m');
+        $inconnus = [];
+        $deja = [];
+        foreach ($termes as $t) {
+            $k = Lectures::normaliser($t);
+            if (!isset(self::GLOSSAIRE[$k])) {
+                $inconnus[$k] = $t;
+            }
+        }
+        if ($inconnus !== []) {
+            $cles = array_keys($inconnus);
+            $st = $pdo->prepare('SELECT cle, en, niveau, raison FROM traductions WHERE cle IN (' . Lectures::marques(count($cles)) . ')');
+            $st->execute($cles);
+            foreach ($st->fetchAll() as $r) {
+                $deja[(string) $r['cle']] = $r;
+            }
+        }
+        $manque = [];
+        foreach ($inconnus as $k => $t) {
+            if (!isset($deja[$k])) {
+                $manque[$k] = $t;
+            }
+        }
+
+        $quota = false;
+        $envoyes = 0;
+        $neufs = [];
+        if ($manque !== [] && $service !== null) {
+            $u = $pdo->prepare('SELECT caracteres, bloque FROM traduction_usage WHERE mois = ?');
+            $u->execute([$mois]);
+            $usage = $u->fetch() ?: ['caracteres' => 0, 'bloque' => 0];
+            $estimation = 2 * array_sum(array_map('mb_strlen', $manque));   // aller, puis retraduction pour juger la fiabilité
+            if ((int) $usage['bloque'] === 1 || ($limite > 0 && (int) $usage['caracteres'] + $estimation > $limite)) {
+                $quota = true;
+            } else {
+                $compte = static function (array $t, string $de, string $vers) use ($service, &$envoyes): array {
+                    $envoyes += array_sum(array_map('mb_strlen', $t));
+                    return $service($t, $de, $vers);
+                };
+                try {
+                    foreach (self::traduire(implode("\n", $manque), $compte) as $item) {
+                        $neufs[Lectures::normaliser($item['fr'])] = $item;
+                    }
+                } catch (QuotaDeepl) {
+                    $quota = true;
+                    $pdo->prepare('INSERT INTO traduction_usage (mois, caracteres, bloque) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE bloque = 1')->execute([$mois, $envoyes]);
+                }
+                if ($envoyes > 0 && !$quota) {
+                    $pdo->prepare('INSERT INTO traduction_usage (mois, caracteres, bloque) VALUES (?, ?, 0) ON DUPLICATE KEY UPDATE caracteres = caracteres + VALUES(caracteres)')->execute([$mois, $envoyes]);
+                }
+                foreach ($neufs as $k => $item) {
+                    if ($item['en'] !== '' && mb_strlen($k) <= 190 && mb_strlen($item['en']) <= 190) {
+                        $pdo->prepare('INSERT IGNORE INTO traductions (cle, en, niveau, raison, cree_le) VALUES (?, ?, ?, ?, ?)')
+                            ->execute([$k, $item['en'], $item['niveau'], mb_substr($item['raison'], 0, 200), Temps::maintenant()]);
+                    }
+                }
+            }
+        }
+
+        $items = [];
+        foreach ($termes as $t) {
+            $k = Lectures::normaliser($t);
+            if (isset(self::GLOSSAIRE[$k])) {
+                $items[] = ['fr' => $t, 'en' => self::GLOSSAIRE[$k], 'niveau' => 'haute', 'raison' => 'terme du glossaire de sciences infirmières'];
+            } elseif (isset($deja[$k])) {
+                $items[] = ['fr' => $t, 'en' => (string) $deja[$k]['en'], 'niveau' => (string) $deja[$k]['niveau'],
+                    'raison' => 'déjà traduit auparavant (dictionnaire de l’outil) : ' . $deja[$k]['raison']];
+            } elseif (isset($neufs[$k])) {
+                $items[] = $neufs[$k];
+            } else {
+                $items[] = ['fr' => $t, 'en' => '', 'niveau' => 'faible', 'raison' => $quota
+                    ? 'traducteur automatique limité ce mois-ci : terme à traduire à la main'
+                    : ($service === null ? 'aucun service de traduction configuré : seuls les termes du glossaire et du dictionnaire sont traduits' : 'aucune traduction obtenue')];
+            }
+        }
+        return ['items' => $items, 'quota' => $quota, 'caracteres' => $envoyes];
+    }
+
+    /** Découpe et valide la saisie : termes séparés par virgule, point-virgule ou retour à la ligne, sans doublon. @return list<string> */
+    public static function termes(mixed $texte): array
+    {
+        $brut = is_scalar($texte) ? (string) $texte : '';
+        if (mb_strlen($brut) > self::MAX_CARACTERES) {
+            throw new Erreur('invalid', 'Texte trop long pour la traduction');
+        }
+        $vus = [];
+        $termes = [];
+        foreach (preg_split('/[,;\n]+/', $brut) ?: [] as $t) {
+            $t = trim($t);
+            $k = Lectures::normaliser($t);
+            if ($t !== '' && $k !== '' && !isset($vus[$k])) {
+                $vus[$k] = true;
+                $termes[] = $t;
+            }
+        }
+        if ($termes === []) {
+            throw new Erreur('invalid', 'Aucun mot-clé à traduire');
+        }
+        if (count($termes) > self::MAX_TERMES) {
+            throw new Erreur('invalid', 'Trop de mots-clés (' . self::MAX_TERMES . ' maximum)');
+        }
+        return $termes;
+    }
+
+    /**
      * Service DeepL (offre gratuite ou payante, selon l'adresse). @return callable(list<string>,string,string):list<string>
      */
     public static function deepl(string $cle, string $url = 'https://api-free.deepl.com/v2/translate'): callable
@@ -131,7 +231,7 @@ final class Traduction
             $rep = curl_exec($ch);
             $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
             if (!is_string($rep) || $code !== 200) {
-                throw new \RuntimeException('DeepL : réponse ' . $code);
+                throw $code === 456 ? new QuotaDeepl('DeepL : quota atteint') : new \RuntimeException('DeepL : réponse ' . $code);
             }
             $json = json_decode($rep, true);
             $tr = is_array($json['translations'] ?? null) ? array_map(static fn (array $x): string => (string) ($x['text'] ?? ''), $json['translations']) : [];

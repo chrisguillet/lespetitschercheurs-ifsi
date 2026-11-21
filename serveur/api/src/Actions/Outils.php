@@ -150,7 +150,13 @@ final class Outils
         Lectures::exigerEtudiant($c);
         $cle = $c->config->get('deepl_cle');
         $service = is_string($cle) && $cle !== '' ? Traduction::deepl($cle, (string) $c->config->get('deepl_url', 'https://api-free.deepl.com/v2/translate')) : null;
-        return ['ok' => true, 'items' => Traduction::traduire($req['texte'] ?? null, $service)];
+        $limite = (int) $c->config->get('deepl_limite', 45000);   // caractères par mois envoyés au service (marge sous le quota réel)
+        $r = Traduction::traduireAvecDictionnaire($req['texte'] ?? null, $service, $c->db->principale(), $limite);
+        $rep = ['ok' => true, 'items' => $r['items'], 'quota' => $r['quota']];
+        if ($r['quota']) {
+            $rep['avertissement'] = 'Le traducteur automatique est limité pour ce mois : les termes déjà connus sont traduits, les autres sont à saisir à la main. Il reprendra le mois prochain.';
+        }
+        return $rep;
     }
 
     /** Doublons d'articles (administrateurs). @param array<string,mixed> $req @return array<string,mixed> */

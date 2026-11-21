@@ -51,6 +51,12 @@ return [
     // JSON,
     // ],
 
+    // Traduction automatique des mots-clés (DeepL), facultative. Sans clé, seuls le glossaire de l'outil et le dictionnaire des
+    // traductions déjà obtenues sont utilisés. Chaque traduction obtenue est mémorisée : un terme n'est envoyé qu'une fois.
+    // 'deepl_cle' => 'VOTRE-CLE-DEEPL',                       // une clé de l'offre gratuite se termine par :fx
+    // 'deepl_url' => 'https://api-free.deepl.com/v2/translate', // adresse de l'offre gratuite (défaut) ; offre payante : https://api.deepl.com/v2/translate
+    // 'deepl_limite' => 45000,   // caractères envoyés par mois : à régler un peu sous le quota de votre offre (défaut 45000)
+
     // Purge des comptes inactifs depuis 12 mois (tâche de nuit). Tant que cette ligne est absente ou à false, la purge se contente
     // de compter (journal d'administration, action purge_inactifs). À activer seulement quand l'ancien outil est arrêté : tant que
     // l'import relit l'ancien Sheet, il recréerait les comptes retirés.

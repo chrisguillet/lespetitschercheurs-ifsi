@@ -155,7 +155,8 @@ async function traduire() {
     $("tradres").innerHTML = r.items.map(i =>
       `<span class="fiab fiab-${esc(i.niveau)}" title="${esc(i.raison)}">${ICONE_FIAB[i.niveau] || ""} ${esc(i.fr)} → ${esc(i.en)} <span class="meta">(${LIBELLE_FIAB[i.niveau] || ""})</span></span>`).join("")
       + '<div class="legende">🟢 fiable · 🟠 à vérifier · 🔴 douteux. Indice automatique fondé sur le glossaire et sur la retraduction en français : ce n’est pas une garantie, relisez les termes importants (survolez une pastille pour le détail).</div>';
-    msg.textContent = "";
+    msg.textContent = r.avertissement ? "⚠️ " + r.avertissement : "";
+    msg.classList.toggle("err", !!r.avertissement);
     planifierBrouillon();
   } catch (e) {
     if (e.code === "unauthorized") sessionError(e);

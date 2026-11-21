@@ -1333,6 +1333,37 @@ verifie('adresse unique (insensible à la casse)', leveSql(fn () => creerUtilisa
 verifie('mode strict : valeur trop longue refusée', leveSql(fn () => $pdo->prepare('UPDATE utilisateurs SET prenom = ? WHERE id = ?')->execute([str_repeat('a', 200), $etu]), '22001'));
 verifie('énumération : statut inconnu refusé', refuseSql(fn () => $pdo->prepare('UPDATE utilisateurs SET statut = ? WHERE id = ?')->execute(['inconnu', $etu])));
 
+// ---------- Dictionnaire de traductions et quota du service externe ----------
+$appelsSvc = 0;
+$svc = static function (array $t, string $d, string $v) use (&$appelsSvc): array {
+    $appelsSvc++;
+    return array_map(static fn (string $x): string => $d === 'fr' ? 'EN:' . $x : (str_starts_with($x, 'EN:') ? substr($x, 3) : $x), $t);
+};
+$r1 = \Lpc\Traduction::traduireAvecDictionnaire('cirrhose hépatique, douleur', $svc, $pdo, 1000, '2099-01');
+verifie('dictionnaire : terme inconnu envoyé au service (aller et retour), terme du glossaire non', $appelsSvc === 2 && $r1['items'][1]['en'] === 'pain' && $r1['items'][0]['en'] === 'EN:cirrhose hépatique' && $r1['quota'] === false);
+verifie('dictionnaire : caractères envoyés comptés', $r1['caracteres'] === 39 && (int) valeur($pdo, "SELECT caracteres FROM traduction_usage WHERE mois = '2099-01'") === 39);
+verifie('dictionnaire : traduction mémorisée', valeur($pdo, "SELECT en FROM traductions WHERE cle = 'cirrhose hepatique'") === 'EN:cirrhose hépatique');
+$r2 = \Lpc\Traduction::traduireAvecDictionnaire('Cirrhose hépatique', $svc, $pdo, 1000, '2099-01');
+verifie('dictionnaire : un terme déjà traduit ne repart pas au service', $appelsSvc === 2 && $r2['items'][0]['en'] === 'EN:cirrhose hépatique' && str_contains($r2['items'][0]['raison'], 'déjà traduit') && $r2['caracteres'] === 0);
+$r3 = \Lpc\Traduction::traduireAvecDictionnaire('hépatite virale chronique', $svc, $pdo, 50, '2099-01');
+verifie('quota local atteint : pas d\'appel, terme sans traduction, avertissement possible', $appelsSvc === 2 && $r3['quota'] === true && $r3['items'][0]['en'] === '' && str_contains($r3['items'][0]['raison'], 'limité ce mois-ci'));
+verifie('quota local atteint : les termes connus restent traduits', \Lpc\Traduction::traduireAvecDictionnaire('douleur, cirrhose hépatique, hépatite virale chronique', $svc, $pdo, 50, '2099-01')['items'][0]['en'] === 'pain');
+$refus = static function (array $t, string $d, string $v) use (&$appelsSvc): array {
+    $appelsSvc++;
+    throw new \Lpc\QuotaDeepl('quota');
+};
+$avant = $appelsSvc;
+$r4 = \Lpc\Traduction::traduireAvecDictionnaire('suivi post-opératoire', $refus, $pdo, 0, '2099-02');
+verifie('quota refusé par le service : détecté, le reste n\'est pas bloqué', $r4['quota'] === true && $r4['items'][0]['en'] === '' && $appelsSvc === $avant + 1);
+$r5 = \Lpc\Traduction::traduireAvecDictionnaire('autre terme inconnu', $svc, $pdo, 0, '2099-02');
+verifie('quota refusé : plus aucun appel jusqu\'au mois suivant', $r5['quota'] === true && $appelsSvc === $avant + 1 && (int) valeur($pdo, "SELECT bloque FROM traduction_usage WHERE mois = '2099-02'") === 1);
+$r6 = \Lpc\Traduction::traduireAvecDictionnaire('autre terme inconnu', $svc, $pdo, 0, '2099-03');
+verifie('nouveau mois : le service est de nouveau utilisé', $r6['quota'] === false && $r6['items'][0]['en'] === 'EN:autre terme inconnu' && $appelsSvc === $avant + 3);
+verifie('dictionnaire : sans service, les termes inconnus reviennent vides sans alerte de quota', \Lpc\Traduction::traduireAvecDictionnaire('terme jamais vu', null, $pdo, 0, '2099-04')['quota'] === false);
+verifie('dictionnaire : saisie vide refusée comme avant', leve(fn () => \Lpc\Traduction::traduireAvecDictionnaire(' , ', $svc, $pdo), 'invalid'));
+$rt = appel('a1@ci.test', 'translate', ['texte' => 'douleur']);
+verifie('translate : réponse avec indicateur de quota', ($rt['ok'] ?? false) === true && ($rt['quota'] ?? null) === false && !isset($rt['avertissement']));
+
 // ---------- Suppressions en cascade ----------
 $art = Ids::uuid();
 $pdo->prepare('INSERT INTO articles (id, cree_par, groupe_id, ajoute, titre) VALUES (?, ?, ?, ?, ?)')->execute([$art, $etu, $groupe, gmdate('Y-m-d H:i:s'), 'Titre']);
