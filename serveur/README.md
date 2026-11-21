@@ -27,6 +27,15 @@ dont l'hôte, l'utilisateur et le mot de passe sont dans les secrets GitHub `SFT
 Le miroir supprime du serveur ce qui n'est plus dans le dépôt. Restent manuels : `config.php` et les migrations SQL
 (scripts `deploiement/envoyer.ps1` et `deploiement/migrer.ps1`, avec le compte administrateur).
 
+### Migrations SQL automatiques
+
+Après l'envoi des fichiers, le déploiement appelle `api/migrer.php` (POST, en-tête `X-Migration-Token`). Ce point d'entrée applique les
+fichiers de `api/sql/` pas encore appliqués, une seule fois chacun, et n'exécute **jamais** du SQL venant de la requête. Il est
+désactivé tant que `migration_jeton_sha256` (empreinte SHA-256 du jeton) est absent de `config.php`. Mise en place, une seule fois :
+`.\serveur\deploiement\jeton-migration.ps1` (génère le jeton, copié dans le presse-papiers, et inscrit l'empreinte dans `config.php`),
+coller le jeton dans le secret GitHub `MIGRATION_JETON`, puis `.\serveur\deploiement\envoyer.ps1` pour déposer la configuration.
+Un schéma s'ajoute en créant `api/sql/00N_nom.sql` et en le déclarant dans `Migrations::FICHIERS`.
+
 ## Mise en route
 
 0. Raccourci : remplir `serveur/config.php` (ignoré par git), puis `.\serveur\deploiement\envoyer.ps1` fait les étapes 1 et 3

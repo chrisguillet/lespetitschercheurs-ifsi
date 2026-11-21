@@ -94,5 +94,8 @@ function pairedeCles(): array
 function bilan(): never
 {
     echo "\n{$GLOBALS['lpc_total']} vérifications, {$GLOBALS['lpc_echecs']} échec(s)\n";
+    if (getenv('GITHUB_ACTIONS') === 'true') {
+        echo "::notice::{$GLOBALS['lpc_total']} vérifications exécutées, {$GLOBALS['lpc_echecs']} échec(s)\n";
+    }
     exit($GLOBALS['lpc_echecs'] === 0 ? 0 : 1);
 }
