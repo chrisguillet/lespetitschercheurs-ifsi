@@ -3,7 +3,7 @@
 "use strict";
 /* ---------- Compte rendu de réunion : aperçu, impression, PDF ---------- */
 
-const CR = { ouvert: false, id: "", focus: null };
+const CR = { ouvert: false, id: "", type: "reunion", focus: null };   // type : « reunion » (compte rendu) ou « fiche » (fiche de lecture)
 
 const crReunion = () => reunionsAll.find(r => r.id === CR.id);
 const crGroupe = r => groupes.find(g => g.id === r.groupe_id) || {};
@@ -13,9 +13,9 @@ function crPage(r) {
   const g = crGroupe(r);
   const sect = (t, v) => String(v || "").trim() ? `<section class="crsect"><h3>${esc(t)}</h3><div class="crtxt">${esc(v)}</div></section>` : "";
   return `<article class="crpage">
-    <header class="crhead"><div class="crsup">${esc([g.etablissement, g.promo, g.nom].filter(Boolean).join(" · "))}</div>
+    <div class="crhead"><div class="crsup">${esc([g.etablissement, g.promo, g.nom].filter(Boolean).join(" · "))}</div>
       <h2>Compte rendu de réunion</h2>
-      <div class="crsous">${esc(fmtD(r.date))}${r.titre ? " · " + esc(r.titre) : ""}</div></header>
+      <div class="crsous">${esc(fmtD(r.date))}${r.titre ? " · " + esc(r.titre) : ""}</div></div>
     ${r.participants ? `<section class="crsect"><h3>Participants</h3><div class="crtxt">${esc(r.participants)}</div></section>` : ""}
     ${sect("Ce qui a été vu", r.vu)}${sect("Ce qui est attendu", r.attendu)}${sect("Étapes pour la suite", r.suite)}
     ${[r.vu, r.attendu, r.suite].some(v => String(v || "").trim()) ? "" : '<div class="meta">Ce compte rendu est vide.</div>'}
@@ -23,11 +23,12 @@ function crPage(r) {
   </article>`;
 }
 
-function ouvrirCompteRendu(id) {
+function ouvrirCompteRendu(id, type = "reunion") {
   if (!$("crmodal")) return;
-  CR.ouvert = true; CR.id = id; CR.focus = document.activeElement;
-  const r = crReunion(); if (!r) return fermerCompteRendu();
-  $("crbody").innerHTML = crPage(r);
+  CR.ouvert = true; CR.id = id; CR.type = type; CR.focus = document.activeElement;
+  const html = crPageCourante(); if (!html) return fermerCompteRendu();
+  $("crtitle").textContent = type === "fiche" ? "📄 Aperçu de la fiche de lecture" : "📄 Aperçu du compte rendu";
+  $("crbody").innerHTML = html;
   $("crmodal").classList.remove("hidden"); document.body.classList.add("modalopen");
   $("crprint").focus();
 }
@@ -42,10 +43,10 @@ function fermerCompteRendu() {
 
 // Impression : la page est copiée dans un élément à part, seul visible à l'impression (voir style.css).
 function imprimerCompteRendu() {
-  const r = crReunion(); if (!r) return;
+  const html = crPageCourante(); if (!html) return;
   let z = $("crprintzone");
   if (!z) { z = document.createElement("div"); z.id = "crprintzone"; document.body.appendChild(z); }
-  z.innerHTML = crPage(r);
+  z.innerHTML = html;
   document.body.classList.add("imprime-cr");
   const fin = () => { document.body.classList.remove("imprime-cr"); z.innerHTML = ""; window.removeEventListener("afterprint", fin); };
   window.addEventListener("afterprint", fin);
@@ -75,6 +76,26 @@ function pdfCompteRendu() {
 
 $("crclose")?.addEventListener("click", fermerCompteRendu);
 $("crprint")?.addEventListener("click", imprimerCompteRendu);
-$("crpdf")?.addEventListener("click", pdfCompteRendu);
+$("crpdf")?.addEventListener("click", () => CR.type === "fiche" ? exportFichePdf(CR.id) : pdfCompteRendu());
 $("crmodal")?.addEventListener("click", e => { if (e.target === $("crmodal")) fermerCompteRendu(); });
 $("crmodal")?.addEventListener("keydown", e => { if (e.key === "Escape") fermerCompteRendu(); });
+
+// Fiche de lecture : même aperçu, même choix imprimer / PDF.
+const ficheDeApercu = () => itemsAll.find(x => x.id === CR.id);
+function fichePage(i) {
+  const sect = (t, v) => `<section class="crsect"><h3>${esc(t)}</h3><div class="crtxt">${esc(String(v || "").trim() || "—")}</div></section>`;
+  const article = ["Parution : " + (fmtD(i.parution) || "-"), "Auteur : " + (i.auteur || "-") + " (" + (i.qualite || "-") + ")", "Nationalité : " + (i.nation || "-"), "Type : " + (i.type || "-")].join("\n");
+  return `<article class="crpage">
+    <div class="crhead"><div class="crsup">${esc(i.groupe || "")}</div>
+      <h2>${esc(i.titre || "Sans titre")}</h2>
+      <div class="crsous">Fiche de ${esc(i.etudiant)} (${esc(stInfo(i.statut).lib.toLowerCase())}) · saisie le ${esc(fmtD(i.ajoute))}</div></div>
+    <section class="crsect"><h3>Référence APA</h3><div class="crtxt">${esc(LydiaApa.apa(i).text)}</div></section>
+    ${sect("Article", article)}${sect("Mots-clés", i.mots)}${sect("Keywords", i.kw)}${sect("Concepts en sciences infirmières", i.concepts)}
+    ${sect("Objet / sujet principal", i.objet)}${sect("Opinion de l’auteur", i.opinion)}${sect("Controverse", i.controverse)}${sect("Libre", i.libre)}
+    <footer class="crpied">Édité le ${esc(fmtD(new Date().toISOString()))}</footer>
+  </article>`;
+}
+function crPageCourante() {
+  if (CR.type === "fiche") { const i = ficheDeApercu(); return i ? fichePage(i) : ""; }
+  const r = crReunion(); return r ? crPage(r) : "";
+}

@@ -826,3 +826,6 @@ table.inner{min-width:900px}
 .kwhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .kwhead .kwt{margin:0}
 .kwhead .kwsw{margin-left:0}
+.crpage .crhead{background:none;color:#111;box-shadow:none;border:0;border-radius:0;padding:0;margin:0;display:block}
+.crpage .crsup{color:#555}
+.crpage .crtxt{color:#111}

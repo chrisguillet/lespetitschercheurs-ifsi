@@ -249,7 +249,7 @@ const onAction = e => {
     return;
   }
   const d = b.dataset;
-  if (d.fpdf) return exportFichePdf(d.fpdf);
+  if (d.fpdf) return ouvrirCompteRendu(d.fpdf, "fiche");
   if (d.nl) return ouvrirNotes({ liens: d.nl.split(",") });
   // Menu « ⋯ » d'un document : on l'ouvre / le ferme ; choisir une option le referme.
   if (d.opt !== undefined) {
