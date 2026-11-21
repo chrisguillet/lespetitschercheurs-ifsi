@@ -1143,7 +1143,9 @@ $mid = (string) (appel('a2@ci.test', 'chat_list', $salon('groupe'))['messages'][
 verifie('chat : on ne retire que ses messages', $err(appel('a2@ci.test', 'chat_delete', $salon('groupe') + ['id' => $mid])) === 'forbidden');
 verifie('chat : message retiré par son auteur', (appel('a1@ci.test', 'chat_delete', $salon('groupe') + ['id' => $mid])['ok'] ?? false) === true);
 $mid2 = (string) (appel('a2@ci.test', 'chat_list', $salon('groupe'))['messages'][0]['id'] ?? '');
-verifie('chat : message retiré par l\'admin de la promo', (appel('ap@ci.test', 'chat_delete', $salon('groupe') + ['id' => $mid2])['ok'] ?? false) === true);
+verifie('chat : un administrateur ne modère pas un salon de groupe', $err(appel('ap@ci.test', 'chat_delete', $salon('groupe') + ['id' => $mid2])) === 'forbidden' && $err(appel($admin, 'chat_delete', $salon('groupe') + ['id' => $mid2])) === 'forbidden');
+$pm = (string) (appel('a6@ci.test', 'chat_list', $salon('promo'))['messages'][0]['id'] ?? '');
+verifie('chat : message du salon de promo retiré par l\'admin de la promo', (appel('ap@ci.test', 'chat_delete', $salon('promo') + ['id' => $pm])['ok'] ?? false) === true);
 verifie('chat : message inconnu', $err(appel('a1@ci.test', 'chat_delete', $salon('groupe') + ['id' => '99999999'])) === 'not_found');
 $chat->prepare('INSERT INTO chat_messages (canal, auteur_id, auteur_nom, cree_le, texte) VALUES (?, ?, ?, ?, ?)')->execute(['g:ancien', $B['a7'], 'Gus T.', gmdate('Y-m-d H:i:s', time() - 8 * 86400), 'très vieux']);
 appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'Nettoyage']);
