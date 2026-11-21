@@ -94,6 +94,18 @@ jobs:
           LPC_CONFIG: ${{ runner.temp }}/prive/config.php
         run: php serveur/tests/integration.php
 
+      # Les tests d'import exigent aussi des bases vides : on les recrée, puis on rejoue le schéma.
+      - name: Remettre les bases à zéro
+        run: |
+          php serveur/tests/preparer-ci.php "$RUNNER_TEMP/prive/config.php"
+          php serveur/bin/migrer.php principale "$RUNNER_TEMP/prive/config.php"
+          php serveur/bin/migrer.php chat "$RUNNER_TEMP/prive/config.php"
+
+      - name: Tests de l'import différentiel (données fictives)
+        env:
+          LPC_CONFIG: ${{ runner.temp }}/prive/config.php
+        run: php serveur/tests/import.php
+
   deploiement:
     name: Déploiement sur IONOS (api/)
     needs: [php, base]

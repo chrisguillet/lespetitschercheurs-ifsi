@@ -75,8 +75,27 @@ Une action listée mais pas encore migrée répond `{ok:false, error:"not_implem
 ## Avancement de l'étape 2
 
 - Lot A (consentement, profil, structure) et lot B1 (accès, invitations, administration des personnes, RGPD) : livrés.
-- Lot B2 (membres, votes, rattachements des formateurs), lot C (lectures, fiches), lot D (pièces jointes, suivi, glossaire, notes,
-  retours, chat) : à venir. Une action pas encore migrée répond `not_implemented`.
+- Lots B2, C et D (membres, votes, lectures, fiches, pièces jointes, suivi, glossaire, notes, retours, chat, traduction) : livrés.
+
+## Import de l'ancien Google Sheet (transition)
+
+Le serveur lit directement le Sheet et le dossier Drive avec un compte de service en lecture seule (`GoogleApi.php`), puis
+`Importation.php` rapproche chaque onglet des tables. Les données vont de Google au serveur : elles ne passent ni par le dépôt
+ni par GitHub, et le rapport ne contient que des nombres.
+
+- **Rejouable** : chaque ligne importée laisse une trace (`import_traces` : empreinte de la ligne du Sheet et de la ligne écrite).
+  Ligne inchangée : ignorée. Nouvelle : créée. Modifiée dans le Sheet : mise à jour, sauf si la base a été retouchée depuis
+  l'import (conflit : signalé, laissé tel quel).
+- **Identifiants conservés** (UUID du Sheet) ; personnes reconnues par leur adresse ; un compte déjà créé dans le nouvel outil prévaut.
+- **Suppressions** : une ligne disparue du Sheet est seulement signalée ; avec l'option « supprimer » elle est supprimée si la base
+  n'a pas bougé, jamais pour les personnes, établissements et promos, jamais si l'onglet est entièrement vide.
+- **Rôles** : étudiant de chaque promo où la personne est inscrite ou en groupe, formateur de l'établissement de ces promos (ajouts seulement).
+- **À blanc** : tout est calculé dans une transaction annulée à la fin (rien n'est écrit, aucun fichier téléchargé).
+
+Mise en route : activer les API Google Sheets et Drive, créer le compte de service, partager le Sheet et le dossier avec son adresse
+(lecteur), puis ajouter la section `import` de `config.exemple.php` à `config.php` (clé JSON collée dans le fichier, jamais dans une
+conversation). Lancement : onglet Actions de GitHub > « Import de l'ancien Sheet » > Run workflow (« à blanc » par défaut). Pour un import
+horaire automatique, créer la variable de dépôt `IMPORT_AUTO` = `true`. Tests : `tests/import.php` (données fictives, bases vides).
 
 ## Décisions de conception
 

@@ -41,6 +41,16 @@ return [
     // Dossier privé (cache, pièces jointes, sauvegardes). Facultatif : par défaut, le dossier de ce fichier.
     // 'dossier_prive' => '/chemin/absolu',
 
+    // Import de l'ancien Google Sheet (facultatif, pendant la transition). sheet_id : l'identifiant dans l'adresse du Sheet.
+    // cle_json : le contenu complet du fichier JSON du compte de service, entre les deux marqueurs ci-dessous (nowdoc : rien à échapper).
+    // Le Sheet et le dossier Drive des pièces jointes doivent être partagés en « lecteur » avec l'adresse client_email de cette clé.
+    // 'import' => [
+    //     'sheet_id' => 'IDENTIFIANT_DU_SHEET',
+    //     'cle_json' => <<<'JSON'
+    // COLLER ICI LE CONTENU DU FICHIER JSON
+    // JSON,
+    // ],
+
     // Clé du script de diagnostic (diagnostic/diag.php) : une longue chaîne au hasard. Supprimer le script après usage.
     'diagnostic_cle' => 'À REMPLIR AVEC UNE LONGUE CHAINE AU HASARD',
 ];
