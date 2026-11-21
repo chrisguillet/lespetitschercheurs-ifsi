@@ -170,7 +170,13 @@ function badgesArticle(g) {
   const nl = g.reduce((n, x) => n + nbNonLus(x.id), 0);
   const nf = fichiersDe(cleArt(g[0])).length;
   const nn = typeof notesLiees === "function" ? notesLiees(g.map(x => x.id)).length : 0;
-  return `<span class="badge" title="Fiches de lecture de ce document">📚 ${libFiches(g.length)}</span>${nn ? `<button type="button" class="badge notebadge" data-nl="${esc(g.map(x => x.id).join(","))}" title="Mes notes personnelles liées à ce document">📝 ${nn}</button>` : ""}${nf ? `<span class="badge" title="Fichiers joints">📎 ${nf}</span>` : ""}${nc ? `<span class="cn" title="${nc} commentaire${nc > 1 ? "s" : ""}">💬 ${nc}</span>` : ""}${nl ? `<span class="new">${nl} non lu${nl > 1 ? "s" : ""}</span>` : ""}`;
+  // Chaque pastille a son emplacement (vide si elle n'existe pas) : en vue liste, les colonnes restent alignées d'une ligne à l'autre.
+  const slot = (cl, html) => `<span class="slot ${cl}">${html}</span>`;
+  return slot("sl-fi", `<span class="badge grp" title="${libFiches(g.length)}">📚 ${g.length}</span>`)
+    + slot("sl-no", nn ? `<button type="button" class="badge grp notebadge" data-nl="${esc(g.map(x => x.id).join(","))}" title="Mes notes personnelles liées à ce document">📝 ${nn}</button>` : "")
+    + slot("sl-fj", nf ? `<span class="badge grp" title="Fichiers joints">📎 ${nf}</span>` : "")
+    + slot("sl-cm", nc ? `<span class="cn" title="${nc} commentaire${nc > 1 ? "s" : ""}">💬 ${nc}</span>` : "")
+    + slot("sl-nl", nl ? `<span class="new">${nl} non lu${nl > 1 ? "s" : ""}</span>` : "");
 }
 
 const CHAMP_LIB = { titre: "titre", parution: "parution", auteur: "auteur", qualite: "qualité", nation: "nationalité", type: "type",

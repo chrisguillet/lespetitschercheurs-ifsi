@@ -20,7 +20,7 @@ function artRow(g) {
 // Ligne dépliée : tableau des fiches de lecture du document (mots-clés, concepts, objet, opinion, controverse, libre).
 function fichesRow(g) {
   const k = cleArt(g[0]);
-  return `<tr class="fiches-row ${artOuvert(k) ? "show" : ""}" data-fa="${esc(k)}"><td colspan="5"><div class="fichesbox"><table class="inner"><thead><tr><th>Fiche de lecture</th><th>Mots-clés</th><th>Keywords (EN)</th><th>Concepts</th><th>Objet / sujet</th><th>Opinion</th><th>Controverse</th><th>Libre</th></tr></thead>
+  return `<tr class="fiches-row ${artOuvert(k) ? "show" : ""}" data-fa="${esc(k)}"><td colspan="5"><div class="fichesbox"><table class="inner"><thead><tr><th>Fiche de lecture</th><th>Concepts</th><th>Objet / sujet</th><th>Opinion</th><th>Controverse</th><th>Libre</th></tr></thead>
    <tbody>${g.map(cells).join("")}</tbody></table></div></td></tr>`;
 }
 
@@ -30,8 +30,7 @@ function cells(i) {
   const prog = stInfo(i.statut).cl;
   return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="fi ${prog} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
    <div class="meta">${i.modifie_par ? `Modifiée par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))} · ` : ""}saisie le ${esc(fmtD(i.ajoute))}</div>
-   <div class="rowacts">${actionsHtml(i)}</div></td>
-   <td class="nowrapc"><div class="chipsc">${chips(i.mots)}</div></td><td class="nowrapc"><div class="chipsc">${chips(i.kw)}</div></td>
+   <div class="rowacts">${actionsHtml(i)}</div>${motsCle(i)}</td>
    <td>${clampTxt(i.id, i.concepts)}</td><td>${clampTxt(i.id, i.objet)}</td><td>${clampTxt(i.id, i.opinion)}</td>
    <td>${clampTxt(i.id, i.controverse)}</td><td>${clampTxt(i.id, i.libre)}</td></tr>`;
 }
@@ -118,4 +117,11 @@ function commentsBox(i, scope) {
     ? `<div><textarea data-cm="${esc(cle)}" maxlength="2000" placeholder="${scope === "promo" ? "Écrire à toute la promo…" : "Écrire au groupe…"}" aria-label="Nouveau commentaire">${esc(drafts[cle] || "")}</textarea>
        <button class="btn sm" data-ca="${esc(cle)}" style="margin-top:6px">Publier</button></div>` : "";
   return list + form;
+}
+
+// Mots-clés et keywords : sous les boutons de la première colonne, pour laisser la largeur aux colonnes de texte.
+function motsCle(i) {
+  const bloc = (t, v) => motsListe(v).length ? `<div class="kwbloc"><span class="kwt">${t}</span><div class="chipsc">${chips(v)}</div></div>` : "";
+  const html = bloc("Mots-clés", i.mots) + bloc("Keywords (EN)", i.kw);
+  return html ? `<div class="kwzone">${html}</div>` : "";
 }

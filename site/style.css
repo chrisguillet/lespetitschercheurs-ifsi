@@ -806,3 +806,16 @@ tr.pers:focus-visible{outline:2px solid var(--pri);outline-offset:-2px}
 /* Logo Qocot (tête de la poule) dans l'en-tête : recadrage par CSS sur l'image complète */
 header .logo{display:inline-block;width:40px;height:40px;background:#fff url(qocot.webp) 50% 0 / 200% auto no-repeat;border-radius:10px}
 @media (max-width:640px){header .logo{width:32px;height:32px}}
+
+/* Pastilles de document : texte lisible (fond clair, pas de texte blanc sur fond transparent) et emplacements fixes en vue liste */
+.badge.grp.notebadge{color:var(--tx)}
+.artbadges .slot:empty{display:none}
+#cards.compact .artbadges .slot,tr.art .artbadges .slot{display:inline-block;text-align:left}
+#cards.compact .artbadges .sl-fi{min-width:60px}#cards.compact .artbadges .sl-no,#cards.compact .artbadges .sl-fj,#cards.compact .artbadges .sl-cm{min-width:50px}
+#cards.compact .artbadges .sl-nl{min-width:78px}
+#cards.compact .artbadges .slot:empty{display:inline-block}
+@media (max-width:640px){#cards.compact .artbadges .sl-nl{min-width:0}#cards.compact .artbadges .slot:empty{display:none}}
+.kwzone{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.kwt{display:block;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
+table.inner td.first{min-width:270px;max-width:320px}
+table.inner{min-width:900px}
