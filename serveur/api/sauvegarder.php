@@ -11,7 +11,12 @@ require __DIR__ . '/src/autoload.php';
 
 try {
     $config = \Lpc\Config::charger();
-    echo json_encode(['ok' => true] + \Lpc\Sauvegarde::fichiers($config->dossierPrive(), time()), JSON_UNESCAPED_UNICODE) . "\n";
+    $rapport = \Lpc\Sauvegarde::fichiers($config->dossierPrive(), time());
+    echo json_encode(['ok' => true] + $rapport, JSON_UNESCAPED_UNICODE) . "\n";
+    // Trace dans le journal d'administration : preuve que la tâche planifiée tourne (consultable dans la base).
+    (new \Lpc\Db($config))->principale()
+        ->prepare('INSERT INTO journal_admin (acteur_id, action, cible, detail, cree_le) VALUES (NULL, ?, ?, ?, ?)')
+        ->execute(['sauvegarde_fichiers', $rapport['instantane'], 'ajoutes=' . $rapport['ajoutes'] . ' copies=' . $rapport['copies'] . ' supprimes=' . count($rapport['supprimes']), \Lpc\Temps::maintenant()]);
 } catch (\Throwable $e) {
     fwrite(STDERR, 'Sauvegarde : ' . $e->getMessage() . "\n");
     exit(1);
