@@ -57,7 +57,7 @@ function changerContexte(c) {
   fermerDiscussion(true); fermerGroupe(true);
   closeDrawer(true);
   openRows.clear();
-  Object.assign(F, filtresVierges(), { grp: F.grp });
+  Object.assign(F, { q: "", who: "", st: "", type: "", kw: "", kwLabel: "" });
   B.who = "";
   deriver();
   studentsSig = JSON.stringify(students());
@@ -71,7 +71,6 @@ function changerContexte(c) {
 /* ----- Fenêtre « Membres et votes » ----- */
 
 const GM = { ouvert: false, cand: null, fcand: null };
-let lienInvitation = null;   // dernier lien d’invitation créé (visible une seule fois) : { pid, lien }
 
 function ouvrirGroupe() {
   if (!groupeCourant()) return;
@@ -210,18 +209,14 @@ function blocGroupes() {
       <div class="grow"><select data-gadd aria-label="Ajouter au groupe"><option value="">— ajouter une personne —</option>${dispo.map(a => `<option value="${esc(a.email)}">${esc(a.prenom || a.email)} (${esc(a.role)}) — ${esc(a.email)}</option>`).join("")}</select><button type="button" class="btn sm" data-g="add">Ajouter</button></div>
     </div>`;
   };
-  // Invitation de promo : le serveur ne garde que l'empreinte du lien (jamais le lien lui-même). Le lien n'est donc visible qu'à sa création.
   const blocCode = p => {
-    const actif = !!p.code_actif;
-    const frais = lienInvitation && lienInvitation.pid === p.id ? lienInvitation : null;
-    return `<div class="admcode" data-pid="${esc(p.id)}">
-      ${frais ? `<div class="note" role="status">✅ Lien créé : copiez-le maintenant, il ne sera plus affiché ensuite.
-        <div class="grow"><input readonly value="${esc(frais.lien)}" aria-label="Lien d’invitation" onfocus="this.select()" style="min-width:260px;flex:1"><button type="button" class="btn sm" data-s="code_copy" data-code="${esc(frais.lien)}">Copier le lien</button></div></div>` : ""}
-      <div class="grow">${actif ? `<span>🔑 Invitation active <span class="meta">· expire le ${esc(new Date(p.code_expire).toLocaleDateString("fr-FR"))} · ${p.code_usages}/${p.code_max} utilisation${p.code_max > 1 ? "s" : ""}</span></span>
-        <button type="button" class="btn sm sec del" data-s="promo_code_revoke">Révoquer</button>` : '<span class="meta">Aucune invitation active.</span>'}
+    const fmt = c => c.replace(/(.{4})(.{4})/, "$1 $2");
+    const actif = p.code && p.code_actif;
+    return `<div class="grow admcode" data-pid="${esc(p.id)}">${p.code ? `<span>🔑 Code : <b class="code">${esc(fmt(p.code))}</b> <span class="meta">${actif ? "expire le " + esc(new Date(p.code_expire).toLocaleDateString("fr-FR")) : "expiré"} · ${p.code_usages}/${p.code_max} utilisation${p.code_max > 1 ? "s" : ""}</span></span>
+        <button type="button" class="btn sm sec" data-s="code_copy" data-code="${esc(p.code)}">Copier</button><button type="button" class="btn sm sec del" data-s="promo_code_revoke">Révoquer</button>` : '<span class="meta">Aucun code d’invitation.</span>'}
       <label class="meta" style="margin:0">validité (jours)</label><input data-sf="jours" type="number" min="1" max="365" value="30" style="width:70px" aria-label="Validité en jours">
       <label class="meta" style="margin:0">utilisations max.</label><input data-sf="max" type="number" min="1" max="1000" value="150" style="width:80px" aria-label="Nombre d’utilisations maximal">
-      <button type="button" class="btn sm" data-s="promo_code">${actif ? "Créer un nouveau lien" : "🔑 Créer un lien d’invitation"}</button></div></div>`;
+      <button type="button" class="btn sm" data-s="promo_code">${p.code ? "Générer un nouveau code" : "🔑 Générer un code"}</button></div>`;
   };
   const promoBloc = (e, p) => {
     const gs = groupesAdmin.filter(g => g.etablissement === e.nom && g.promo === p.nom);
@@ -243,7 +238,7 @@ function blocGroupes() {
     </details>`;
   return `<h3>🏫 Établissements, promos et groupes</h3>
     ${stockage ? `<div class="meta">📎 Fichiers déposés : ${stockage.nb} (${esc(fmtTaille(stockage.octets))}) dans le Drive du propriétaire du script.</div>` : ""}
-    <div class="note">Établissement → promo → groupe. Un étudiant n’est que dans un groupe par promo ; un formateur peut être rattaché à plusieurs groupes (il ne voit que ceux-là, et les fiches de lecture terminées de leur promo). Renommer un établissement ou une promo met à jour tous ses groupes. On ne supprime un établissement qu’une fois ses promos supprimées, une promo qu’une fois ses groupes supprimés. Supprimer un groupe conserve ses fiches dans la base de données mais ne les affiche plus.</div>
+    <div class="note">Établissement → promo → groupe. Un étudiant n’est que dans un groupe par promo ; un formateur peut être rattaché à plusieurs groupes (il ne voit que ceux-là, et les fiches de lecture terminées de leur promo). Renommer un établissement ou une promo met à jour tous ses groupes. On ne supprime un établissement qu’une fois ses promos supprimées, une promo qu’une fois ses groupes supprimés. Supprimer un groupe conserve ses fiches dans le Google Sheet mais ne les affiche plus.</div>
     <div class="grow" style="margin:8px 0"><input id="ne_nom" maxlength="60" placeholder="Nouvel établissement (ex. IFSI Saint-Nazaire)"><button type="button" class="btn sm" data-s="etab_create">＋ Ajouter l’établissement</button></div>
     ${structureAdmin.map(etabBloc).join("") || '<div class="meta">Aucun établissement pour l’instant.</div>'}`;
 }
@@ -261,7 +256,7 @@ async function actionStructureAdmin(b) {
     if (!e || !confirm(`Supprimer l’établissement « ${e.nom} » ?`)) return;
     appel = () => api("etab_delete", { id: e.id });
   } else if (a === "promo_create") appel = () => api("promo_create", { data: { etablissement_id: zone.dataset.eid, nom: val('[data-sf="newpromo"]') } });
-  else if (a === "code_copy") { try { await navigator.clipboard.writeText(b.dataset.code); b.textContent = "Copié ✓"; } catch (e) { prompt("Lien d’invitation :", b.dataset.code); } return; }
+  else if (a === "code_copy") { try { await navigator.clipboard.writeText(b.dataset.code); b.textContent = "Copié ✓"; } catch (e) { prompt("Code d’invitation :", b.dataset.code); } return; }
   else if (a === "promo_code") appel = () => api("promo_code", { data: { id: zone.dataset.pid, jours: Number(val('[data-sf="jours"]')), max: Number(val('[data-sf="max"]')) } });
   else if (a === "promo_code_revoke") {
     if (!confirm("Révoquer le code ? Il ne pourra plus être utilisé (les personnes déjà inscrites le restent).")) return;
@@ -282,8 +277,6 @@ async function lancerAdmin(b, appel) {
   b.disabled = true;
   try {
     const res = await enCours("Enregistrement…", appel);
-    if (res.lien && res.invitation) lienInvitation = { pid: res.invitation.promo_id, lien: res.lien };
-    else if (res.ok && b.dataset.s === "promo_code_revoke") lienInvitation = null;
     if (res.acces) acces = res.acces;
     if (res.groupesAdmin) groupesAdmin = res.groupesAdmin;
     if (res.structure) structureAdmin = res.structure;
@@ -306,7 +299,7 @@ async function actionGroupeAdmin(b) {
     appel = () => api("group_update", { data });
   } else if (a === "del") {
     const g = groupesAdmin.find(x => x.id === gid);
-    if (!g || !confirm(`Supprimer le groupe « ${g.nom} » ?\n\nSes membres sont détachés. Ses fiches et commentaires restent dans la base de données mais ne sont plus affichés.`)) return;
+    if (!g || !confirm(`Supprimer le groupe « ${g.nom} » ?\n\nSes membres sont détachés. Ses fiches et commentaires restent dans le Google Sheet mais ne sont plus affichés.`)) return;
     appel = () => api("group_delete", { id: gid });
   } else if (a === "add") {
     const email = val("[data-gadd]");

@@ -176,8 +176,11 @@ final class Lectures
      */
     public static function filtreVisible(Contexte $c, string $a = 'a', string $g = 'g'): array
     {
+        // Une fiche « À lire » (file d'attente personnelle) n'est visible que de l'étudiant concerné, même en vue de groupe et même pour un administrateur.
+        $prive = "($a.statut <> 'À lire' OR $a.utilisateur_id = ?)";
+        $moi = (int) $c->user->id;
         if ($c->droits()->estAdmin()) {
-            return ['1 = 1', []];
+            return [$prive, [$moi]];
         }
         $conds = [];
         $params = [];
@@ -191,7 +194,7 @@ final class Lectures
             $conds[] = "($a.portee = 'promo' AND $g.promo_id IN (" . self::marques(count($promos)) . '))';
             array_push($params, ...$promos);
         }
-        return $conds === [] ? ['1 = 0', []] : ['(' . implode(' OR ', $conds) . ')', $params];
+        return $conds === [] ? ['1 = 0', []] : ['(' . implode(' OR ', $conds) . ') AND ' . $prive, [...$params, $moi]];
     }
 
     /** @return array<string,mixed>|null l'article avec la promo de son groupe, texte « '' » pour les valeurs absentes */

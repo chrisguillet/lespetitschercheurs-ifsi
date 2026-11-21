@@ -50,49 +50,22 @@ function alerteJalon(j) {
 // Les alertes ne concernent que mes groupes (l'administrateur, qui voit tout, n'en reçoit pas pour les groupes des autres).
 const mesGroupesIds = () => new Set(groupes.filter(g => (g.membres || []).some(m => m.moi)).map(g => g.id));
 const alertesJalons = () => jalonsAll.filter(j => mesGroupesIds().has(j.groupe_id) && alerteJalon(j)).sort((a, b) => debutJalon(a).localeCompare(debutJalon(b)));
-
-/* ---------- Alertes : une petite cloche discrète, avec report possible (mémorisé dans ce navigateur) ---------- */
-const cleReports = () => "lpc_reports:" + (me ? me.prenom : "");
-function lireReports() { try { return JSON.parse(localStorage.getItem(cleReports()) || "{}") || {}; } catch (e) { return {}; } }
-function ecrireReports(o) { try { localStorage.setItem(cleReports(), JSON.stringify(o)); } catch (e) { /* ignoré */ } }
-// Reporte l'alerte d'une entrée jusqu'à une date (« 9999-12-31 » : ne plus rappeler).
-function reporterAlerte(id, jours) {
-  const o = lireReports(), d = aujourdhui();
-  if (jours === null) o[id] = "9999-12-31"; else { d.setDate(d.getDate() + jours); o[id] = isoJour(d); }
-  ecrireReports(o); majAlertes();
-}
-// Alertes à montrer : celles qui ne sont pas reportées (un report échu les ramène).
-function alertesVisibles() {
-  const o = lireReports(), auj = isoJour(aujourdhui());
-  return alertesJalons().filter(j => !(o[j.id] && o[j.id] > auj));
-}
-let alertePop = false;
+let alertesMasquees = false;   // le temps de la session
 function majAlertes() {
-  const nb = $("alertnb"), zone = $("alertbell");
-  if (nb) nb.classList.add("hidden");
-  if (!zone) return;
-  const l = me ? alertesVisibles() : [];
-  if (nb) { nb.textContent = l.length; nb.classList.toggle("hidden", !l.length); }
-  if (!l.length) { alertePop = false; zone.innerHTML = ""; return; }
+  const zone = $("alertes"), nb = $("alertnb");
+  if (!zone || !nb) return;   // page plus ancienne que le script (cache) : pas d'alertes
+  const l = alertesJalons(); nb.textContent = l.length; nb.classList.toggle("hidden", !l.length);
+  const montrer = l.length && !alertesMasquees && tab !== "suivi" && !!me;
+  zone.classList.toggle("hidden", !montrer);
+  if (!montrer) { zone.innerHTML = ""; return; }
   const nomG = j => groupes.length > 1 ? ` <span class="meta">(${esc((groupes.find(g => g.id === j.groupe_id) || {}).nom || "")})</span>` : "";
-  const ligne = j => `<div class="alrow ${alerteJalon(j) === "retard" ? "retard" : ""}"><div class="alt"><span class="alico">${esc(typeEntree(j).ico)}</span> <b>${esc(j.titre)}</b>${nomG(j)}<div class="meta">${esc(fmtDatesJalon(j))} · ${delaiJalon(j)}</div></div>
-      <details class="alsnooze"><summary class="btn sm sec" aria-label="Reporter cette alerte">Reporter ▾</summary><div class="colpop right">
-        <button type="button" data-alr="${esc(j.id)}" data-j="1">Demain</button><button type="button" data-alr="${esc(j.id)}" data-j="3">Dans 3 jours</button><button type="button" data-alr="${esc(j.id)}" data-j="7">Dans 1 semaine</button><button type="button" data-alr="${esc(j.id)}" data-j="x">Ne plus me le rappeler</button></div></details></div>`;
-  zone.innerHTML = `<button type="button" class="alertbtn" id="alertbtn" aria-expanded="${alertePop}" aria-label="${l.length} alerte${l.length > 1 ? "s" : ""} du rétroplanning" title="Alertes du rétroplanning">🔔<span class="alertpt">${l.length}</span></button>
-    ${alertePop ? `<div class="alertpop" role="dialog" aria-label="Alertes du rétroplanning"><div class="alhead"><b>Rétroplanning</b><button type="button" class="btn sm sec" data-alr-fermer="1" aria-label="Fermer">✕</button></div>${l.slice(0, 8).map(ligne).join("")}${l.length > 8 ? `<div class="meta">+ ${l.length - 8} autre(s)</div>` : ""}<div class="alfoot"><button type="button" class="btn sm" data-alr-voir="1">Voir le rétroplanning</button></div></div>` : ""}`;
-  // Téléphone : le panneau est fixe sous la cloche et prend la largeur de l’écran (voir style.css).
-  const pop = zone.querySelector(".alertpop");
-  if (pop && window.innerWidth <= 640) pop.style.top = Math.round(zone.getBoundingClientRect().bottom + 8) + "px";
+  zone.innerHTML = `<b>⏰ Rétroplanning</b> · ${l.slice(0, 3).map(j => `<span class="${alerteJalon(j) === "retard" ? "late" : ""}"><b>${esc(j.titre)}</b>${nomG(j)} ${esc(fmtDatesJalon(j))} ${delaiJalon(j)}</span>`).join(" · ")}${l.length > 3 ? ` · +${l.length - 3} autre${l.length > 4 ? "s" : ""}` : ""}
+    <button type="button" class="btn sm" data-alerte="voir">Voir le calendrier</button> <button type="button" class="btn sm sec" data-alerte="masquer">Masquer</button>`;
 }
-$("alertbell")?.addEventListener("click", e => {
+$("alertes")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
-  if (b.id === "alertbtn") { alertePop = !alertePop; majAlertes(); }
-  else if (b.dataset.alrFermer) { alertePop = false; majAlertes(); }
-  else if (b.dataset.alrVoir) { alertePop = false; majAlertes(); setTab("suivi"); }
-  else if (b.dataset.alr) reporterAlerte(b.dataset.alr, b.dataset.j === "x" ? null : +b.dataset.j);
+  if (b.dataset.alerte === "masquer") { alertesMasquees = true; majAlertes(); } else setTab("suivi");
 });
-// Fermeture au clic ailleurs. composedPath() : le bouton cliqué a déjà été remplacé par le nouveau rendu, closest() ne le retrouverait plus.
-document.addEventListener("click", e => { if (alertePop && !e.composedPath().includes($("alertbell"))) { alertePop = false; majAlertes(); } });
 
 // Calendrier mensuel : jalons (date fixe ou plage sur plusieurs jours) et réunions du groupe.
 let calMois = null;
@@ -134,12 +107,22 @@ function frise(l) {
 function renderSuivi() {
   const g = groupeCourant();
   if (!g) { $("retro").innerHTML = ""; $("reunions").innerHTML = ""; return; }
-  renderRetro();
-  $("addreunion").classList.toggle("hidden", !(canWrite() && groupes.some(x => x.id === g.id)));
+  const ecrit = canWrite() && groupes.some(x => x.id === g.id);
+  $("addjalon").classList.toggle("hidden", !ecrit);
+  $("addreunion").classList.toggle("hidden", !ecrit);
+  const jal = jalonsAll.filter(j => j.groupe_id === g.id).sort((a, b) => debutJalon(a).localeCompare(debutJalon(b)) || a.echeance.localeCompare(b.echeance));
+  const fait = jal.filter(j => j.statut === "fait").length;
+  $("retro").innerHTML = jal.length
+    ? `<div class="meta" style="margin:8px 0">Groupe <b>${esc(g.nom)}</b> · ${fait} jalon${fait > 1 ? "s" : ""} fait${fait > 1 ? "s" : ""} sur ${jal.length}</div>
+       <div class="barre" aria-hidden="true"><i style="width:${Math.round(100 * fait / jal.length)}%"></i></div>${calendrier(jal, reunionsAll.filter(x => x.groupe_id === g.id))}${frise(jal)}
+       <div class="jalons">${jal.map(j => `<div class="jalon ${esc(j.statut)} ${alerteJalon(j)}"><div><span class="badge ${j.statut === "fait" ? "" : "prog"}">${esc(STATUT_JALON[j.statut] || j.statut)}</span> <b>${esc(j.titre)}</b>
+         <span class="meta">· ${esc(fmtDatesJalon(j))} ${delaiJalon(j)}${j.alerte_jours !== "" && j.alerte_jours != null && j.statut !== "fait" ? ` · <span title="Alerte dans l’outil">🔔 ${+j.alerte_jours ? j.alerte_jours + " j avant" : "le jour même"}</span>` : ""}</span>${j.note ? `<div class="meta">${esc(j.note)}</div>` : ""}</div>
+         ${j.modifiable ? `<div><button type="button" class="btn sm sec" data-jed="${esc(j.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-jdel="${esc(j.id)}">Supprimer</button></div>` : ""}</div>`).join("")}</div>`
+    : `<div class="empty">Aucun jalon pour l’instant.${ecrit ? " Ajoutez les grandes étapes (plan, première version, dépôt…) avec leur échéance." : ""}</div>`;
   const reu = reunionsAll.filter(x => x.groupe_id === g.id).sort((a, b) => b.date.localeCompare(a.date));
   const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b><div style="white-space:pre-wrap">${esc(v)}</div></div>` : "";
   $("reunions").innerHTML = reu.length ? reu.map(x => `<article class="cardc reunion"><div class="tools" style="justify-content:space-between"><h3 style="margin:0">${esc(fmtD(x.date))}${x.titre ? " · " + esc(x.titre) : ""}</h3>
-    <div><button type="button" class="btn sm sec" data-rcr="${esc(x.id)}" title="Aperçu avant impression ou enregistrement en PDF">📄 Aperçu / PDF</button>${x.modifiable ? ` <button type="button" class="btn sm sec" data-red="${esc(x.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-rdel="${esc(x.id)}">Supprimer</button>` : ""}</div></div>
+    ${x.modifiable ? `<div><button type="button" class="btn sm sec" data-red="${esc(x.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-rdel="${esc(x.id)}">Supprimer</button></div>` : ""}</div>
     <div class="meta">${x.participants ? "Participants : " + esc(x.participants) + " · " : ""}saisi par ${esc(x.par)}${x.modifie_par ? ` · modifié par ${esc(x.modifie_par)}` : ""}</div>
     ${sect("Ce qui a été vu", x.vu)}${sect("Ce qui est attendu", x.attendu)}${sect("Étapes pour la suite", x.suite)}</article>`).join("")
     : `<div class="empty">Aucun compte rendu pour l’instant.</div>`;
@@ -206,6 +189,7 @@ async function supprimerSuivi(type, id) {
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Suppression impossible : " + e.message); }
 }
 
+$("addjalon").onclick = () => { fermerSuiviForm(); ouvrirSuiviForm("jalon"); };
 $("addreunion").onclick = () => { fermerSuiviForm(); ouvrirSuiviForm("reunion"); };
 $("suivi").addEventListener("click", e => {
   const b = e.target.closest("button");
@@ -216,5 +200,4 @@ $("suivi").addEventListener("click", e => {
   else if (d.red) { fermerSuiviForm(); ouvrirSuiviForm("reunion", d.red); }
   else if (d.jdel) supprimerSuivi("jalon", d.jdel);
   else if (d.rdel) supprimerSuivi("reunion", d.rdel);
-  else if (d.rcr) ouvrirCompteRendu(d.rcr);
 });

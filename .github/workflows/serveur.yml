@@ -5,13 +5,7 @@ on:
     paths:
       - 'serveur/**'
       - '.github/workflows/serveur.yml'
-      - 'index.html'
-      - 'privacy.html'
-      - 'registre.html'
-      - 'style.css'
-      - 'favicon.svg'
-      - '*.js'
-      - 'js/**'
+      - 'site/**'
   pull_request:
     paths:
       - 'serveur/**'
@@ -192,14 +186,13 @@ jobs:
           echo "$reponse"
           echo "$reponse" | grep -q '"ok":true' || { echo "::error::Migration échouée : $reponse"; exit 1; }
 
-      # Double exploitation : le front publié ici (racine du site) parle au nouveau serveur ; la copie de GitHub Pages
-      # continue de parler à l'ancien outil (Apps Script). Seul config.js diffère : son API_URL est réécrit à l'envoi.
+      # Double exploitation : le front du dossier site/ est publié ici (racine du site) et parle au nouveau serveur ; les fichiers à la racine du
+      # dépôt (GitHub Pages) sont l'ancien outil, figé, qui continue de parler à Apps Script. Dans site/, seul config.js est adapté à l'envoi.
       - name: Préparer le front
         if: steps.config.outputs.pret == 'true'
         run: |
           mkdir -p front
-          cp index.html privacy.html registre.html style.css favicon.svg apa.js games.js config.js front/
-          cp -r js front/js
+          cp -r site/. front/
           sed -i -E 's#API_URL: ".*"#API_URL: "https://lespetitschercheurs.qocot.eu/api/", CHAT_ACTIF: true#' front/config.js
           grep -q 'API_URL: "https://lespetitschercheurs.qocot.eu/api/"' front/config.js || { echo "::error::API_URL non réécrite"; exit 1; }
 

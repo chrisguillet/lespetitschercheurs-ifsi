@@ -870,7 +870,8 @@ $f6 = (string) ($r['id'] ?? '');
 $m6 = $trouve($lect('a6@ci.test'), $f6);
 verifie('fiche ajoutée à un article existant', ($r['ok'] ?? false) === true && $m6 !== null && $m6['priorite'] === 'haute' && $m6['groupe'] === 'Gamma' && $m6['titre'] === 'Soins palliatifs en gériatrie');
 verifie('une seule fiche par article et par personne', $err(appel('a6@ci.test', 'add', ['data' => ['article_id' => $art, 'statut' => 'À lire']])) === 'invalid');
-verifie('fiche « à lire » : reste dans le groupe de son autrice', $trouve($lect('a1@ci.test'), $f6) === null && $trouve($lect('a6@ci.test'), $f6) !== null);
+verifie('fiche « à lire » : visible de son autrice seulement', $trouve($lect('a1@ci.test'), $f6) === null && $trouve($lect('a6@ci.test'), $f6) !== null
+    && $trouve($lect($admin), $f6) === null && $trouve($lect('ap@ci.test'), $f6) === null);
 verifie('article inconnu : introuvable', $err(appel('a6@ci.test', 'add', ['data' => ['article_id' => Ids::uuid(), 'statut' => 'À lire']])) === 'not_found');
 verifie('étudiante de la promo sans groupe : refusée', $err(appel('a4@ci.test', 'add', ['data' => ['article_id' => $art, 'statut' => 'À lire']])) === 'forbidden');
 verifie('modification : fiche d\'une autre', $err(appel('a2@ci.test', 'update', ['id' => $f1, 'data' => $art1])) === 'not_owner');

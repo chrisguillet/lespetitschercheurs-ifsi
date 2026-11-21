@@ -123,3 +123,8 @@ horaire automatique, créer la variable de dépôt `IMPORT_AUTO` = `true`. Tests
 - Les codes d'invitation de promo de l'ancien Sheet ne sont pas repris (le nouveau mécanisme utilise des liens).
 - Pas de `CHECK` SQL sur rôle et périmètre (MySQL 8 les refuse avec des clés étrangères en `CASCADE`) : la cohérence est
   vérifiée par `Attributions.php`.
+
+## Deux fronts dans le dépôt
+
+- **À la racine du dépôt** (`index.html`, `js/`, `style.css`…) : l'ancien outil, figé dans son état du 20 novembre 2026. GitHub Pages le publie, il parle à Apps Script et au Google Sheet. On n'y touche plus pendant la double exploitation.
+- **Dans `site/`** : le front du nouvel outil. Le déploiement automatique l'envoie à la racine de lespetitschercheurs.qocot.eu, en réécrivant seulement `config.js` (adresse de l'API et chat activé). Toutes les évolutions du front se font ici.

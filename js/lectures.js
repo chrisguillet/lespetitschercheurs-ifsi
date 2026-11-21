@@ -46,9 +46,6 @@ function renderForm() {
   const statut = forceStatut || (editing ? d.statut : "") || "En cours";
   $("form").innerHTML = `
   <div id="draftnote" class="meta" style="display:none;margin-bottom:10px"></div>
-  ${!editing && !artCible && !modeArticle ? `<div class="doibox"><div class="doihead"><span class="doiico" aria-hidden="true">✨</span><div><b>Gagnez du temps : préremplissez avec le DOI</b><div class="meta">Collez le DOI (ou le lien doi.org) de l’article : le titre, les auteurs, l’année, la revue, le volume, le numéro et les pages sont remplis pour vous. À vérifier avant d’enregistrer.</div></div></div>
-    <div class="grow"><input id="f_doipre" type="text" maxlength="300" autocomplete="off" placeholder="ex. 10.1016/j.ijnurstu.2020.103601 ou https://doi.org/…" aria-label="DOI de l’article"><button type="button" class="btn" id="doibtn">Préremplir</button></div>
-    <div id="doimsg" class="meta" role="status" aria-live="polite">La qualité de l’auteur et la nationalité restent à compléter. Pas de DOI (rapport, thèse, article de presse) ? Saisissez la fiche à la main.</div></div>` : ""}
   <details class="sec" open><summary>Colonne 1 · Identification de l’article <span class="req" style="color:#d33">(obligatoire)</span></summary>
    <div style="margin-bottom:12px;${modeArticle ? "display:none" : ""}"><label for="f_statut">Statut</label><select id="f_statut">
      <option value="Terminée" ${statut === "Terminée" ? "selected" : ""}>✅ Terminée</option>
@@ -155,8 +152,7 @@ async function traduire() {
     $("tradres").innerHTML = r.items.map(i =>
       `<span class="fiab fiab-${esc(i.niveau)}" title="${esc(i.raison)}">${ICONE_FIAB[i.niveau] || ""} ${esc(i.fr)} → ${esc(i.en)} <span class="meta">(${LIBELLE_FIAB[i.niveau] || ""})</span></span>`).join("")
       + '<div class="legende">🟢 fiable · 🟠 à vérifier · 🔴 douteux. Indice automatique fondé sur le glossaire et sur la retraduction en français : ce n’est pas une garantie, relisez les termes importants (survolez une pastille pour le détail).</div>';
-    msg.textContent = r.avertissement ? "⚠️ " + r.avertissement : "";
-    msg.classList.toggle("err", !!r.avertissement);
+    msg.textContent = "";
     planifierBrouillon();
   } catch (e) {
     if (e.code === "unauthorized") sessionError(e);
@@ -378,32 +374,3 @@ function renderMine() {
   $("mylist").querySelectorAll("[data-prio]").forEach(x => x.onchange = () => majRapide(x.dataset.prio, { priorite: x.value }));
   $("mylist").querySelectorAll("[data-hist]").forEach(b => b.onclick = () => { const [k, id] = b.dataset.hist.split(":"); ouvrirHistorique(k, id); });
 }
-
-/* ---------- Préremplissage par DOI (Crossref, via le serveur) ---------- */
-const CHAMPS_DOI = { titre: "f_titre", parution: "f_parution", auteur: "f_auteur", source: "f_source", volume: "f_volume", numero: "f_numero", pages: "f_pages", doi: "f_doi", type: "f_type" };
-async function prerempliDoi() {
-  const saisie = $("f_doipre").value.trim(), msg = $("doimsg"), btn = $("doibtn");
-  if (!saisie) { msg.textContent = "Collez d’abord un DOI."; msg.classList.add("err"); return; }
-  btn.disabled = true; msg.classList.remove("err"); msg.textContent = "Recherche en cours…";
-  try {
-    const r = await api("doi_lookup", { doi: saisie });
-    const remplis = [], gardes = [];
-    Object.entries(r.champs || {}).forEach(([k, v]) => {
-      const el = $(CHAMPS_DOI[k]); if (!el || el.disabled) return;
-      if (String(el.value || "").trim() && el.value !== v) { gardes.push(k); return; }   // ce qui est déjà saisi n'est jamais écrasé
-      el.value = v; remplis.push(k);
-    });
-    $("form").dispatchEvent(new Event("input", { bubbles: true }));
-    if (typeof majApercu === "function") majApercu();
-    if (typeof majDoublon === "function") majDoublon();
-    msg.textContent = remplis.length
-      ? `✅ ${remplis.length} champ${remplis.length > 1 ? "s" : ""} prérempli${remplis.length > 1 ? "s" : ""} (source : Crossref). Vérifiez-les, puis complétez la qualité de l’auteur et la nationalité.${gardes.length ? ` ${gardes.length} champ${gardes.length > 1 ? "s" : ""} déjà saisi${gardes.length > 1 ? "s" : ""} conservé${gardes.length > 1 ? "s" : ""}.` : ""}`
-      : "Rien à remplir : les champs concernés sont déjà saisis.";
-    const suite = $("f_qualite"); if (suite && !suite.value) suite.focus();
-  } catch (e) {
-    if (e.code === "unauthorized") return sessionError(e);
-    msg.textContent = e.message || "Préremplissage impossible"; msg.classList.add("err");
-  } finally { btn.disabled = false; }
-}
-document.addEventListener("click", e => { if (e.target.closest("#doibtn")) prerempliDoi(); });
-document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target && e.target.id === "f_doipre") { e.preventDefault(); prerempliDoi(); } });

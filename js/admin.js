@@ -21,32 +21,31 @@ async function loadAdmin() {
     structureAdmin = r.structure || [];
     stockage = r.stockage || null;
     feedbacksAdmin = r.feedbacks || feedbacksAdmin;
-    await chargerDelegation();
     // Pas de reconstruction si rien n'a changé ou si une saisie est en cours (sinon elle serait perdue).
     const a = document.activeElement;
     const typing = a && a.closest && a.closest("#adminbox") && (a.tagName === "INPUT" || a.tagName === "SELECT");
     acces = next;
-    if (signatureAcces(next) + sigFeedbacks() + sigDelegation() !== renderedAcces && !typing) renderAdmin();
+    if (signatureAcces(next) + sigFeedbacks() !== renderedAcces && !typing) renderAdmin();
   } catch (e) { if (e.code === "unauthorized") sessionError(e); else showStatus("Administration indisponible : " + e.message); }
 }
 
 function accesRow(a) {
-  const sup = isSuper(), gere = gereStructure();   // gere : administrateur général, de site ou de promo (le serveur contrôle le périmètre)
+  const sup = isSuper();
   const k = esc(a.email);
   const dates = `<td>${esc(fmtDT(a.demande_le))}</td><td>${esc(fmtDT(a.derniere_connexion))}</td>`;
   // Un étudiant ne peut pas gérer les étudiants ; l'administrateur, si.
-  if (a.protege && !gere) return `<tr><td>${k}</td>${dates}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Géré par l’administrateur</td></tr>`;
+  if (a.protege && !sup) return `<tr><td>${k}</td>${dates}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Géré par l’administrateur</td></tr>`;
   const dem = a.statut === "en_attente" && a.demande ? a.demande : null;
   const veut = dem && dem.role ? dem.role : a.role;
-  if (dem && dem.role === "etudiant" && !gere) return `<tr><td>${k}</td>${dates}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Demande en tant qu’étudiant : validée par l’administrateur${dem.promo ? " (" + esc(dem.promo) + ")" : ""}</td></tr>`;
+  if (dem && dem.role === "etudiant" && !sup) return `<tr><td>${k}</td>${dates}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Demande en tant qu’étudiant : validée par l’administrateur${dem.promo ? " (" + esc(dem.promo) + ")" : ""}</td></tr>`;
   const opt = (v, lbl) => `<option value="${v}" ${veut === v ? "selected" : ""}>${lbl}</option>`;
-  const roles = (gere ? opt("etudiant", "Étudiant") : "") + opt("formateur", "Formateur");
+  const roles = (sup ? opt("etudiant", "Étudiant") : "") + opt("formateur", "Formateur");
   const acts = a.statut === "actif"
     ? `<button class="btn sm" data-as="actif">Enregistrer</button> <button class="btn sm sec del" data-as="refuse">Retirer l’accès</button>`
     : a.statut === "en_attente"
       ? `<button class="btn sm" data-as="actif">Valider</button> <button class="btn sm sec del" data-as="refuse">Refuser</button>`
       : `<button class="btn sm" data-as="actif">Réactiver</button>`;
-  const suppr = sup ? ` <button class="btn sm sec del" data-del="1" title="Retire l’accès ; ses fiches et commentaires restent dans la base de données">🗑 Supprimer l’accès</button> <button class="btn sm sec del" data-erase="1" title="Droit à l’effacement : supprime l’accès et les données de cette personne ; ses contributions sont anonymisées ou supprimées, au choix">🧹 Effacer ses données</button>` : "";
+  const suppr = sup ? ` <button class="btn sm sec del" data-del="1" title="Retire l’accès ; ses fiches et commentaires restent dans le Sheet">🗑 Supprimer l’accès</button> <button class="btn sm sec del" data-erase="1" title="Droit à l’effacement : supprime l’accès et toutes les données de cette personne">🧹 Effacer ses données</button>` : "";
   const adresse = sup ? `<td><input data-f="nouvel_email" type="email" value="${k}"></td>` : `<td>${k}</td>`;
   const couleur = sup ? `<td><input data-f="couleur" type="color" value="${esc(a.couleur)}" style="min-width:48px;padding:2px"></td>` : "";
   return `<tr data-k="${k}">${adresse}${dates}<td><input data-f="prenom" maxlength="60" value="${esc(a.prenom)}" placeholder="Prénom">${dem && (dem.promo || dem.role) ? `<div class="meta">Demande : ${esc(dem.role === "etudiant" ? "étudiant" : dem.role === "formateur" ? "formateur" : "")}${dem.promo ? " · " + esc(dem.promo) : ""}</div>` : ""}</td>${couleur}
@@ -67,7 +66,7 @@ function comptesInactifs(liste) {
   });
 }
 function renderAdmin() {
-  renderedAcces = signatureAcces(acces) + sigFeedbacks() + sigDelegation();
+  renderedAcces = signatureAcces(acces) + sigFeedbacks();
   const head = `<tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th>${isSuper() ? "<th>Couleur</th>" : ""}<th>Rôle</th><th>Actions</th></tr>`;
   const bloc = (titre, list, vide) => `<h3>${titre} (${list.length})</h3>` + (list.length
     ? `<div class="wrap"><table class="adm"><thead>${head}</thead><tbody>${list.map(accesRow).join("")}</tbody></table></div>`
@@ -77,8 +76,7 @@ function renderAdmin() {
     bloc(isSuper() ? "✅ Accès actifs" : "✅ Formateurs de vos groupes", acces.filter(a => a.statut === "actif"), "Aucun accès actif.") +
     (isSuper() && comptesInactifs(acces).length ? `<div class="meta rgpdnote">🕓 Conservation limitée : ces comptes ne se sont pas connectés depuis plus de ${INACTIF_MOIS} mois (ou n’ont aucune date connue). Selon la politique de confidentialité, leurs données doivent être effacées ou anonymisées : « 🧹 Effacer ses données ».</div>` + bloc("🕓 Comptes inactifs depuis plus de " + INACTIF_MOIS + " mois", comptesInactifs(acces), "") : "") +
     (isSuper() ? bloc("⛔ Accès refusés", acces.filter(a => a.statut === "refuse"), "Aucun accès refusé.") : "") +
-    (gereStructure() ? blocNoms() + blocInvitations() + blocRoles() + blocDoublons() + blocGroupes() : "") +
-    (isSuper() ? blocFeedbacks() : "");
+    (isSuper() ? blocGroupes() + blocFeedbacks() : "");
 }
 
 async function supprimerUtilisateur(b) {
@@ -86,7 +84,7 @@ async function supprimerUtilisateur(b) {
   const a = acces.find(x => x.email === email);
   if (!a) return;
   const n = a.nb_lectures || 0;
-  const garde = n ? `\n\nSes ${n} lecture${n > 1 ? "s" : ""} et ses commentaires sont conservés dans la base de données mais ne seront plus affichés (ses commentaires sur les lectures des autres apparaîtront sous « Utilisateur supprimé »).` : "";
+  const garde = n ? `\n\nSes ${n} lecture${n > 1 ? "s" : ""} et ses commentaires sont conservés dans le Google Sheet mais ne seront plus affichés (ses commentaires sur les lectures des autres apparaîtront sous « Utilisateur supprimé »).` : "";
   if (!confirm(`Supprimer ${a.prenom || email} (${email}) ? Cette personne n’aura plus accès à l’application.${garde}`)) return;
   b.disabled = true;
   try {
@@ -106,12 +104,10 @@ async function effacerUtilisateur(b) {
   const a = acces.find(x => x.email === email);
   if (!a) return;
   const n = a.nb_lectures || 0, c = a.nb_commentaires || 0;
-  if (!confirm(`EFFACER DÉFINITIVEMENT les données de ${a.prenom || email} (${email}) ?\n\nSont toujours supprimés : son accès, son adresse, ses notes, ses retours, ses messages, ses fichiers joints, ses appartenances et ses brouillons.\nLes réunions, jalons et termes du groupe restent, détachés de son adresse. Les sauvegardes des bases disparaissent d’elles-mêmes sous 7 jours.\n\nCette action est irréversible.`)) return;
-  // Contributions (fiches terminées, commentaires) : par défaut anonymisées, comme à la purge automatique ; tout supprimer si la personne retire son consentement.
-  const anonymiser = confirm(`Que faire de ses contributions (${n} fiche${n > 1 ? "s" : ""}, ${c} commentaire${c > 1 ? "s" : ""}) ?\n\nOK : les CONSERVER, anonymisées (plus rattachées à personne), pour la base de connaissances.\nAnnuler : TOUT SUPPRIMER aussi (retrait du consentement : fiches, commentaires, propositions de correction et votes).`);
+  if (!confirm(`EFFACER DÉFINITIVEMENT les données de ${a.prenom || email} (${email}) ?\n\nSont supprimés : son accès, ses ${n} fiche${n > 1 ? "s" : ""} de lecture (avec les commentaires d’autres personnes dessus), ses ${c} commentaire${c > 1 ? "s" : ""}, ses notes, ses retours, ses fichiers joints, ses appartenances et ses votes.\nLes réunions et jalons du groupe restent, détachés de son adresse. Les sauvegardes du Sheet disparaissent d’elles-mêmes sous 8 semaines.\n\nCette action est irréversible.`)) return;
   b.disabled = true;
   try {
-    const res = await enCours("Effacement…", () => api("admin_erase", { email, contributions: anonymiser ? "anonymiser" : "supprimer" }));
+    const res = await enCours("Effacement…", () => api("admin_erase", { email }));
     acces = res.acces;
     renderAdmin();
     applyResult(res);

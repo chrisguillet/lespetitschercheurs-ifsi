@@ -6,12 +6,12 @@
 const A = { structure: [], demande: null, msg: "", err: "" };
 
 // Texte de consentement : à garder aligné sur la politique de confidentialité (la version est portée par le serveur).
-const CONSENT_TEXTE = "L’outil est en version bêta : son fonctionnement va évoluer, avec pour but final de constituer une base de connaissances qui aide les étudiants à préparer leur mémoire. Mes contributions (fiches de lecture terminées, commentaires, termes du glossaire) sont conservées dans l’outil et pourront être mises à disposition des promotions suivantes, associées à mon prénom et à l’initiale de mon nom et à ma promo, sans mon adresse e-mail. Mes données sont hébergées chez IONOS ; les administrateurs de mon site et de ma promo voient mon adresse e-mail et mon nom pour gérer les accès. Je peux retirer mon accord et demander l’effacement de mes données à tout moment auprès des responsables du projet. Mon accord sera redemandé si l’usage de l’outil change de façon importante.";
+const CONSENT_TEXTE = "L’outil est en version bêta : son fonctionnement va évoluer, avec pour but final de constituer une base de connaissances qui aide les étudiants à préparer leur mémoire. Mes contributions (fiches de lecture terminées, commentaires, termes du glossaire) sont conservées dans l’outil et pourront être mises à disposition des promotions suivantes, associées à mon prénom, à l’initiale de mon nom et à ma promo, sans mon adresse e-mail. Je peux retirer mon accord et demander l’effacement de mes données à tout moment auprès de l’administrateur. Mon accord sera redemandé si l’usage de l’outil change de façon importante.";
 const CONSENT_CASE = "J’ai lu la politique de confidentialité et j’accepte que mes contributions soient conservées et partagées avec les promotions suivantes, comme décrit ci-dessus.";
 
 // Comptes déjà actifs avant le consentement explicite : fenêtre bloquante, accepter ou se déconnecter.
 function demanderConsentement(version) {
-  const m = $("consmodal"); if (!m) return;
+  const m = $("cmodal"); if (!m) return;
   $("ctexte").textContent = CONSENT_TEXTE; $("ccase").textContent = CONSENT_CASE;
   $("caccord").checked = false; $("cerr").textContent = "";
   m.classList.remove("hidden"); document.body.classList.add("modalopen");
@@ -25,24 +25,10 @@ function demanderConsentement(version) {
   $("cno").onclick = () => { m.classList.add("hidden"); document.body.classList.remove("modalopen"); logout(); };
 }
 
-/* ---------- Lien d'invitation : « ?invitation=JETON » dans l'adresse, gardé le temps de la connexion Google ---------- */
-const CLE_INVITATION = "lpc_invitation";
-(function () {
-  try {
-    const p = new URLSearchParams(location.search), j = p.get("invitation");
-    if (j) {
-      sessionStorage.setItem(CLE_INVITATION, j.trim());
-      p.delete("invitation");
-      history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : "") + location.hash);   // le jeton ne reste pas dans l'adresse affichée
-    }
-  } catch (e) { /* stockage indisponible : le code peut être collé à la main */ }
-})();
-function jetonInvitationMemorise() { try { return sessionStorage.getItem(CLE_INVITATION) || ""; } catch (e) { return ""; } }
-function oublierJetonInvitation() { try { sessionStorage.removeItem(CLE_INVITATION); } catch (e) { /* ignoré */ } }
-// Accepte le lien complet ou le seul code.
-function extraireJeton(v) {
-  const t = String(v || "").trim(), m = /[?&]invitation=([^&#\s]+)/.exec(t);
-  return m ? decodeURIComponent(m[1]) : t;
+// « Anne-Sophie D. » → { prenom: "Anne-Sophie", initiale: "D" }
+function separerIdentite(nom) {
+  const m = /^(.*\S)\s+((?:\p{L}\.?){1,3})$/u.exec(String(nom || "").trim());
+  return m && /\.$/.test(m[2]) ? { prenom: m[1], initiale: m[2].replace(/\./g, "") } : { prenom: String(nom || ""), initiale: "" };
 }
 
 async function afficherAccueil(msg) {
@@ -56,7 +42,7 @@ async function afficherAccueil(msg) {
 function renderAccueil() {
   const box = $("accueil");
   const d = A.demande || {};
-  const idn = { prenom: d.prenom || "", nom: d.nom || "" };
+  const idn = separerIdentite(d.prenom);
   const etabs = A.structure.filter(e => e.promos.length);
   const promoSel = d.promo_id ? A.structure.find(e => e.promos.some(p => p.id === d.promo_id)) : null;
   const etabId = promoSel ? promoSel.id : (etabs[0] ? etabs[0].id : "");
@@ -68,14 +54,14 @@ function renderAccueil() {
     ${envoyee}
     ${A.msg ? `<div class="note" role="status">${esc(A.msg)}</div>` : ""}
     ${A.err ? `<div class="note err" role="alert">${esc(A.err)}</div>` : ""}
-    <div class="gsec" style="border-top:0"><b>Votre identité</b>
-      <div class="grow"><input id="ac_prenom" maxlength="60" autocomplete="given-name" value="${esc(idn.prenom)}" placeholder="Prénom" aria-label="Prénom"><input id="ac_nom" maxlength="60" autocomplete="family-name" value="${esc(idn.nom)}" placeholder="Nom de famille" aria-label="Nom de famille"></div>
-      <div class="meta">Les autres membres verront votre prénom et l’initiale de votre nom (ex. « Camille D. ») : jamais votre nom complet. Vérifiez bien : prénom et nom ne pourront ensuite être changés que sur demande, validée par un administrateur.</div>
+    <div class="gsec" style="border-top:0"><b>Votre nom affiché</b>
+      <div class="grow"><input id="ac_prenom" maxlength="40" autocomplete="given-name" value="${esc(idn.prenom)}" placeholder="Prénom" aria-label="Prénom"><input id="ac_init" maxlength="4" autocomplete="off" value="${esc(idn.initiale)}" placeholder="Initiale du nom" aria-label="Initiale de votre nom de famille" style="max-width:150px"></div>
+      <div class="meta">Visible des membres de votre promo (ex. « Camille D. »). Vérifiez bien : il ne pourra plus être modifié ensuite, seul l’administrateur peut le corriger.</div>
       <label class="rgpdcheck"><input type="checkbox" id="ac_consent" ${A.consent ? "checked" : ""}> <span>${esc(CONSENT_CASE)}</span></label>
       <div class="meta">${esc(CONSENT_TEXTE)} <a href="privacy.html" target="_blank" rel="noopener">Politique de confidentialité</a></div></div>
-    <div class="gsec"><h3>🔑 J’ai un lien ou un code d’invitation</h3>
-      <div class="meta">Donné par votre formateur ou un administrateur : il vous inscrit tout de suite. Collez ici le lien reçu, ou son code (la partie après « invitation= »).</div>
-      <div class="grow"><input id="ac_code" maxlength="300" autocomplete="off" value="${esc(jetonInvitationMemorise())}" placeholder="Lien ou code d’invitation" aria-label="Lien ou code d’invitation"><button type="button" class="btn sm" id="ac_ok">Entrer</button></div></div>
+    <div class="gsec"><h3>🔑 J’ai un code d’invitation</h3>
+      <div class="meta">Donné par votre formateur : il vous inscrit tout de suite comme étudiant(e) de la promo.</div>
+      <div class="grow"><input id="ac_code" maxlength="20" autocomplete="off" autocapitalize="characters" placeholder="Code (ex. K7M2 9QXA)" aria-label="Code d’invitation"><button type="button" class="btn sm" id="ac_ok">Entrer</button></div></div>
     <div class="gsec"><h3>📨 Je demande l’accès</h3>
       ${etabs.length ? `<div class="grow"><label class="meta" for="ac_role" style="margin:0">Je suis</label><select id="ac_role"><option value="etudiant" ${d.role !== "formateur" ? "selected" : ""}>étudiant(e)</option><option value="formateur" ${d.role === "formateur" ? "selected" : ""}>formateur / formatrice</option></select></div>
         ${unique ? `<div class="meta">Promo : <b>${esc(unique.lib)}</b></div>` : `<div class="grow"><select id="ac_etab" aria-label="Établissement">${etabs.map(e => `<option value="${esc(e.id)}" ${e.id === etabId ? "selected" : ""}>${esc(e.nom)}</option>`).join("")}</select>
@@ -89,18 +75,18 @@ function renderAccueil() {
     const e = A.structure.find(x => x.id === et.value);
     $("ac_promo").innerHTML = (e ? e.promos : []).map(p => `<option value="${esc(p.id)}">${esc(p.nom)}</option>`).join("");
   };
-  // Prénom, nom et case de consentement obligatoires ; renvoie null (avec message) si l'un manque.
+  // Prénom, initiale et case de consentement obligatoires ; renvoie null (avec message) si l'un manque.
   const garde = () => {
-    const prenom = $("ac_prenom").value.trim(), nom = $("ac_nom").value.trim(), consentement = $("ac_consent").checked;
-    const manque = !prenom ? "Indiquez votre prénom." : !nom ? "Indiquez votre nom de famille." : !consentement ? "Cochez la case de consentement pour continuer." : "";
-    if (manque) { A.err = manque; A.msg = ""; A.demande = Object.assign({}, d, { prenom, nom }); A.consent = consentement; renderAccueil(); const f = $(!prenom ? "ac_prenom" : !nom ? "ac_nom" : "ac_consent"); if (f) f.focus(); return null; }
-    return { prenom, nom, consentement };
+    const prenom = $("ac_prenom").value.trim(), initiale = $("ac_init").value.trim(), consentement = $("ac_consent").checked;
+    const manque = !prenom ? "Indiquez votre prénom." : !initiale ? "Indiquez l’initiale de votre nom de famille." : !consentement ? "Cochez la case de consentement pour continuer." : "";
+    if (manque) { A.err = manque; A.msg = ""; A.demande = Object.assign({}, d, { prenom: prenom + (initiale ? " " + initiale.replace(/\./g, "") + "." : "") }); A.consent = consentement; renderAccueil(); const f = $(!prenom ? "ac_prenom" : !initiale ? "ac_init" : "ac_consent"); if (f) f.focus(); return null; }
+    return { prenom, initiale, consentement };
   };
   $("ac_ok").onclick = async () => {
     const id = garde(); if (!id) return;
-    const code = extraireJeton($("ac_code").value);
-    try { await enCours("Vérification de l’invitation…", () => api("join_code", { data: Object.assign({ code }, id) })); oublierJetonInvitation(); box.innerHTML = ""; box.classList.add("hidden"); boot(); }
-    catch (e) { if (e.code === "unauthorized") return sessionError(e); A.demande = Object.assign({}, d, { prenom: id.prenom, nom: id.nom }); A.consent = id.consentement; A.err = e.message; A.msg = ""; renderAccueil(); }
+    const code = $("ac_code").value;
+    try { await enCours("Vérification du code…", () => api("join_code", { data: Object.assign({ code }, id) })); box.innerHTML = ""; box.classList.add("hidden"); boot(); }
+    catch (e) { if (e.code === "unauthorized") return sessionError(e); A.demande = Object.assign({}, d, { prenom: id.prenom + " " + id.initiale.replace(/\./g, "") + "." }); A.consent = id.consentement; A.err = e.message; A.msg = ""; renderAccueil(); }
   };
   if ($("ac_dem")) $("ac_dem").onclick = async () => {
     const id = garde(); if (!id) return;
@@ -159,8 +145,8 @@ function renderRejoindre(box) {
       <div class="grow" style="margin-top:8px"><input data-jn="${esc(p.id)}" maxlength="60" placeholder="Nom de mon groupe" aria-label="Nom de mon groupe"><button type="button" class="btn sm" data-jc="${esc(p.id)}">Créer mon groupe</button></div>
       <div class="meta">Un groupe peut compter un seul membre : d’autres pourront demander à le rejoindre.</div></div>`;
   box.innerHTML = `<b>Vous n’avez pas encore de groupe.</b>
-    ${libres.length ? libres.map(bloc).join("") : '<div class="meta" style="margin:6px 0">Vous n’êtes inscrit(e) à aucune promo : entrez le lien ou le code d’invitation donné par votre formateur.</div>'}
-    <div class="grow" style="margin-top:8px"><input id="rj_code" maxlength="300" autocomplete="off" value="${esc(jetonInvitationMemorise())}" placeholder="Lien ou code d’invitation" aria-label="Lien ou code d’invitation"><button type="button" class="btn sm sec" id="rj_ok">Entrer</button></div>`;
+    ${libres.length ? libres.map(bloc).join("") : '<div class="meta" style="margin:6px 0">Vous n’êtes inscrit(e) à aucune promo : entrez le code d’invitation donné par votre formateur.</div>'}
+    <div class="grow" style="margin-top:8px"><input id="rj_code" maxlength="20" autocomplete="off" autocapitalize="characters" placeholder="Code d’invitation d’une promo" aria-label="Code d’invitation"><button type="button" class="btn sm sec" id="rj_ok">Entrer le code</button></div>`;
 }
 
 $("nogroup").onclick = async e => {
@@ -182,7 +168,7 @@ $("nogroup").onclick = async e => {
     return agir(() => api("group_create_self", { promo_id: d.jc, nom }), "Création impossible");
   }
   if (b.id === "rj_ok") {
-    const code = extraireJeton($("rj_code").value);
+    const code = $("rj_code").value;
     if (!code.trim()) return;
     try { await enCours("Vérification du code…", () => api("join_code", { data: { code } })); box.dataset.sig = ""; await refresh(true); }
     catch (err) { if (err.code === "unauthorized") sessionError(err); else alert("Code refusé : " + err.message); }
