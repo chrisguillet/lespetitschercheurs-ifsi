@@ -4,27 +4,36 @@
 // Bouton discret « ⋯ » et son menu d'options (ajouter ma fiche, À lire, corriger, historique) : même présentation dans le tableau et les cartes.
 const optionsDoc = i => `<span class="optwrap"><button type="button" class="btn sm sec optbtn" data-opt="1" aria-haspopup="true" aria-expanded="false" title="Options du document" aria-label="Options du document">⋯</button><div class="optmenu hidden">${actionsArticle(i)}</div></span>`;
 
-// Ligne du document : titre, références, qui l'a lu ; les fiches de lecture sont dessous.
+// Ligne du document : titre et références objectives, résumé des lecteurs. Les fiches de lecture (partie subjective) sont dans la ligne dépliée dessous.
 function artRow(g) {
   const i = g[0], k = cleArt(i), open = artOuvert(k);
-  return `<tr class="art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}"><td class="first"><div class="artbadges"><span class="chev" aria-hidden="true"></span>${badgesArticle(g)}${optionsDoc(i)}</div>
+  const qn = [i.qualite, i.nation].filter(Boolean).join(" · ");
+  return `<tr class="art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}"><td class="first c1"><div class="artbadges"><span class="chev" aria-hidden="true"></span>${badgesArticle(g)}${optionsDoc(i)}</div>
    <div class="arttitre"><b>${esc(i.titre)}</b>${lienHtml(i, true)}</div>
-   <div class="meta">${esc([i.auteur, anneeDe(i), i.type].filter(Boolean).join(" · ")) || "—"}</div>
    ${propHtml(i)}${fichiersHtml(i)}</td>
-   <td class="artres" colspan="7"><div class="meta" style="margin-bottom:4px"><span class="hint-c">Cliquez pour déplier les fiches de lecture</span><span class="hint-o">Fiches de lecture ci-dessous</span></div>${resumeFiches(g)}</td>
-   <td class="apa c9">${apaCell(i)}</td></tr>`;
+   <td class="c2">${esc(i.auteur) || "—"}${qn ? `<div class="meta">${esc(qn)}</div>` : ""}</td>
+   <td class="c3">${esc(anneeDe(i)) || "—"}<div class="meta">${esc(i.type) || ""}</div></td>
+   <td class="c4 artres"><div class="meta" style="margin-bottom:4px"><span class="hint-c">Cliquez pour voir les fiches de lecture</span><span class="hint-o">Fiches de lecture ci-dessous</span></div>${resumeFiches(g)}</td>
+   <td class="c5 apa">${apaCell(i)}</td></tr>`;
 }
 
-// Fiche de lecture : colonnes 2 à 8, visible quand son document est déplié.
+// Ligne dépliée : tableau des fiches de lecture du document (mots-clés, concepts, objet, opinion, controverse, libre).
+function fichesRow(g) {
+  const k = cleArt(g[0]);
+  return `<tr class="fiches-row ${artOuvert(k) ? "show" : ""}" data-fa="${esc(k)}"><td colspan="5"><div class="fichesbox"><table class="inner"><thead><tr><th>Fiche de lecture</th><th>Mots-clés</th><th>Keywords (EN)</th><th>Concepts</th><th>Objet / sujet</th><th>Opinion</th><th>Controverse</th><th>Libre</th></tr></thead>
+   <tbody>${g.map(cells).join("")}</tbody></table></div></td></tr>`;
+}
+
+// Fiche de lecture : une ligne du tableau interne.
 function cells(i) {
   const c = esc(i.couleur), k = cleArt(i);
   const prog = stInfo(i.statut).cl;
-  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="fiche ${artOuvert(k) ? "show" : ""} ${prog} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
-   <div class="meta">Fiche de lecture${i.modifie_par ? ` · modifiée par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}` : ""} · saisie le ${esc(fmtD(i.ajoute))}</div>
+  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="fi ${prog} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
+   <div class="meta">${i.modifie_par ? `Modifiée par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))} · ` : ""}saisie le ${esc(fmtD(i.ajoute))}</div>
    <div class="rowacts">${actionsHtml(i)}</div></td>
-   <td class="c2 nowrapc"><div class="chipsc">${chips(i.mots)}</div></td><td class="c3 nowrapc"><div class="chipsc">${chips(i.kw)}</div></td>
-   <td class="c4">${clampTxt(i.id, i.concepts)}</td><td class="c5">${clampTxt(i.id, i.objet)}</td><td class="c6">${clampTxt(i.id, i.opinion)}</td>
-   <td class="c7">${clampTxt(i.id, i.controverse)}</td><td class="c8">${clampTxt(i.id, i.libre)}</td><td class="c9"></td></tr>`;
+   <td class="nowrapc"><div class="chipsc">${chips(i.mots)}</div></td><td class="nowrapc"><div class="chipsc">${chips(i.kw)}</div></td>
+   <td>${clampTxt(i.id, i.concepts)}</td><td>${clampTxt(i.id, i.objet)}</td><td>${clampTxt(i.id, i.opinion)}</td>
+   <td>${clampTxt(i.id, i.controverse)}</td><td>${clampTxt(i.id, i.libre)}</td></tr>`;
 }
 
 // Couverture générée : couleur et pictogramme selon le type d'article (pas d'image externe).

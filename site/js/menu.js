@@ -37,11 +37,13 @@ function renderMe() {
     <div class="colpop right acctpop">
       <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
       <div class="acctgrp"><button type="button" class="acctitem" id="profilbtn">👤 Mon profil</button><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button><button type="button" class="acctitem" id="mydatabtn" title="Télécharger tout ce que l’application garde sur vous (droit d’accès)">📦 Télécharger mes données</button></div>
+      ${isSuper() && !VUE_AS ? '<div class="acctgrp"><button type="button" class="acctitem" id="asbtn" title="Consulter l’application comme une autre personne (lecture seule)">👁 Voir en tant que…</button></div>' : ""}
       ${window.LydiaJeux ? `<div class="acctgrp"><button type="button" class="acctitem" id="jeuxbtn">🎮 Pause ludique</button></div>` : ""}
       <div class="acctgrp"><button type="button" class="acctitem danger" id="logout">⎋ Se déconnecter</button></div>
     </div></details>`;
   if ($("jeuxbtn")) $("jeuxbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirChoixJeu(); };
   $("logout").onclick = logout;
+  if ($("asbtn")) $("asbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirChoixAs(); };
   $("mydatabtn").onclick = async () => {
     $("me").querySelector("details").removeAttribute("open");
     try {
@@ -113,8 +115,9 @@ function renderOnline() {
 
 function renderPending() {
   const el = $("pending");
-  el.textContent = pendingCount || "";
-  el.classList.toggle("hidden", !(canAdmin() && pendingCount));
+  const g = groupeCourant(), nb = (pendingCount || 0) + (g && canWrite() ? votesAFaire(g) : 0);   // demandes d'accès à valider + votes du groupe à donner
+  el.textContent = nb || "";
+  el.classList.toggle("hidden", !(canAdmin() && nb));
 }
 
 // Navigation à deux niveaux : cinq sections, chacune avec ses pages. Les pages gardent leur identifiant (data-t) ; la section d'une page se déduit de lui.

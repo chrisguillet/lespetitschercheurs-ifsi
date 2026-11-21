@@ -12,9 +12,9 @@ const EMOJIS = ["😀", "😃", "😄", "😁", "😅", "😂", "🤣", "🙂", 
 const chatActif = () => !!(CFG && CFG.CHAT_ACTIF);
 // Le chat n'est proposé qu'aux membres du groupe : un administrateur qui consulte un groupe sans en faire partie ne le voit pas.
 const chatGroupe = () => {
-  if (!me || !chatActif()) return null;
+  if (!me || !chatActif() || VUE_AS) return null;   // pas de chat en mode « voir en tant que »
   const g = groupeCourant();
-  return g && (g.membres || []).some(m => m.moi) ? g : null;
+  return g && g.chat !== false && (g.membres || []).some(m => m.moi) ? g : null;   // chat désactivé par l'administration : le bouton disparaît
 };
 const chatCleVu = t => { const g = chatGroupe(); return g ? "lydia_chat_vu:" + (t === "promo" ? "p:" + g.etablissement + "|" + g.promo : "g:" + g.id) : ""; };
 const chatVu = () => { const o = {}; ["groupe", "promo"].forEach(t => { try { o[t] = localStorage.getItem(chatCleVu(t)) || ""; } catch (e) { o[t] = ""; } }); return o; };
@@ -91,6 +91,10 @@ function chatRendu(bas) {
   if (!$("chat")) return;
   const nb = CH.nouveaux.groupe + CH.nouveaux.promo, b = $("chatbadge");
   b.textContent = nb > 9 ? "9+" : String(nb); b.classList.toggle("hidden", !nb || CH.ouvert);
+  // Le chat de la promo peut être désactivé séparément de celui du groupe.
+  const g0 = chatGroupe(), promoOk = !g0 || g0.chat_promo !== false, bp = $("chat").querySelector('[data-ct="promo"]');
+  if (bp) bp.classList.toggle("hidden", !promoOk);
+  if (!promoOk && CH.canal === "promo") { CH.canal = "groupe"; CH.msgs = []; chatCharger(); }
   $("chat").querySelectorAll("[data-ct]").forEach(t => {
     const on = t.dataset.ct === CH.canal; t.classList.toggle("on", on); t.setAttribute("aria-selected", String(on));
     t.querySelector(".chdot").classList.toggle("hidden", on || !CH.nouveaux[t.dataset.ct]);

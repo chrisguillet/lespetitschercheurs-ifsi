@@ -55,7 +55,7 @@ function renderForm() {
      <option value="En cours" ${statut === "En cours" ? "selected" : ""}>📖 En cours de lecture</option>
      <option value="À lire" ${statut === "À lire" ? "selected" : ""}>📌 À lire (file d’attente)</option></select></div>
    <div id="prioblk" style="margin-bottom:12px;${statut === "À lire" && !modeArticle ? "" : "display:none"}"><label for="f_priorite">Priorité</label><select id="f_priorite">${Object.keys(PRIO).map(k => `<option value="${k}" ${(editing ? d.priorite || "normale" : "normale") === k ? "selected" : ""}>${esc(PRIO[k])}</option>`).join("")}</select>
-    <div class="meta">Les autres étudiants du groupe voient que vous prévoyez de lire ce document : cela évite de le lire à deux sans le savoir.</div></div>
+    <div class="meta">Votre file d’attente est personnelle : vous seul(e) voyez les documents « À lire ».</div></div>
    <div class="grid">
     ${field("f_titre", "Titre de l’article", base.titre, { dis: objDesact("titre"), req: 1 })}
     ${field("f_parution", "Date de parution", fmtD(base.parution), { dis: objDesact("parution"), req: 1, ph: "2021, mars 2021 ou 04/03/2021" })}

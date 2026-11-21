@@ -51,11 +51,20 @@ final class Profil
         if (array_key_exists('prenom', $data) || array_key_exists('nom', $data)) {
             throw new Erreur('forbidden', 'Le prénom et le nom ne se modifient que sur demande, validée par un administrateur');
         }
-        if (!array_key_exists('pseudo', $data)) {
-            throw new Erreur('invalid', 'Pseudo manquant');
+        if (!array_key_exists('pseudo', $data) && !array_key_exists('couleur', $data)) {
+            throw new Erreur('invalid', 'Rien à modifier');
         }
-        $pseudo = Valide::pseudo($data['pseudo']);
-        $c->db->principale()->prepare('UPDATE utilisateurs SET pseudo = ? WHERE id = ?')->execute([$pseudo, $c->user->id]);
+        if (array_key_exists('pseudo', $data)) {
+            $pseudo = Valide::pseudo($data['pseudo']);
+            $c->db->principale()->prepare('UPDATE utilisateurs SET pseudo = ? WHERE id = ?')->execute([$pseudo, $c->user->id]);
+        }
+        if (array_key_exists('couleur', $data)) {
+            $couleur = is_string($data['couleur']) ? strtolower(trim($data['couleur'])) : '';
+            if (preg_match('/^#[0-9a-f]{6}$/', $couleur) !== 1) {
+                throw new Erreur('invalid', 'Couleur invalide (format #rrggbb)');
+            }
+            $c->db->principale()->prepare('UPDATE utilisateurs SET couleur = ? WHERE id = ?')->execute([$couleur, $c->user->id]);
+        }
 
         $u = Utilisateurs::parId($c->db->principale(), (int) $c->user->id);
         if ($u === null) {

@@ -72,12 +72,12 @@ function renderAdmin() {
   const bloc = (titre, list, vide) => `<h3>${titre} (${list.length})</h3>` + (list.length
     ? `<div class="wrap"><table class="adm"><thead>${head}</thead><tbody>${list.map(accesRow).join("")}</tbody></table></div>`
     : `<div class="meta">${vide}</div>`);
-  $("adminbox").innerHTML =
+  $("adminbox").innerHTML = blocMembresVotes() +
     bloc("⏳ Demandes en attente", acces.filter(a => a.statut === "en_attente"), "Aucune demande en attente.") +
     bloc(isSuper() ? "✅ Accès actifs" : "✅ Formateurs de vos groupes", acces.filter(a => a.statut === "actif"), "Aucun accès actif.") +
     (isSuper() && comptesInactifs(acces).length ? `<div class="meta rgpdnote">🕓 Conservation limitée : ces comptes ne se sont pas connectés depuis plus de ${INACTIF_MOIS} mois (ou n’ont aucune date connue). Selon la politique de confidentialité, leurs données doivent être effacées ou anonymisées : « 🧹 Effacer ses données ».</div>` + bloc("🕓 Comptes inactifs depuis plus de " + INACTIF_MOIS + " mois", comptesInactifs(acces), "") : "") +
     (isSuper() ? bloc("⛔ Accès refusés", acces.filter(a => a.statut === "refuse"), "Aucun accès refusé.") : "") +
-    (gereStructure() ? blocNoms() + blocInvitations() + blocRoles() + blocDoublons() + blocGroupes() : "") +
+    (gereStructure() ? blocNoms() + blocInvitations() + blocRoles() + blocChat() + blocDoublons() + blocGroupes() : "") +
     (isSuper() ? blocFeedbacks() : "");
 }
 

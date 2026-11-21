@@ -735,3 +735,50 @@ header .btn.on,header .btn.sec.on{color:var(--pri)}
 /* Notes : la fenêtre défile quand la note est plus haute que l'écran */
 #notebody{flex:1 1 auto;min-height:0;overflow-y:auto}
 .nwrap{overflow:visible}
+
+/* Fenêtres : le corps défile quand le contenu dépasse l'écran (rétroplanning, profil, aperçus…) */
+.modalbox > .cmbox{overflow-y:auto;min-height:0;flex:1 1 auto}
+#rpformbody,#rpdaybody,#profbody{overflow-y:auto;min-height:0;flex:1 1 auto}
+
+/* Tableau des lectures : références objectives, fiches de lecture dans un tableau interne */
+#tbl{min-width:900px}
+tr.fiches-row{display:none}
+tr.fiches-row.show{display:table-row}
+tr.fiches-row > td{padding:0 0 10px;background:var(--bg);border-bottom:2px solid var(--bd)}
+.fichesbox{overflow-x:auto;padding:8px 12px 2px 28px}
+table.inner{min-width:1150px;width:100%;border:1px solid var(--bd);border-radius:10px;overflow:hidden;background:var(--card)}
+table.inner th{position:static;background:var(--thbg);color:var(--thtx)}
+table.inner td.first{position:static;min-width:250px;border-left:6px solid var(--c)}
+table.inner tr.fi:last-child td{border-bottom:0}
+
+/* Mon profil : choix de la couleur */
+.swatches{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
+.swatch{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.swatch.on{border-color:var(--tx);box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--pri)}
+.swatchpick{margin:0;display:inline-flex;align-items:center}
+.swatchpick input{width:34px;height:30px;padding:0;border-radius:8px;cursor:pointer}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle}
+
+/* Réglages du chat */
+.chrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;border-bottom:1px dashed var(--bd)}
+.chrow select{width:auto;min-width:200px}
+
+/* Voir en tant que : bandeau fixe en haut de page */
+.asbar{position:sticky;top:0;z-index:150;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;padding:8px 14px;background:#b45309;color:#fff;font-size:13px;text-align:center}
+.asbar .btn{background:#fff;color:#7c2d12;border:0}
+
+/* Rétroplanning : semaines avec bandeaux pour les périodes */
+.rhead{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.rgrille{display:flex;flex-direction:column;gap:3px}
+.rweek{position:relative}
+.rdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.rdays .rc{padding-top:calc(24px + var(--voies,0) * 20px);min-height:calc(68px + var(--voies,0) * 20px);position:relative}
+.rdays .rc .rcn{position:absolute;top:3px;right:4px}
+.rbars{position:absolute;inset:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));column-gap:3px;grid-template-rows:24px repeat(var(--voies,0),17px);row-gap:3px;pointer-events:none}
+.rbi{pointer-events:auto;font:inherit;font-size:11px;line-height:17px;height:17px;padding:0 6px;color:var(--tx);background:color-mix(in srgb,var(--t) 30%,var(--card));border:0;border-left:3px solid var(--t);border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.rbi.cg{border-top-left-radius:0;border-bottom-left-radius:0;border-left-width:0;margin-left:-4px;padding-left:10px}
+.rbi.cd{border-top-right-radius:0;border-bottom-right-radius:0;margin-right:-4px}
+.rbi.fait{opacity:.55;text-decoration:line-through}
+.rbi.retard{background:rgba(221,51,51,.25);border-left-color:#d33}
+.rbi:hover{filter:brightness(1.06)}
+@media (max-width:640px){.rbi{font-size:10px;padding:0 3px}.rdays .rc{padding-top:calc(20px + var(--voies,0) * 20px)}}

@@ -1,0 +1,6 @@
+# Le navigateur revérifie toujours les pages, scripts et styles : jamais d'ancienne version servie après une mise en ligne (réponse 304 si rien n'a changé).
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js|css|svg)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

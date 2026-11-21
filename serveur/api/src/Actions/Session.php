@@ -19,7 +19,10 @@ final class Session
      */
     public static function init(Contexte $c, array $req): array
     {
-        Utilisateurs::toucherConnexion($c->db->principale(), $c->user);
+        // En mode « voir en tant que », la dernière connexion de la personne consultée n'est pas modifiée.
+        if (!is_string($req['as'] ?? null) || $req['as'] === '') {
+            Utilisateurs::toucherConnexion($c->db->principale(), $c->user);
+        }
         return array_merge(
             ['ok' => true, 'me' => Profil::me($c)],
             Donnees::toutes($c),

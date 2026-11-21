@@ -140,7 +140,7 @@ function actionsArticle(i) {
   const hist = `<button class="btn sm sec" data-hist="article:${esc(i.article_id)}" title="Versions précédentes de l’article">🕘 Historique</button>`;
   if (!canWrite() || !i.article_modifiable) return hist;
   const dejaMienne = itemsAll.some(x => x.mine && x.article_id === i.article_id);
-  return (!dejaMienne ? `<button class="btn sm" data-an="${esc(i.article_id)}">＋ Ajouter ma fiche de lecture</button> <button class="btn sm sec" data-alire="${esc(i.article_id)}" title="Le mettre dans ma file d’attente (mon groupe le verra)">📌 À lire</button> ` : "")
+  return (!dejaMienne ? `<button class="btn sm" data-an="${esc(i.article_id)}">＋ Ajouter ma fiche de lecture</button> <button class="btn sm sec" data-alire="${esc(i.article_id)}" title="Le mettre dans ma file d’attente personnelle">📌 À lire</button> ` : "")
     + `<button class="btn sm sec" data-ea="${esc(i.article_id)}">Corriger l’article</button> ` + hist;
 }
 

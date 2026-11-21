@@ -113,7 +113,7 @@ final class Suivi
         $def = self::TYPES[$type];
         $table = $def['table'];
         $pdo = $c->db->principale();
-        $st = $pdo->prepare("SELECT t.*, u.prenom, u.nom AS u_nom, u.pseudo, m.prenom AS m_prenom, m.nom AS m_nom, m.pseudo AS m_pseudo
+        $st = $pdo->prepare("SELECT t.*, u.prenom, u.nom AS u_nom, u.pseudo, u.couleur AS u_couleur, m.prenom AS m_prenom, m.nom AS m_nom, m.pseudo AS m_pseudo
                              FROM `$table` t LEFT JOIN utilisateurs u ON u.id = t.cree_par LEFT JOIN utilisateurs m ON m.id = t.modifie_par
                              WHERE t.groupe_id IN (" . Lectures::marques(count($gids)) . ') ORDER BY t.cree_le, t.id');
         $st->execute($gids);
@@ -126,6 +126,7 @@ final class Suivi
                 'modifie_par' => $r['m_prenom'] === null ? '' : Utilisateur::nomAffiche((string) $r['m_prenom'], (string) $r['m_nom'], $r['m_pseudo'] === null ? null : (string) $r['m_pseudo']),
                 'par' => $r['prenom'] === null ? 'Utilisateur supprimé' : Utilisateur::nomAffiche((string) $r['prenom'], (string) $r['u_nom'], $r['pseudo'] === null ? null : (string) $r['pseudo']),
                 'modifiable' => $etudiant && Membres::estMembre($pdo, (string) $r['groupe_id'], (int) $c->user->id),
+                'par_couleur' => $r['u_couleur'] === null ? '' : (string) $r['u_couleur'],
             ];
             foreach ($def['champs'] as $k) {
                 $o[$k] = $r[$k] === null ? '' : (string) $r[$k];

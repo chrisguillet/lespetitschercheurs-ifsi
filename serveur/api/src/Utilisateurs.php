@@ -47,6 +47,14 @@ final class Utilisateurs
         return $cree->id;
     }
 
+    public static function parPid(\PDO $pdo, string $pid): ?Utilisateur
+    {
+        $st = $pdo->prepare('SELECT ' . self::COLONNES . ' FROM utilisateurs WHERE pid = ?');
+        $st->execute([$pid]);
+        $r = $st->fetch();
+        return $r === false ? null : Utilisateur::depuisLigne($r);
+    }
+
     public static function parId(\PDO $pdo, int $id): ?Utilisateur
     {
         $st = $pdo->prepare('SELECT ' . self::COLONNES . ' FROM utilisateurs WHERE id = ?');

@@ -34,13 +34,34 @@ function renderRetro() {
   const decal = (new Date(RP.mois.a, RP.mois.m, 1).getDay() + 6) % 7;
   const nbSem = Math.ceil((decal + new Date(RP.mois.a, RP.mois.m + 1, 0).getDate()) / 7), auj = isoJour(t);
 
+  // Grille par semaines : les entrées sur plusieurs jours sont de longs bandeaux qui traversent les cases (jamais répétées jour par jour) ;
+  // les entrées d'un seul jour sont des pastilles dans leur case.
+  const jourIdx = iso => Math.round((jourDe(iso) - new Date(RP.mois.a, RP.mois.m, 1 - decal)) / 864e5);   // numéro de case depuis le début de la grille
+  const MAX_VOIES = 4;
   let cases = "";
-  for (let n = 0; n < nbSem * 7; n++) {
-    const jour = new Date(RP.mois.a, RP.mois.m, 1 - decal + n), cle = isoJour(jour);
-    const el = entreesDuJour(liste, cle);
-    const chips = el.slice(0, 3).map(j => `<span class="rchip ${j.statut === "fait" ? "fait" : ""} ${estTravail(j) && j.statut !== "fait" && ecartJours(j.echeance) < 0 ? "retard" : ""}" style="--t:${typeEntree(j).c}" title="${esc(typeEntree(j).lib + " · " + libEntree(j))}">${esc(typeEntree(j).ico)} ${esc(libEntree(j))}</span>`).join("");
-    cases += `<button type="button" class="rc ${jour.getMonth() !== RP.mois.m ? "hors" : ""} ${cle === auj ? "auj" : ""} ${el.length ? "has" : ""} ${[0, 6].includes(jour.getDay()) ? "we" : ""}" data-jour="${cle}" aria-label="${esc(JOUR_LONG(cle))}${el.length ? " : " + el.length + " élément" + (el.length > 1 ? "s" : "") : ""}">
-      <span class="rcn">${jour.getDate()}</span>${chips}${el.length > 3 ? `<span class="rcplus">+${el.length - 3}</span>` : ""}</button>`;
+  for (let w = 0; w < nbSem; w++) {
+    const debutSem = w * 7, finSem = w * 7 + 6;
+    // Bandeaux de la semaine, rangés sur des voies (lignes) sans chevauchement.
+    const segs = liste.filter(estPlage).map(j => ({ j, a: Math.max(jourIdx(j.debut), debutSem), b: Math.min(jourIdx(j.echeance), finSem), avant: jourIdx(j.debut) < debutSem, apres: jourIdx(j.echeance) > finSem }))
+      .filter(s => s.a <= s.b).sort((x, y) => x.a - y.a || (y.b - y.a) - (x.b - x.a));
+    const voies = [];
+    segs.forEach(s => { let v = voies.findIndex(fin => fin < s.a); if (v < 0) { v = voies.length; voies.push(-1); } voies[v] = s.b; s.voie = v; });
+    const nbVoies = Math.min(voies.length, MAX_VOIES);
+    const bandeaux = segs.filter(s => s.voie < MAX_VOIES).map(s => {
+      const j = s.j, retard = estTravail(j) && j.statut !== "fait" && ecartJours(j.echeance) < 0;
+      const jc = isoJour(new Date(RP.mois.a, RP.mois.m, 1 - decal + s.a));
+      return `<button type="button" class="rbi ${j.statut === "fait" ? "fait" : ""} ${retard ? "retard" : ""} ${s.avant ? "cg" : ""} ${s.apres ? "cd" : ""}" style="--t:${typeEntree(j).c};grid-column:${s.a - debutSem + 1} / ${s.b - debutSem + 2};grid-row:${s.voie + 2}" data-jour="${jc}" title="${esc(typeEntree(j).lib + " · " + libEntree(j) + " · " + fmtDatesJalon(j))}">${s.avant ? "◂ " : ""}${esc(typeEntree(j).ico)} ${esc(libEntree(j))}${s.apres ? " ▸" : ""}</button>`;
+    }).join("");
+    const cachees = segs.filter(s => s.voie >= MAX_VOIES).length;
+    let jours = "";
+    for (let n = debutSem; n <= finSem; n++) {
+      const jour = new Date(RP.mois.a, RP.mois.m, 1 - decal + n), cle = isoJour(jour);
+      const tous = entreesDuJour(liste, cle), simples = tous.filter(j => !estPlage(j));
+      const chips = simples.slice(0, 3).map(j => `<span class="rchip ${j.statut === "fait" ? "fait" : ""} ${estTravail(j) && j.statut !== "fait" && ecartJours(j.echeance) < 0 ? "retard" : ""}" style="--t:${typeEntree(j).c}" title="${esc(typeEntree(j).lib + " · " + libEntree(j))}">${esc(typeEntree(j).ico)} ${esc(libEntree(j))}</span>`).join("");
+      jours += `<button type="button" class="rc ${jour.getMonth() !== RP.mois.m ? "hors" : ""} ${cle === auj ? "auj" : ""} ${tous.length ? "has" : ""} ${[0, 6].includes(jour.getDay()) ? "we" : ""}" data-jour="${cle}" style="--voies:${nbVoies}" aria-label="${esc(JOUR_LONG(cle))}${tous.length ? " : " + tous.length + " élément" + (tous.length > 1 ? "s" : "") : ""}">
+        <span class="rcn">${jour.getDate()}</span>${chips}${simples.length > 3 ? `<span class="rcplus">+${simples.length - 3}</span>` : ""}${n === finSem && cachees ? `<span class="rcplus" title="Autres entrées sur plusieurs jours : cliquez sur un jour">+${cachees} période${cachees > 1 ? "s" : ""}</span>` : ""}</button>`;
+    }
+    cases += `<div class="rweek"><div class="rdays">${jours}</div><div class="rbars" style="--voies:${nbVoies}">${bandeaux}</div></div>`;
   }
 
   const legende = Object.keys(TYPES_ENTREE).map(k => `<button type="button" class="rleg ${RP.masques.has(k) ? "off" : ""}" data-rleg="${k}" style="--t:${TYPES_ENTREE[k].c}" aria-pressed="${!RP.masques.has(k)}" title="Afficher ou masquer les ${esc(TYPES_ENTREE[k].lib.toLowerCase())}s"><i></i>${esc(TYPES_ENTREE[k].lib)}</button>`).join("");
@@ -64,7 +85,7 @@ function renderRetro() {
   box.innerHTML = `<div class="rp"><div class="rp-main">
     <div class="rbar"><div class="rnav"><button type="button" class="btn sm sec" data-rnav="-1" aria-label="Mois précédent">◀</button><button type="button" class="btn sm sec" data-rnav="0">Aujourd’hui</button><button type="button" class="btn sm sec" data-rnav="1" aria-label="Mois suivant">▶</button></div>
       <h3 class="rmois">${esc(MOIS_LONG(new Date(RP.mois.a, RP.mois.m, 1)))}</h3><div class="rlegs">${legende}</div></div>
-    <div class="rgrille" role="grid" aria-label="Calendrier du rétroplanning">${["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map(x => `<div class="rh">${x}</div>`).join("")}${cases}</div>
+    <div class="rhead">${["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map(x => `<div class="rh">${x}</div>`).join("")}</div><div class="rgrille" role="grid" aria-label="Calendrier du rétroplanning">${cases}</div>
     <div class="meta" style="margin-top:6px">Cliquez sur un jour pour voir son contenu${ecrit ? " ou y ajouter quelque chose" : ""}.</div></div>${side}</div>`;
 }
 
@@ -77,6 +98,7 @@ function lignesJour(cle) {
   const cr = reunionsAll.filter(r => r.groupe_id === g.id && r.date === cle);
   const ligne = j => `<div class="rrow ${j.statut === "fait" ? "fait" : ""}" style="--t:${typeEntree(j).c}"><i></i>
       <div class="rtxt"><div><b>${esc(typeEntree(j).ico)} ${esc(j.titre)}</b> <span class="meta">${esc(typeEntree(j).lib)}${j.heure ? " · " + esc(j.heure) : ""}${estPlage(j) ? " · " + esc(fmtDatesJalon(j)) : ""}</span></div>
+        ${j.par ? `<div class="meta"><span class="dot" style="background:${esc(j.par_couleur || "#888")}"></span> ${esc(j.par)}</div>` : ""}
         <div class="meta">${esc(STATUT_JALON[j.statut] || j.statut)} ${delaiJalon(j)}${j.note ? " · " + esc(j.note) : ""}</div></div>
       ${j.modifiable ? `<div class="ract"><button type="button" class="btn sm sec" data-rpf="${esc(j.id)}" title="${j.statut === "fait" ? "Remettre à faire" : "Marquer comme fait"}">${j.statut === "fait" ? "↩" : "✓"}</button><button type="button" class="btn sm sec" data-rped="${esc(j.id)}">Modifier</button><button type="button" class="btn sm sec del" data-rpdel="${esc(j.id)}" aria-label="Supprimer">🗑</button></div>` : ""}</div>`;
   return (el.length ? el.map(ligne).join("") : '<div class="meta">Rien de prévu ce jour-là.</div>')

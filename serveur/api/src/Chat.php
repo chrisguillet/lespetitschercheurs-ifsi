@@ -133,14 +133,21 @@ final class Chat
         if ($promo === null) {
             throw new Erreur('not_found', 'Groupe introuvable');
         }
+        $regles = ChatRegles::toutes($c->db->principale());
         if ($type === 'promo') {
             if (!in_array($promo, Lectures::promosLecture($c), true)) {
                 throw new Erreur('forbidden', 'Vous ne faites pas partie de cette promo');
+            }
+            if (!ChatRegles::promoActif($regles, $promo)) {
+                throw new Erreur('forbidden', 'Le chat de la promo est désactivé');
             }
             return 'p:' . $promo;
         }
         if (!Membres::estMembre($c->db->principale(), $gid, (int) $c->user->id)) {
             throw new Erreur('forbidden', 'Vous ne faites pas partie de ce groupe');
+        }
+        if (!ChatRegles::groupeActif($regles, $gid, $promo)) {
+            throw new Erreur('forbidden', 'Le chat est désactivé pour ce groupe');
         }
         return 'g:' . $gid;
     }

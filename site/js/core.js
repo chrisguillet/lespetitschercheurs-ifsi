@@ -59,7 +59,7 @@ const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e)
 const filtresVierges = () => ({ q: "", who: [], grp: [], st: [], type: [], kw: [], kwLabels: {}, mode: { who: "ou", grp: "ou", st: "ou", kw: "ou", q: "et" } });
 const F = Object.assign(filtresVierges(), { sort: "ajoute",
   view: lsGet("lydia_vue", matchMedia("(max-width:700px)").matches ? "liste" : "tableau") });
-const masquees = new Set((() => { try { return JSON.parse(lsGet("lydia_cols", "[]")); } catch (e) { return []; } })());
+const masquees = new Set((() => { try { return JSON.parse(lsGet("lydia_cols2", "[]")); } catch (e) { return []; } })());
 
 // etudiant : écrit, administre et commente ; formateur : lit et commente (dans ses groupes) ; admin : gère tout.
 const canWrite = () => !!me && me.role === "etudiant";
@@ -69,6 +69,10 @@ const isSuper = () => !!me && me.role === "admin";                              
 
 /* ---------- API ---------- */
 
+// « Voir en tant que » (administrateur général) : identifiant public de la personne consultée, gardé le temps de l'onglet.
+let VUE_AS = null;
+const asDemande = () => { try { return sessionStorage.getItem("lpc_as") || undefined; } catch (e) { return undefined; } };
+
 async function api(action, payload = {}) {
   let j;
   try {
@@ -76,7 +80,7 @@ async function api(action, payload = {}) {
       method: "POST",
       // text/plain évite la requête de pré-vérification CORS, non gérée par Apps Script
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action, token, ...payload })
+      body: JSON.stringify({ action, token, as: asDemande(), ...payload })
     });
     j = await res.json();
   } catch (e) {
@@ -162,7 +166,9 @@ function reinitialiserEtat() {
 
 function logout() {
   marquerVu();
-  if (token) api("bye").catch(() => {});   // disparaît tout de suite de la liste des personnes en ligne
+  if (token && !VUE_AS) api("bye").catch(() => {});
+  try { sessionStorage.removeItem("lpc_as"); } catch (e) { /* ignoré */ }
+  VUE_AS = null; document.getElementById("asbar")?.remove(); document.body.classList.remove("avec-asbar");   // disparaît tout de suite de la liste des personnes en ligne
   if (timer) clearInterval(timer);
   reinitialiserEtat();
   try { sessionStorage.removeItem("lydia_token"); } catch (e) { /* ignoré */ }
@@ -304,6 +310,14 @@ async function enCours(msg, fn) {
   try { return await fn(); } finally { clearStatus(); }
 }
 
+// Demande en attente : la page revérifie toute seule, sans qu'il faille recharger ou cliquer.
+let essaiTimer = null;
+function programmerNouvelEssai() {
+  clearTimeout(essaiTimer);
+  essaiTimer = setTimeout(() => { if (!me && token && !document.hidden) boot(); else if (!me && token) programmerNouvelEssai(); }, 30000);
+}
+const MSG_ATTENTE = " Cette page vérifie toutes les 30 secondes si votre demande a été validée.";
+
 let bootEnCours = false;
 async function boot() {
   if (bootEnCours) return;                      // évite un second « init » si on reclique pendant l'attente
@@ -311,7 +325,10 @@ async function boot() {
   gateAttente("Connexion en cours… vérification de votre compte");
   try {
     const j = await api("init");
+    clearTimeout(essaiTimer);
     me = j.me;
+    VUE_AS = j.vue_en_tant_que || null;
+    if (VUE_AS) bandeauAs(VUE_AS.nom);
     chargerVu();
     applyData(j);
     clearTimeout(attenteTimer);
@@ -320,13 +337,21 @@ async function boot() {
     clearStatus();
     renderAll();
     setTab("home");
-    chargerNotes();
+    if (!VUE_AS) chargerNotes();
     startPolling();
-    if (me.consentement === false) demanderConsentement(me.consent_version);
+    if (me.consentement === false && !VUE_AS) demanderConsentement(me.consent_version);
   } catch (e) {
-    if (e.code === "unauthorized") sessionError(e);
-    else if (e.code === "pending") { showGate(e.message, true); afficherAccueil(); }
-    else if (e.code === "forbidden") showGate(e.message + ". Changez de compte si besoin.");
+    if (asDemande() && e.code !== "unauthorized" && e.code !== "network") {   // « voir en tant que » impossible : on revient à sa propre vue
+      try { sessionStorage.removeItem("lpc_as"); } catch (x) { /* ignoré */ }
+      showGate("Vue « en tant que » impossible (" + e.message + "). Rechargez la page pour revenir à votre compte.");
+    } else if (e.code === "unauthorized") sessionError(e);
+    else if (e.code === "pending") { showGate(e.message + MSG_ATTENTE, true); afficherAccueil(); programmerNouvelEssai(); }
+    else if (e.code === "forbidden") {   // accès refusé : le jeton est oublié, la reconnexion automatique coupée, pour pouvoir changer de compte
+      token = null;
+      try { sessionStorage.removeItem("lydia_token"); } catch (x) { /* ignoré */ }
+      if (window.google) google.accounts.id.disableAutoSelect();
+      showGate(e.message + ". Connectez-vous avec un autre compte Google si besoin.");
+    }
     else showGate("Erreur : " + e.message);
   } finally { bootEnCours = false; }
 }
@@ -368,8 +393,8 @@ async function refresh(manuel) {
     else if (e.code === "forbidden" || e.code === "pending") {   // l'accès a été retiré ou suspendu pendant la session
       if (timer) clearInterval(timer);
       reinitialiserEtat();
-      showGate(e.message, e.code === "pending");
-      if (e.code === "pending") afficherAccueil();
+      showGate(e.code === "pending" ? e.message + MSG_ATTENTE : e.message, e.code === "pending");
+      if (e.code === "pending") { afficherAccueil(); programmerNouvelEssai(); }
     } else showStatus("Actualisation impossible : " + e.message);
   }
 }

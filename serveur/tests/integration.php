@@ -1365,6 +1365,48 @@ verifie('dictionnaire : saisie vide refusée comme avant', leve(fn () => \Lpc\Tr
 $rt = appel('a1@ci.test', 'translate', ['texte' => 'douleur']);
 verifie('translate : réponse avec indicateur de quota', ($rt['ok'] ?? false) === true && ($rt['quota'] ?? null) === false && !isset($rt['avertissement']));
 
+// ---------- Chat activable, couleur du profil, « voir en tant que » ----------
+verifie('chat : règles réservées aux administrateurs', $err(appel('a1@ci.test', 'chat_regles')) === 'forbidden');
+$rg = appel('ap@ci.test', 'chat_regles')['regles'] ?? [];
+verifie('chat : l\'admin de promo ne voit pas la règle générale', ($rg['peut_general'] ?? true) === false && ($rg['general'] ?? 'x') === null);
+verifie('chat : par défaut, actif partout', ($salonA = appel('a1@ci.test', 'chat_list', $salon('groupe'))['ok'] ?? false) === true);
+verifie('chat : l\'admin de promo ne règle ni le général ni une autre promo', $err(appel('ap@ci.test', 'chat_regle_set', ['data' => ['portee' => 'general', 'valeur' => 'inactif']])) === 'forbidden'
+    && $err(appel('ap@ci.test', 'chat_regle_set', ['data' => ['portee' => 'promo', 'cible' => $promo2, 'valeur' => 'inactif']])) === 'forbidden');
+verifie('chat : valeur ou portée inconnues refusées', $err(appel('ap@ci.test', 'chat_regle_set', ['data' => ['portee' => 'promo', 'cible' => $pv, 'valeur' => 'peut-etre']])) === 'invalid'
+    && $err(appel('ap@ci.test', 'chat_regle_set', ['data' => ['portee' => 'ciel', 'cible' => $pv, 'valeur' => 'actif']])) === 'invalid');
+verifie('chat : désactivé pour une promo', (appel('ap@ci.test', 'chat_regle_set', ['data' => ['portee' => 'promo', 'cible' => $pv, 'valeur' => 'inactif']])['ok'] ?? false) === true);
+$e = appel('a1@ci.test', 'chat_list', $salon('groupe'));
+verifie('chat : salons du groupe et de la promo refusés, avec le motif', ($e['error'] ?? '') === 'forbidden' && str_contains((string) ($e['message'] ?? ''), 'désactivé')
+    && $err(appel('a1@ci.test', 'chat_list', $salon('promo'))) === 'forbidden' && $err(appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'x'])) === 'forbidden');
+$ga = array_values(array_filter(appel('a1@ci.test', 'init')['groupes'] ?? [], static fn (array $g): bool => $g['id'] === $alpha))[0] ?? [];
+verifie('chat : l\'indicateur du groupe suit la règle', ($ga['chat'] ?? null) === false && ($ga['chat_promo'] ?? null) === false);
+appel('ap@ci.test', 'chat_regle_set', ['data' => ['portee' => 'groupe', 'cible' => $alpha, 'valeur' => 'actif']]);
+verifie('chat : la règle du groupe l\'emporte sur celle de la promo', ($ga2 = appel('a1@ci.test', 'chat_list', $salon('groupe'))['ok'] ?? false) === true && $err(appel('a1@ci.test', 'chat_list', $salon('promo'))) === 'forbidden');
+appel($admin, 'chat_regle_set', ['data' => ['portee' => 'general', 'valeur' => 'inactif']]);
+appel('ap@ci.test', 'chat_regle_set', ['data' => ['portee' => 'promo', 'cible' => $pv, 'valeur' => 'herite']]);
+appel('ap@ci.test', 'chat_regle_set', ['data' => ['portee' => 'groupe', 'cible' => $alpha, 'valeur' => 'herite']]);
+verifie('chat : la règle générale s\'applique quand rien de plus précis n\'existe', $err(appel('a1@ci.test', 'chat_list', $salon('groupe'))) === 'forbidden' && (appel($admin, 'chat_regles')['regles']['general'] ?? null) === false);
+appel($admin, 'chat_regle_set', ['data' => ['portee' => 'general', 'valeur' => 'herite']]);
+verifie('chat : règles retirées, chat de nouveau actif', (appel('a1@ci.test', 'chat_list', $salon('groupe'))['ok'] ?? false) === true && (int) valeur($pdo, 'SELECT COUNT(*) FROM chat_regles') === 0);
+
+$rc = appel('a1@ci.test', 'profile_update', ['data' => ['couleur' => '#AABBCC']]);
+verifie('profil : couleur choisie', ($rc['ok'] ?? false) === true && ($rc['me']['couleur'] ?? '') === '#aabbcc' && valeur($pdo, "SELECT couleur FROM utilisateurs WHERE email = 'a1@ci.test'") === '#aabbcc');
+verifie('profil : couleur invalide refusée', $err(appel('a1@ci.test', 'profile_update', ['data' => ['couleur' => 'rouge']])) === 'invalid' && $err(appel('a1@ci.test', 'profile_update', ['data' => ['couleur' => '#12345']])) === 'invalid');
+$jl = appel('a1@ci.test', 'list')['jalons'] ?? [];
+verifie('rétroplanning : couleur de la personne qui a créé l\'entrée', $jl !== [] && preg_match('/^#[0-9a-f]{6}$/i', (string) ($jl[0]['par_couleur'] ?? '')) === 1);
+
+$pidA1 = (string) valeur($pdo, "SELECT pid FROM utilisateurs WHERE email = 'a1@ci.test'");
+$pdo->prepare("UPDATE utilisateurs SET derniere_connexion = '2020-01-01 00:00:00' WHERE email = 'a1@ci.test'")->execute();
+$vc = appel($admin, 'init', ['as' => $pidA1]);
+verifie('voir en tant que : l\'administrateur voit l\'application comme la personne', ($vc['ok'] ?? false) === true && ($vc['me']['role'] ?? '') === 'etudiant' && ($vc['vue_en_tant_que']['pid'] ?? '') === $pidA1 && ($vc['me']['prenom'] ?? '') === 'Ana T.');
+verifie('voir en tant que : la dernière connexion de la personne n\'est pas modifiée', valeur($pdo, "SELECT derniere_connexion FROM utilisateurs WHERE email = 'a1@ci.test'") === '2020-01-01 00:00:00');
+verifie('voir en tant que : liste de rafraîchissement permise', (appel($admin, 'list', ['as' => $pidA1])['vue_en_tant_que']['pid'] ?? '') === $pidA1);
+verifie('voir en tant que : lecture seule', $err(appel($admin, 'add', ['as' => $pidA1, 'data' => ['titre' => 'x']])) === 'forbidden' && $err(appel($admin, 'notes_list', ['as' => $pidA1])) === 'forbidden'
+    && $err(appel($admin, 'chat_list', ['as' => $pidA1] + $salon('groupe'))) === 'forbidden');
+verifie('voir en tant que : réservé à l\'administrateur général', $err(appel('a2@ci.test', 'init', ['as' => $pidA1])) === 'forbidden' && $err(appel('ap@ci.test', 'init', ['as' => $pidA1])) === 'forbidden');
+verifie('voir en tant que : personne inconnue', $err(appel($admin, 'init', ['as' => 'inconnu00000'])) === 'not_found');
+verifie('voir en tant que : journalisé', (int) valeur($pdo, "SELECT COUNT(*) FROM journal_admin WHERE action = 'voir_en_tant_que'") === 1);
+
 // ---------- Suppressions en cascade ----------
 $art = Ids::uuid();
 $pdo->prepare('INSERT INTO articles (id, cree_par, groupe_id, ajoute, titre) VALUES (?, ?, ?, ?, ?)')->execute([$art, $etu, $groupe, gmdate('Y-m-d H:i:s'), 'Titre']);

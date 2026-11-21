@@ -1,18 +1,18 @@
 /* Filtres, rendu du tableau, déplier/replier, actions sur les lignes.
    Script classique : partage la portée globale avec les autres fichiers de js/ (ordre de chargement : voir index.html). */
 "use strict";
-const COLS = { 2: "Mots-clés", 3: "Keywords (EN)", 4: "Concepts", 5: "Objet / sujet", 6: "Opinion", 7: "Controverse", 8: "Libre", 9: "Référence APA" };
+const COLS = { 2: "Auteur(s)", 3: "Parution · type", 4: "Fiches de lecture", 5: "Référence APA" };
 
 function applyCols() {
-  for (let k = 2; k <= 9; k++) $("tbl").classList.toggle("hc" + k, masquees.has(k));
+  for (let k = 2; k <= 5; k++) $("tbl").classList.toggle("hc" + k, masquees.has(k));
 }
 
 // Filtres cumulatifs : plusieurs valeurs par filtre, combinées en OU (au moins une) ou en ET (le document doit avoir une fiche pour chaque valeur).
-const FILTRES_MULTI = ["who", "grp", "st", "type", "kw"];
-const ET_POSSIBLE = ["who", "grp", "st", "kw"];          // le type est propre à l'article : « ET » n'aurait pas de sens
+const FILTRES_MULTI = ["st", "type", "kw"];
+const ET_POSSIBLE = ["st", "kw"];          // le type est propre à l'article : « ET » n'aurait pas de sens
 const STATUTS_FILTRE = [["Terminée", "✅ Terminées"], ["En cours", "📖 En cours"], ["À lire", "📌 À lire"]];
 const modeFiltre = k => (F.mode[k] === "et" && F[k].length > 1 ? "et" : "ou");
-const SEP = k => (modeFiltre(k) === "et" ? " ET " : " OU ");
+const SEP = k => (modeFiltre(k) === "et" ? " + " : " ou ");
 const nbFiltres = () => (F.q ? 1 : 0) + FILTRES_MULTI.filter(k => F[k].length).length;
 
 function renderFilters(garder) {
@@ -26,7 +26,7 @@ function renderFilters(garder) {
   const actifs = (F.q ? [["q", `« ${F.q} »`]] : []).concat(FILTRES_MULTI.filter(k => F[k].length).map(k => [k, `${lib[k]} : ${F[k].map(v => valeurLib(k, v)).join(SEP(k))}`]));
   const nb = nbFiltres();
   const boutonsMode = k => `<span class="seg fmode" role="group" aria-label="Combinaison des choix">
-      <button type="button" class="btn sm sec ${modeFiltre(k) === "ou" ? "on" : ""}" data-fm="${k}" data-v="ou" aria-pressed="${modeFiltre(k) === "ou"}" title="Au moins un des choix">OU</button><button type="button" class="btn sm sec ${modeFiltre(k) === "et" ? "on" : ""}" data-fm="${k}" data-v="et" aria-pressed="${modeFiltre(k) === "et"}" title="Tous les choix : le document doit avoir une fiche pour chacun">ET</button></span>`;
+      <button type="button" class="btn sm sec ${modeFiltre(k) === "ou" ? "on" : ""}" data-fm="${k}" data-v="ou" aria-pressed="${modeFiltre(k) === "ou"}" title="Les documents qui correspondent à au moins un des choix cochés">Au moins un</button><button type="button" class="btn sm sec ${modeFiltre(k) === "et" ? "on" : ""}" data-fm="${k}" data-v="et" aria-pressed="${modeFiltre(k) === "et"}" title="Les documents qui ont une fiche de lecture pour chacun des choix cochés">Tous</button></span>`;
   const bloc = (k, options) => `<div class="fgrp"><div class="fhead"><span class="flab">${lib[k]}</span>${ET_POSSIBLE.includes(k) && F[k].length > 1 ? boutonsMode(k) : ""}</div>
       <div class="fopts">${options.map(([v, l]) => `<label class="fopt"><input type="checkbox" data-f="${k}" value="${esc(v)}" ${F[k].includes(v) ? "checked" : ""}> <span>${esc(l)}</span></label>`).join("")}</div></div>`;
   const motsQ = cleTitre(F.q).split(" ").filter(Boolean).length;
@@ -34,14 +34,12 @@ function renderFilters(garder) {
    <details class="colmenu" id="mfilt"><summary class="btn sm sec" aria-label="Rechercher et filtrer">🔍 Rechercher / filtrer${nb ? ` <span class="count">${nb}</span>` : ""}</summary>
     <div class="colpop pop-filtres">
      <div><label for="q">Recherche</label><input id="q" placeholder="Titre, auteur, mot-clé, commentaire…" value="${esc(F.q)}">
-      <div class="fhead" id="qmode" style="${motsQ > 1 ? "" : "display:none"}"><span class="meta">Plusieurs mots :</span><span class="seg fmode" role="group" aria-label="Combinaison des mots">
-       <button type="button" class="btn sm sec ${F.mode.q === "et" ? "on" : ""}" data-fq="et" title="Tous les mots">ET</button><button type="button" class="btn sm sec ${F.mode.q === "ou" ? "on" : ""}" data-fq="ou" title="Au moins un mot">OU</button></span></div></div>
-     ${bloc("who", students().map(s => [s.prenom, s.prenom]))}
-     ${groupesListe().length > 1 ? bloc("grp", groupesListe().map(n => [n, n])) : ""}
+      <div class="fhead" id="qmode" style="${motsQ > 1 ? "" : "display:none"}"><span class="meta">Plusieurs mots saisis :</span><span class="seg fmode" role="group" aria-label="Combinaison des mots">
+       <button type="button" class="btn sm sec ${F.mode.q === "et" ? "on" : ""}" data-fq="et" title="Tous les mots saisis doivent apparaître">Tous</button><button type="button" class="btn sm sec ${F.mode.q === "ou" ? "on" : ""}" data-fq="ou" title="Au moins un des mots saisis doit apparaître">Au moins un</button></span></div></div>
      ${bloc("st", STATUTS_FILTRE)}
      ${bloc("type", types.map(t => [t, t]))}
      ${F.kw.length ? `<div class="fgrp"><div class="fhead"><span class="flab">Mots-clés</span>${F.kw.length > 1 ? boutonsMode("kw") : ""}</div><div class="fopts">${F.kw.map(v => `<label class="fopt"><input type="checkbox" data-f="kw" value="${esc(v)}" checked> <span>${esc(F.kwLabels[v] || v)}</span></label>`).join("")}</div></div>` : '<div class="meta">Mots-clés : cliquez sur un mot-clé dans le tableau pour l’ajouter au filtre.</div>'}
-     <div class="meta fhelp"><b>OU</b> : au moins un des choix. <b>ET</b> : le document doit avoir une fiche pour chacun des choix (ex. les articles lus par Lydia <b>ET</b> Christophe).</div>
+     <div class="meta fhelp">Quand vous cochez plusieurs choix pour un critère : <b>Au moins un</b> garde les documents qui correspondent à l’un des choix ; <b>Tous</b> ne garde que ceux qui ont, parmi leurs fiches de lecture, une fiche pour chacun des choix.</div>
      <div><label for="sort">Tri</label><select id="sort"><option value="ajoute" ${F.sort === "ajoute" ? "selected" : ""}>Date de saisie</option><option value="etudiant" ${F.sort === "etudiant" ? "selected" : ""}>Étudiant</option><option value="titre" ${F.sort === "titre" ? "selected" : ""}>Titre</option><option value="parution" ${F.sort === "parution" ? "selected" : ""}>Date de parution</option></select></div>
      <button type="button" class="btn sm sec" id="reset">Réinitialiser les filtres</button>
     </div></details>
@@ -85,7 +83,7 @@ function renderFilters(garder) {
   $("vl").onclick = () => changerVue("liste");
   $("filters").querySelectorAll("[data-col]").forEach(cb => cb.onchange = () => {
     if (cb.checked) masquees.delete(+cb.dataset.col); else masquees.add(+cb.dataset.col);
-    try { localStorage.setItem("lydia_cols", JSON.stringify([...masquees])); } catch (e) { /* ignoré */ }
+    try { localStorage.setItem("lydia_cols2", JSON.stringify([...masquees])); } catch (e) { /* ignoré */ }
     applyCols();
   });
   $("expall").onclick = toutDeplier;
@@ -181,7 +179,7 @@ function renderTable() {
     $("cards").innerHTML = groupes.length ? groupes.map(g => `<div class="artgrp ${artOuvert(cleArt(g[0])) ? "open" : ""}">${artCard(g)}<div class="fiches">${g.map(cardHtml).join("")}</div></div>`).join("") : `<div class="empty">${vide}</div>`;
   } else {
     $("cards").innerHTML = "";
-    $("rows").innerHTML = groupes.length ? groupes.map(g => artRow(g) + g.map(cells).join("")).join("") : `<tr><td colspan="9" class="empty">${vide}</td></tr>`;
+    $("rows").innerHTML = groupes.length ? groupes.map(g => artRow(g) + fichesRow(g)).join("") : `<tr><td colspan="5" class="empty">${vide}</td></tr>`;
   }
   applyCols();
   const nbres = $("nbres");
@@ -217,7 +215,7 @@ function toggleArt(k) {
     h.classList.toggle("open", ouvrir); h.setAttribute("aria-expanded", String(ouvrir));
     const g = h.closest(".artgrp"); if (g) g.classList.toggle("open", ouvrir);
   });
-  racine.querySelectorAll("tr.fiche").forEach(t => { if (t.dataset.fa === k) t.classList.toggle("show", ouvrir); });
+  racine.querySelectorAll("tr.fiches-row").forEach(t => { if (t.dataset.fa === k) t.classList.toggle("show", ouvrir); });
   majBoutonDeplier();
 }
 

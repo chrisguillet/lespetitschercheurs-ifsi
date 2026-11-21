@@ -28,9 +28,8 @@ function renderCtx() {
       : "Aucun groupe ne vous est affecté pour le moment : contactez l’administrateur."; }
   }
   msg.classList.toggle("hidden", !(me && !g));
-  $("sub").textContent = !g ? "Outil partagé de suivi des lectures de mémoire"
-    : ctx.vue === "promo" ? `${g.etablissement} · ${g.promo} — fiches partagées par tous les groupes`
-      : `${g.etablissement} · ${g.promo} · ${g.nom} — ${g.membres.filter(m => m.role === "etudiant").map(m => m.prenom).join(", ") || "aucun étudiant"}`;
+  // Ligne fixe sous le titre : établissement, promo, groupe et personne connectée. Elle ne change ni avec la vue (groupe / promo) ni avec les filtres.
+  $("sub").textContent = !g ? "Outil partagé de suivi des lectures de mémoire" : `${g.etablissement} · ${g.promo} · ${g.nom} — ${me.prenom}`;
   if (!g || tab === "home" || tab === "dash") { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
   bar.classList.remove("hidden");
   const avecVue = !["mine", "suivi", "glossaire", "admin", "home", "dash"].includes(tab);   // groupe / promo n'a de sens que pour tableau, commentaires, biblio, synthèse
@@ -43,11 +42,9 @@ function renderCtx() {
     ? `<label class="meta" for="ctxg" style="margin:0">Groupe</label><select id="ctxg" aria-label="Choisir le groupe">${groupes.map(x => { const n = nonLusDe(x, "groupe"); return `<option value="${esc(x.id)}" ${x.id === g.id ? "selected" : ""}>${esc(x.etablissement)} · ${esc(x.promo)} — ${esc(x.nom)}${n ? " (" + n + " non lu" + (n > 1 ? "s" : "") + ")" : ""}</option>`; }).join("")}</select>`
     : `<span class="meta">${esc(g.nom)}</span>`;
   bar.innerHTML = `${choix}
-    ${avecVue ? `<span class="seg"><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "" : "on"}" id="vg" aria-pressed="${ctx.vue !== "promo"}">👥 Mon groupe${ctx.vue === "promo" ? pastille(nvG) : ""}</button><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "on" : ""}" id="vp" aria-pressed="${ctx.vue === "promo"}">🌐 Toute la promo${ctx.vue === "promo" ? "" : pastille(nvP)}</button></span>` : ""}
-    <button type="button" class="btn sm sec" id="gbtn">⚙️ Membres et votes${pastille(vf)}</button>`;
+    ${avecVue ? `<span class="seg"><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "" : "on"}" id="vg" aria-pressed="${ctx.vue !== "promo"}">👥 Mon groupe${ctx.vue === "promo" ? pastille(nvG) : ""}</button><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "on" : ""}" id="vp" aria-pressed="${ctx.vue === "promo"}">🌐 Toute la promo${ctx.vue === "promo" ? "" : pastille(nvP)}</button></span>` : ""}`;
   if ($("ctxg")) $("ctxg").onchange = e => changerContexte({ gid: e.target.value });
   if ($("vg")) { $("vg").onclick = () => changerContexte({ vue: "groupe" }); $("vp").onclick = () => changerContexte({ vue: "promo" }); }
-  $("gbtn").onclick = ouvrirGroupe;
 }
 
 function changerContexte(c) {
@@ -66,6 +63,13 @@ function changerContexte(c) {
   renderMine(); renderTable(); renderComments();
   if (tab === "biblio") { renderBiblioTools(); renderBiblio(); }
   if (tab === "synth") renderSynth();
+  // Les pages propres au groupe se rechargent d'elles-mêmes : plus besoin de changer de page ou de recharger.
+  if (typeof fermerJour === "function") fermerJour();
+  if (tab === "suivi") renderSuivi();
+  if (tab === "glossaire") renderGlossaire();
+  if (tab === "home") renderHome();
+  majOnglets(); majAlertes();
+  if (tab === "admin" && canAdmin()) loadAdmin();
 }
 
 /* ----- Fenêtre « Membres et votes » ----- */

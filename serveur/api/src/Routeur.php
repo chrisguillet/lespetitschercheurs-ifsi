@@ -39,7 +39,7 @@ final class Routeur
     public const NOUVELLES = [
         'nom_demande', 'nom_demandes', 'nom_decision',
         'invitation_create', 'invitation_list', 'invitation_revoke',
-        'attribution_add', 'attribution_remove', 'feedback_status', 'doi_lookup', 'doublons_list', 'article_merge', 'doublons_ignore',
+        'attribution_add', 'attribution_remove', 'feedback_status', 'doi_lookup', 'doublons_list', 'article_merge', 'doublons_ignore', 'chat_regles', 'chat_regle_set',
     ];
 
     /** @var array<string,callable(Contexte,array<string,mixed>):array<string,mixed>> */
@@ -59,6 +59,8 @@ final class Routeur
             'feedback_status' => [Outils::class, 'feedbackStatut'],
             'doi_lookup' => [Outils::class, 'doiLookup'],
             'doublons_list' => [Outils::class, 'doublonsList'],
+            'chat_regles' => [Outils::class, 'chatRegles'],
+            'chat_regle_set' => [Outils::class, 'chatRegleSet'],
             'article_merge' => [Outils::class, 'articleMerge'],
             'doublons_ignore' => [Outils::class, 'doublonsIgnore'],
             'etab_create' => [Structure::class, 'etabCreate'],
@@ -146,8 +148,33 @@ final class Routeur
         }
 
         $user = $this->auth->authentifier($req['token'] ?? null, $action);
+        // « Voir en tant que » : l'administrateur général consulte l'application comme le ferait une autre personne (champ « as » = son identifiant public).
+        // Lecture seule : seules init et list sont permises ; ni présence, ni notes, ni chat. Chaque ouverture est inscrite au journal.
+        $vueComme = null;
+        $as = $req['as'] ?? null;
+        if (is_string($as) && $as !== '') {
+            $reel = new Contexte($this->config, $this->db, $user);
+            if (!$reel->droits()->estAdmin()) {
+                throw new Erreur('forbidden', 'Réservé à l’administrateur général');
+            }
+            if (!in_array($action, ['init', 'list'], true)) {
+                throw new Erreur('forbidden', 'Vue « en tant que » : lecture seule');
+            }
+            $cible = Utilisateurs::parPid($this->db->principale(), $as);
+            if ($cible === null || $cible->statut !== 'actif' || $cible->id === $user->id) {
+                throw new Erreur('not_found', 'Personne introuvable ou inactive');
+            }
+            if ($action === 'init') {
+                $this->db->principale()->prepare('INSERT INTO journal_admin (acteur_id, action, cible, detail, cree_le) VALUES (?, ?, ?, ?, ?)')
+                    ->execute([$user->id, 'voir_en_tant_que', 'utilisateur:' . $cible->id, '', Temps::maintenant()]);
+            }
+            $user = $cible;
+            $vueComme = ['pid' => $cible->pid, 'nom' => $cible->affichage()];
+        }
         $contexte = new Contexte($this->config, $this->db, $user);
-        Presence::signaler($contexte, $action);
+        if ($vueComme === null) {
+            Presence::signaler($contexte, $action);
+        }
 
         if (!in_array($action, self::ACTIONS, true) && !in_array($action, self::NOUVELLES, true)) {
             throw new Erreur('bad_request', 'Action inconnue');
@@ -156,6 +183,10 @@ final class Routeur
         if ($traitement === null) {
             throw new Erreur('not_implemented', 'Action pas encore disponible sur le nouveau serveur : ' . $action);
         }
-        return $traitement($contexte, $req);
+        $r = $traitement($contexte, $req);
+        if ($vueComme !== null) {
+            $r['vue_en_tant_que'] = $vueComme;
+        }
+        return $r;
     }
 }

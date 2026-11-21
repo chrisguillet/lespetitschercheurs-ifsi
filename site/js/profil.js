@@ -3,6 +3,7 @@
 "use strict";
 /* ---------- Mon profil ---------- */
 
+const COULEURS_PROFIL = ["#e11d48", "#f97316", "#f59e0b", "#84cc16", "#16a34a", "#0d9488", "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#d946ef", "#64748b"];
 const PR = { ouvert: false, focus: null, msg: "", err: "", formNom: false };
 
 function ouvrirProfil() {
@@ -35,10 +36,27 @@ function renderProfil() {
         : PR.formNom ? `<div class="grow"><input id="prnprenom" maxlength="60" value="${esc(id.prenom)}" placeholder="Prénom" aria-label="Nouveau prénom" autocomplete="given-name"><input id="prnnom" maxlength="60" value="${esc(id.nom)}" placeholder="Nom de famille" aria-label="Nouveau nom de famille" autocomplete="family-name">
           <button type="button" class="btn sm" id="prnok">Envoyer la demande</button><button type="button" class="btn sm sec" id="prnannuler">Annuler</button></div>`
           : '<button type="button" class="btn sm sec" id="prnouvrir">Demander un changement de prénom ou de nom</button>'}</div>
+    <div class="gsec"><h3>Ma couleur</h3>
+      <div class="meta">Votre pastille dans les listes, les fiches de lecture et le rétroplanning.</div>
+      <div class="swatches">${COULEURS_PROFIL.map(c => `<button type="button" class="swatch ${String(me.couleur).toLowerCase() === c ? "on" : ""}" style="background:${c}" data-couleur="${c}" aria-label="Couleur ${c}" aria-pressed="${String(me.couleur).toLowerCase() === c}"></button>`).join("")}
+        <label class="swatchpick" title="Choisir une autre couleur"><input type="color" id="prcolor" value="${esc(me.couleur)}" aria-label="Autre couleur"></label></div></div>
     <div class="gsec"><h3>Mes données</h3>
       <div class="meta">Vous pouvez <a href="#" id="prexport">télécharger tout ce que l’outil garde sur vous</a>. Pour demander l’effacement de votre compte, vous pouvez ${mail} : vous choisirez alors si vos contributions (fiches terminées, commentaires) sont anonymisées ou supprimées. <a href="privacy.html" target="_blank" rel="noopener">Politique de confidentialité</a></div></div>`;
 }
 
+
+async function enregistrerCouleur(couleur) {
+  try {
+    const res = await enCours("Enregistrement…", () => api("profile_update", { data: { couleur } }));
+    if (res.me) { me = Object.assign(me, res.me); renderMe(); }
+    applyResult(res);
+    PR.msg = "Couleur enregistrée ✅"; PR.err = "";
+  } catch (e) {
+    if (e.code === "unauthorized") return sessionError(e);
+    PR.err = e.message; PR.msg = "";
+  }
+  if (PR.ouvert) renderProfil();
+}
 
 async function demanderChangementNom() {
   const prenom = $("prnprenom").value.trim(), nom = $("prnnom").value.trim();
@@ -66,11 +84,13 @@ $("profclose")?.addEventListener("click", fermerProfil);
 $("profmodal")?.addEventListener("click", e => {
   if (e.target === $("profmodal")) return fermerProfil();
   const b = e.target.closest("button, a"); if (!b) return;
+  if (b.dataset.couleur) { enregistrerCouleur(b.dataset.couleur); return; }
   if (b.id === "prnouvrir") { PR.formNom = true; PR.msg = ""; PR.err = ""; renderProfil(); $("prnprenom").focus(); }
   else if (b.id === "prnannuler") { PR.formNom = false; renderProfil(); }
   else if (b.id === "prnok") demanderChangementNom();
   else if (b.id === "prexport") { e.preventDefault(); exporterMesDonnees(); }
 });
+$("profmodal")?.addEventListener("change", e => { if (e.target.id === "prcolor") enregistrerCouleur(e.target.value); });
 $("profmodal")?.addEventListener("keydown", e => {
   if (e.key === "Escape") fermerProfil();
 });

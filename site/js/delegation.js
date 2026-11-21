@@ -4,22 +4,23 @@
 "use strict";
 /* ---------- Administration déléguée ---------- */
 
-let demandesNom = [], invitationsAdmin = [], doublonsAdmin = [], lienPersonnel = null;
+let demandesNom = [], invitationsAdmin = [], doublonsAdmin = [], reglesChat = null, lienPersonnel = null;
 const ROLES_LIB = { admin: "Administrateur", admin_site: "Admin de site", admin_promo: "Admin de promo", formateur: "Formateur", etudiant: "Étudiant" };
 // Rôles que l'on peut attribuer, et type de périmètre attendu : e = établissement (site), p = promo.
 const ROLES_ATTRIBUABLES = [["admin_site", "e"], ["admin_promo", "p"], ["formateur", "e"], ["etudiant", "p"]];
 
 const adminDelegue = () => !!me && Array.isArray(me.roles) && me.roles.some(r => r.role === "admin_site" || r.role === "admin_promo");
 const gereStructure = () => isSuper() || adminDelegue();
-const sigDelegation = () => JSON.stringify([demandesNom, invitationsAdmin, doublonsAdmin]);
+const sigDelegation = () => JSON.stringify([demandesNom, invitationsAdmin, doublonsAdmin, reglesChat]);
 
 async function chargerDelegation() {
   if (!gereStructure()) return;
   try {
-    const [n, i, d] = await Promise.all([api("nom_demandes"), api("invitation_list"), api("doublons_list")]);
+    const [n, i, d, rc] = await Promise.all([api("nom_demandes"), api("invitation_list"), api("doublons_list"), api("chat_regles")]);
     demandesNom = n.demandes || [];
     invitationsAdmin = i.invitations || [];
     doublonsAdmin = d.clusters || [];
+    reglesChat = rc.regles || null;
   } catch (e) { if (e.code === "unauthorized") sessionError(e); }
 }
 
@@ -175,3 +176,80 @@ $("adminbox").addEventListener("click", async e => {
     setTimeout(() => alert(`Fusion faite : ${res.bilan.fiches} fiche${res.bilan.fiches > 1 ? "s" : ""} rattachée${res.bilan.fiches > 1 ? "s" : ""}.`), 50);
   });
 });
+
+/* ----- Membres du groupe et votes : accessible depuis « Membres et accès » (section Mon groupe) uniquement ----- */
+function blocMembresVotes() {
+  const g = groupeCourant();
+  if (!g) return "";
+  const vf = canWrite() ? votesAFaire(g) : 0;
+  return `<div class="cardc" style="margin-bottom:12px"><b>👥 Membres du groupe « ${esc(g.nom)} »</b>
+    <div class="meta">Ajouter ou retirer un membre, inviter un formateur, répondre aux votes du groupe.</div>
+    <div class="grow" style="margin-top:6px"><button type="button" class="btn sm" id="gbtn">⚙️ Membres et votes${vf ? ` <span class="count">${vf}</span>` : ""}</button></div></div>`;
+}
+$("adminbox").addEventListener("click", e => { if (e.target.closest("#gbtn")) ouvrirGroupe(); });
+
+/* ----- Chat : activation générale, par promo ou par groupe ----- */
+function blocChat() {
+  const r = reglesChat;
+  if (!r) return "";
+  const val = v => v === true ? "actif" : v === false ? "inactif" : "herite";
+  const sel = (portee, cible, v, defaut) => `<select data-chp="${portee}" data-chc="${esc(cible)}" aria-label="Chat">
+      <option value="herite" ${val(v) === "herite" ? "selected" : ""}>${esc(defaut)}</option><option value="actif" ${val(v) === "actif" ? "selected" : ""}>✅ Activé</option><option value="inactif" ${val(v) === "inactif" ? "selected" : ""}>⛔ Désactivé</option></select>`;
+  const promos = structureAdmin.flatMap(e => (e.promos || []).map(p => ({ id: p.id, lib: `${e.nom} · ${p.nom}` })));
+  const lignePromo = p => `<div class="chrow"><span>🎓 ${esc(p.lib)}</span>${sel("promo", p.id, r.promos[p.id], "Selon le réglage général")}</div>`;
+  const ligneGroupe = g => {
+    const pid = (promos.find(p => p.lib === `${g.etablissement} · ${g.promo}`) || {}).id;
+    return `<div class="chrow"><span>👥 ${esc(g.promo)} · ${esc(g.nom)}</span>${sel("groupe", g.id, r.groupes[g.id], "Selon la promo")}</div>`;
+  };
+  return `<h3>💬 Chat</h3>
+    <div class="meta">Le réglage le plus précis l’emporte : groupe, puis promo, puis réglage général. Sans réglage, le chat est activé. Un chat désactivé disparaît pour les personnes concernées ; l’historique est conservé jusqu’à son expiration (7 jours).</div>
+    ${r.peut_general ? `<div class="chrow"><span><b>🌍 Tous les groupes</b></span>${sel("general", "", r.general, "Activé (par défaut)")}</div>` : ""}
+    ${promos.length ? `<div class="meta" style="margin-top:6px">Par promo</div>${promos.map(lignePromo).join("")}` : ""}
+    ${groupesAdmin.length ? `<div class="meta" style="margin-top:6px">Par groupe</div>${groupesAdmin.map(ligneGroupe).join("")}` : ""}`;
+}
+$("adminbox").addEventListener("change", async e => {
+  const s = e.target.closest("select[data-chp]"); if (!s) return;
+  s.disabled = true;
+  try {
+    const res = await api("chat_regle_set", { data: { portee: s.dataset.chp, cible: s.dataset.chc, valeur: s.value } });
+    reglesChat = res.regles || reglesChat;
+    applyResult(res);
+    renderAdmin();
+  } catch (err) {
+    s.disabled = false;
+    if (err.code === "unauthorized") sessionError(err); else alert("Réglage impossible : " + err.message);
+  }
+});
+
+/* ----- Voir en tant que (administrateur général, lecture seule) ----- */
+function bandeauAs(nom) {
+  document.getElementById("asbar")?.remove();
+  const b = document.createElement("div");
+  b.id = "asbar"; b.className = "asbar"; b.setAttribute("role", "status");
+  b.innerHTML = `<span>👁 Vue en tant que <b>${esc(nom)}</b> · lecture seule : rien ne peut être modifié, ses notes et son chat ne sont pas affichés.</span><button type="button" class="btn sm" id="asquit">Quitter cette vue</button>`;
+  document.body.prepend(b);
+  document.body.classList.add("avec-asbar");
+  $("asquit").onclick = () => { try { sessionStorage.removeItem("lpc_as"); } catch (e) { /* ignoré */ } location.reload(); };
+}
+
+async function ouvrirChoixAs() {
+  let liste;
+  try { liste = (await api("admin_list")).acces || []; } catch (e) { if (e.code === "unauthorized") return sessionError(e); alert("Liste indisponible : " + e.message); return; }
+  const actifs = liste.filter(a => a.statut === "actif" && a.pid && a.email !== me.email).sort((a, b) => String(a.prenom).localeCompare(String(b.prenom), "fr"));
+  const lib = a => `${a.prenom} — ${(a.attributions || []).map(r => (ROLES_LIB[r.role] || r.role) + (r.perimetre ? " (" + r.perimetre + ")" : "")).join(", ") || a.role}`;
+  document.getElementById("asmodal")?.remove();
+  const m = document.createElement("div");
+  m.id = "asmodal"; m.className = "modal"; m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
+  m.innerHTML = `<div class="modalbox" style="max-width:560px"><div class="modalhead"><div><h2>👁 Voir en tant que…</h2></div><button class="btn sm sec" id="asclose" type="button">✕ Fermer</button></div>
+    <div class="cmbox" style="padding:14px 18px 18px">
+      <div class="meta">L’application s’affiche comme la verrait la personne choisie (rôle, groupes, onglets, droits). <b>Lecture seule</b> : aucune modification n’est possible, ses notes personnelles et ses messages de chat ne sont pas affichés, sa dernière connexion n’est pas modifiée. L’accès est inscrit au journal d’administration.</div>
+      ${actifs.length ? `<label for="assel">Personne</label><select id="assel">${actifs.map(a => `<option value="${esc(a.pid)}">${esc(lib(a))}</option>`).join("")}</select>
+      <div class="savebar"><button class="btn" id="asok" type="button">Voir l’application comme cette personne</button> <button class="btn sec" id="ascancel" type="button">Annuler</button></div>` : '<div class="meta">Aucune autre personne active.</div>'}
+    </div></div>`;
+  document.body.appendChild(m);
+  const fermer = () => m.remove();
+  m.addEventListener("click", e => { if (e.target === m) fermer(); });
+  $("asclose").onclick = fermer;
+  if ($("ascancel")) $("ascancel").onclick = fermer;
+  if ($("asok")) $("asok").onclick = () => { try { sessionStorage.setItem("lpc_as", $("assel").value); } catch (e) { alert("Impossible de mémoriser le choix dans ce navigateur."); return; } location.reload(); };
+}

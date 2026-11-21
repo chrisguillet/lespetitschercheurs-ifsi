@@ -159,6 +159,20 @@ final class Outils
         return $rep;
     }
 
+    /** Règles d'activation du chat visibles de la personne (administrateurs). @param array<string,mixed> $req @return array<string,mixed> */
+    public static function chatRegles(Contexte $c, array $req): array
+    {
+        return ['ok' => true, 'regles' => \Lpc\ChatRegles::pourAdmin($c)];
+    }
+
+    /** Fixe une règle d'activation du chat : portée general, promo ou groupe ; valeur actif, inactif ou herite. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function chatRegleSet(Contexte $c, array $req): array
+    {
+        $d = \Lpc\Valide::donnees($req);
+        \Lpc\ChatRegles::definir($c, (string) ($d['portee'] ?? ''), (string) ($d['cible'] ?? ''), (string) ($d['valeur'] ?? ''));
+        return ['ok' => true, 'regles' => \Lpc\ChatRegles::pourAdmin($c)] + Donnees::toutes($c);
+    }
+
     /** Doublons d'articles (administrateurs). @param array<string,mixed> $req @return array<string,mixed> */
     public static function doublonsList(Contexte $c, array $req): array
     {

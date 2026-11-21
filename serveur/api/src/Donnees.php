@@ -151,6 +151,7 @@ final class Donnees
             return [];
         }
         $membres = self::membres($c, array_keys($lignes));
+        $regles = ChatRegles::toutes($c->db->principale());
         $out = [];
         foreach ($lignes as $id => $g) {
             $liste = [];
@@ -162,7 +163,8 @@ final class Donnees
                 (($a['role'] === 'etudiant' ? 0 : 1) <=> ($b['role'] === 'etudiant' ? 0 : 1))
                 ?: strcmp(mb_strtolower($a['prenom']), mb_strtolower($b['prenom'])));
             $out[] = ['id' => $id, 'nom' => (string) $g['nom'], 'etablissement' => (string) $g['etablissement'],
-                'promo' => (string) $g['promo'], 'membres' => $liste];
+                'promo' => (string) $g['promo'], 'membres' => $liste,
+                'chat' => ChatRegles::groupeActif($regles, (string) $id, (string) $g['promo_id']), 'chat_promo' => ChatRegles::promoActif($regles, (string) $g['promo_id'])];
         }
         usort($out, static fn (array $a, array $b): int =>
             strcmp(mb_strtolower($a['etablissement'] . $a['promo'] . $a['nom']), mb_strtolower($b['etablissement'] . $b['promo'] . $b['nom'])));
@@ -280,7 +282,7 @@ final class Donnees
     private static function lignesGroupes(Contexte $c, bool $aussiMiens): array
     {
         $d = $c->droits();
-        $sql = 'SELECT g.id, g.nom, g.cree_le, e.nom AS etablissement, p.nom AS promo
+        $sql = 'SELECT g.id, g.nom, g.cree_le, g.promo_id, e.nom AS etablissement, p.nom AS promo
                 FROM groupes g JOIN promos p ON p.id = g.promo_id JOIN etablissements e ON e.id = p.etablissement_id';
         $conditions = [];
         $params = [];
