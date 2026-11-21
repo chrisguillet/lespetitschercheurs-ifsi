@@ -13,8 +13,6 @@ namespace Lpc;
  */
 final class Doublons
 {
-    private const LIMITE_ARTICLES = 3000;
-
     /** @return list<array<string,mixed>> groupes d'articles probablement identiques, que la personne peut fusionner */
     public static function grappes(Contexte $c): array
     {
@@ -25,7 +23,7 @@ final class Doublons
         $lignes = $pdo->query(
             'SELECT r.*, g.nom AS g_nom, g.promo_id, p.nom AS p_nom, e.nom AS e_nom
              FROM articles r LEFT JOIN groupes g ON g.id = r.groupe_id LEFT JOIN promos p ON p.id = g.promo_id LEFT JOIN etablissements e ON e.id = p.etablissement_id
-             ORDER BY r.ajoute, r.id LIMIT ' . self::LIMITE_ARTICLES
+             ORDER BY r.ajoute, r.id'
         )->fetchAll();
         $par = [];
         $compartiments = [];
