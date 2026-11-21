@@ -63,7 +63,7 @@ const masquees = new Set((() => { try { return JSON.parse(lsGet("lydia_cols", "[
 // etudiant : écrit, administre et commente ; formateur : lit et commente (dans ses groupes) ; admin : gère tout.
 const canWrite = () => !!me && me.role === "etudiant";
 const canComment = () => !!me && (me.role === "formateur" || me.role === "etudiant");
-const canAdmin = () => !!me && (me.role === "etudiant" || me.role === "admin");   // valide les accès, modère
+const canAdmin = () => !!me && (me.role === "etudiant" || me.role === "admin" || adminDelegue());   // valide les accès, modère
 const isSuper = () => !!me && me.role === "admin";                                // gère aussi les étudiants
 
 /* ---------- API ---------- */
@@ -286,7 +286,7 @@ function renderData() {
 // Onglets selon la personne : « Mes lectures » réservé aux étudiants, « Suivi de projet » à qui a un groupe,
 // « Administration » à l'administrateur et aux étudiants qui ont un groupe (un formateur ne l'a jamais).
 function majOnglets() {
-  const vis = { mine: canWrite(), dash: !!me && (me.role === "formateur" || isSuper()), suivi: !!groupeCourant(), glossaire: !!groupeCourant(), admin: canAdmin() && (isSuper() || !!groupeCourant()) };
+  const vis = { mine: canWrite(), dash: !!me && (me.role === "formateur" || isSuper()), suivi: !!groupeCourant(), glossaire: !!groupeCourant(), admin: canAdmin() && (isSuper() || adminDelegue() || !!groupeCourant()) };
   Object.keys(vis).forEach(t => document.querySelector(`.tab[data-t="${t}"]`).classList.toggle("hidden", !vis[t]));
   if (vis[tab] === false) setTab("all");
   majSections();

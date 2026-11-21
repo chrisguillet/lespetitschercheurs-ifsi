@@ -149,6 +149,15 @@ final class Profil
     public static function me(Contexte $c): array
     {
         $u = $c->user;
+        $demande = null;
+        if ($u->id !== null) {
+            $st = $c->db->principale()->prepare("SELECT prenom, nom, cree_le FROM demandes_nom WHERE utilisateur_id = ? AND statut = 'en_attente' ORDER BY id DESC LIMIT 1");
+            $st->execute([$u->id]);
+            $d = $st->fetch();
+            if ($d !== false) {
+                $demande = ['prenom' => (string) $d['prenom'], 'nom' => (string) $d['nom'], 'cree_le' => Temps::iso((string) $d['cree_le'])];
+            }
+        }
         return [
             'prenom' => $u->affichage(),
             'role' => $c->droits()->roleInterface(),
@@ -156,6 +165,9 @@ final class Profil
             'consentement' => $u->consentementVersion === Config::CONSENT_VERSION,
             'consent_version' => Config::CONSENT_VERSION,
             'roles' => $c->droits()->pourClient(),
+            // Pour l'écran « Mon profil » : identité légale (jamais montrée aux autres), pseudo, demande de changement de nom en attente.
+            'identite' => ['prenom' => $u->prenom, 'nom' => $u->nom, 'pseudo' => $u->pseudo ?? ''],
+            'demande_nom' => $demande,
         ];
     }
 

@@ -21,25 +21,26 @@ async function loadAdmin() {
     structureAdmin = r.structure || [];
     stockage = r.stockage || null;
     feedbacksAdmin = r.feedbacks || feedbacksAdmin;
+    await chargerDelegation();
     // Pas de reconstruction si rien n'a changé ou si une saisie est en cours (sinon elle serait perdue).
     const a = document.activeElement;
     const typing = a && a.closest && a.closest("#adminbox") && (a.tagName === "INPUT" || a.tagName === "SELECT");
     acces = next;
-    if (signatureAcces(next) + sigFeedbacks() !== renderedAcces && !typing) renderAdmin();
+    if (signatureAcces(next) + sigFeedbacks() + sigDelegation() !== renderedAcces && !typing) renderAdmin();
   } catch (e) { if (e.code === "unauthorized") sessionError(e); else showStatus("Administration indisponible : " + e.message); }
 }
 
 function accesRow(a) {
-  const sup = isSuper();
+  const sup = isSuper(), gere = gereStructure();   // gere : administrateur général, de site ou de promo (le serveur contrôle le périmètre)
   const k = esc(a.email);
   const dates = `<td>${esc(fmtDT(a.demande_le))}</td><td>${esc(fmtDT(a.derniere_connexion))}</td>`;
   // Un étudiant ne peut pas gérer les étudiants ; l'administrateur, si.
-  if (a.protege && !sup) return `<tr><td>${k}</td>${dates}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Géré par l’administrateur</td></tr>`;
+  if (a.protege && !gere) return `<tr><td>${k}</td>${dates}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Géré par l’administrateur</td></tr>`;
   const dem = a.statut === "en_attente" && a.demande ? a.demande : null;
   const veut = dem && dem.role ? dem.role : a.role;
-  if (dem && dem.role === "etudiant" && !sup) return `<tr><td>${k}</td>${dates}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Demande en tant qu’étudiant : validée par l’administrateur${dem.promo ? " (" + esc(dem.promo) + ")" : ""}</td></tr>`;
+  if (dem && dem.role === "etudiant" && !gere) return `<tr><td>${k}</td>${dates}<td>${esc(a.prenom)}</td><td>Étudiant</td><td class="meta">Demande en tant qu’étudiant : validée par l’administrateur${dem.promo ? " (" + esc(dem.promo) + ")" : ""}</td></tr>`;
   const opt = (v, lbl) => `<option value="${v}" ${veut === v ? "selected" : ""}>${lbl}</option>`;
-  const roles = (sup ? opt("etudiant", "Étudiant") : "") + opt("formateur", "Formateur");
+  const roles = (gere ? opt("etudiant", "Étudiant") : "") + opt("formateur", "Formateur");
   const acts = a.statut === "actif"
     ? `<button class="btn sm" data-as="actif">Enregistrer</button> <button class="btn sm sec del" data-as="refuse">Retirer l’accès</button>`
     : a.statut === "en_attente"
@@ -66,7 +67,7 @@ function comptesInactifs(liste) {
   });
 }
 function renderAdmin() {
-  renderedAcces = signatureAcces(acces) + sigFeedbacks();
+  renderedAcces = signatureAcces(acces) + sigFeedbacks() + sigDelegation();
   const head = `<tr><th>Adresse</th><th>Demande</th><th>Dernière connexion</th><th>Prénom</th>${isSuper() ? "<th>Couleur</th>" : ""}<th>Rôle</th><th>Actions</th></tr>`;
   const bloc = (titre, list, vide) => `<h3>${titre} (${list.length})</h3>` + (list.length
     ? `<div class="wrap"><table class="adm"><thead>${head}</thead><tbody>${list.map(accesRow).join("")}</tbody></table></div>`
@@ -76,7 +77,8 @@ function renderAdmin() {
     bloc(isSuper() ? "✅ Accès actifs" : "✅ Formateurs de vos groupes", acces.filter(a => a.statut === "actif"), "Aucun accès actif.") +
     (isSuper() && comptesInactifs(acces).length ? `<div class="meta rgpdnote">🕓 Conservation limitée : ces comptes ne se sont pas connectés depuis plus de ${INACTIF_MOIS} mois (ou n’ont aucune date connue). Selon la politique de confidentialité, leurs données doivent être effacées ou anonymisées : « 🧹 Effacer ses données ».</div>` + bloc("🕓 Comptes inactifs depuis plus de " + INACTIF_MOIS + " mois", comptesInactifs(acces), "") : "") +
     (isSuper() ? bloc("⛔ Accès refusés", acces.filter(a => a.statut === "refuse"), "Aucun accès refusé.") : "") +
-    (isSuper() ? blocGroupes() + blocFeedbacks() : "");
+    (gereStructure() ? blocNoms() + blocInvitations() + blocRoles() + blocGroupes() : "") +
+    (isSuper() ? blocFeedbacks() : "");
 }
 
 async function supprimerUtilisateur(b) {

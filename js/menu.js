@@ -36,7 +36,7 @@ function renderMe() {
       <span class="avatar" style="--c:${esc(me.couleur)}">${init}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
     <div class="colpop right acctpop">
       <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
-      <div class="acctgrp"><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button><button type="button" class="acctitem" id="mydatabtn" title="Télécharger tout ce que l’application garde sur vous (droit d’accès)">📦 Télécharger mes données</button></div>
+      <div class="acctgrp"><button type="button" class="acctitem" id="profilbtn">👤 Mon profil</button><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button><button type="button" class="acctitem" id="mydatabtn" title="Télécharger tout ce que l’application garde sur vous (droit d’accès)">📦 Télécharger mes données</button></div>
       ${window.LydiaJeux ? `<div class="acctgrp"><button type="button" class="acctitem" id="jeuxbtn">🎮 Pause ludique</button></div>` : ""}
       <div class="acctgrp"><button type="button" class="acctitem danger" id="logout">⎋ Se déconnecter</button></div>
     </div></details>`;
@@ -49,6 +49,7 @@ function renderMe() {
       telecharger(new Blob([JSON.stringify(j.export, null, 2)], { type: "application/json" }), "mes-donnees-lectures-ifsi-" + new Date().toISOString().slice(0, 10) + ".json");
     } catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Téléchargement impossible : " + e.message); }
   };
+  $("profilbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirProfil(); };
   $("notesbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirNotes(); };
   $("themebtn").onclick = basculerTheme;
   majLibelleTheme();

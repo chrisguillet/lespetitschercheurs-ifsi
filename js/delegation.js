@@ -1,0 +1,142 @@
+/* Administration déléguée : demandes de changement de nom, invitations personnelles, rôles par site et par promo.
+   Réservé aux administrateurs (général, de site ou de promo) : le serveur contrôle le périmètre de chaque action.
+   Script classique : partage la portée globale avec les autres fichiers de js/ (ordre de chargement : voir index.html). */
+"use strict";
+/* ---------- Administration déléguée ---------- */
+
+let demandesNom = [], invitationsAdmin = [], lienPersonnel = null;
+const ROLES_LIB = { admin: "Administrateur", admin_site: "Admin de site", admin_promo: "Admin de promo", formateur: "Formateur", etudiant: "Étudiant" };
+// Rôles que l'on peut attribuer, et type de périmètre attendu : e = établissement (site), p = promo.
+const ROLES_ATTRIBUABLES = [["admin_site", "e"], ["admin_promo", "p"], ["formateur", "e"], ["etudiant", "p"]];
+
+const adminDelegue = () => !!me && Array.isArray(me.roles) && me.roles.some(r => r.role === "admin_site" || r.role === "admin_promo");
+const gereStructure = () => isSuper() || adminDelegue();
+const sigDelegation = () => JSON.stringify([demandesNom, invitationsAdmin]);
+
+async function chargerDelegation() {
+  if (!gereStructure()) return;
+  try {
+    const [n, i] = await Promise.all([api("nom_demandes"), api("invitation_list")]);
+    demandesNom = n.demandes || [];
+    invitationsAdmin = i.invitations || [];
+  } catch (e) { if (e.code === "unauthorized") sessionError(e); }
+}
+
+// Périmètres proposés : [valeur, libellé, type] ; valeur « e:ID » (site) ou « p:ID » (promo).
+function perimetres() {
+  const l = [];
+  structureAdmin.forEach(e => {
+    l.push(["e:" + e.id, "Site · " + e.nom, "e"]);
+    (e.promos || []).forEach(p => l.push(["p:" + p.id, e.nom + " · " + p.nom, "p"]));
+  });
+  return l;
+}
+const libPerimetre = (etab, promo) => {
+  const v = promo ? "p:" + promo : etab ? "e:" + etab : "";
+  const t = perimetres().find(x => x[0] === v);
+  return t ? t[1] : "";
+};
+
+function blocNoms() {
+  const l = demandesNom;
+  return `<h3>✏️ Demandes de changement de nom (${l.length})</h3>` + (l.length
+    ? `<div class="wrap"><table class="adm"><thead><tr><th>Personne</th><th>Nouveau prénom et nom</th><th>Demandé le</th><th>Actions</th></tr></thead><tbody>${l.map(d =>
+      `<tr data-nid="${d.id}"><td>${esc(d.actuel)}</td><td><b>${esc(d.prenom)} ${esc(d.nom)}</b></td><td>${esc(fmtDT(d.cree_le))}</td>
+        <td><button type="button" class="btn sm" data-dn="1">Accepter</button> <button type="button" class="btn sm sec del" data-dn="0">Refuser</button></td></tr>`).join("")}</tbody></table></div>`
+    : '<div class="meta">Aucune demande en attente.</div>');
+}
+
+function blocInvitations() {
+  const per = perimetres();
+  const optsPromo = per.filter(x => x[2] === "p").map(x => `<option value="${esc(x[0])}">${esc(x[1])}</option>`).join("");
+  const libType = i => i.type === "personnel" ? "Personnelle" : i.type === "groupe" ? "Groupe" : "Promo";
+  const lib = i => i.actif ? "✅ active" : i.revoquee ? "révoquée" : i.usages >= i.max ? "épuisée" : "expirée";
+  const frais = lienPersonnel ? `<div class="note" role="status">✅ Invitation créée : copiez le lien maintenant, il ne sera plus affiché ensuite.
+      <div class="grow"><input readonly value="${esc(lienPersonnel)}" aria-label="Lien d’invitation" onfocus="this.select()" style="min-width:260px;flex:1"><button type="button" class="btn sm" data-ri="copier" data-code="${esc(lienPersonnel)}">Copier le lien</button></div></div>` : "";
+  return `<h3>✉️ Invitations</h3>${frais}
+    <div class="meta">Une invitation personnelle n’est utilisable que par l’adresse indiquée (connexion Google de cette adresse). Les invitations de promo se créent dans l’arbre ci-dessous.</div>
+    ${per.length ? `<div class="grow" data-inv="form"><input data-ri="email" type="email" placeholder="adresse e-mail" aria-label="Adresse e-mail de la personne invitée" style="min-width:200px">
+      <select data-ri="role" aria-label="Rôle"><option value="etudiant">Étudiant</option><option value="formateur">Formateur</option></select>
+      <select data-ri="perim" aria-label="Périmètre">${optsPromo}</select>
+      <label class="meta" style="margin:0">validité (jours)</label><input data-ri="jours" type="number" min="1" max="365" value="30" style="width:70px" aria-label="Validité en jours">
+      <button type="button" class="btn sm" data-ri="creer">Créer l’invitation</button></div>` : '<div class="meta">Aucune promo dans votre périmètre.</div>'}
+    ${invitationsAdmin.length ? `<div class="wrap"><table class="adm"><thead><tr><th>Type</th><th>Pour</th><th>Périmètre</th><th>Expire le</th><th>Utilisations</th><th>État</th><th></th></tr></thead><tbody>${invitationsAdmin.slice(0, 40).map(i => `<tr data-iid="${i.id}">
+      <td>${esc(libType(i))}</td><td>${esc(i.email || (ROLES_LIB[i.role] || i.role))}</td><td>${esc(libPerimetre(i.etablissement_id, i.promo_id) || (i.groupe_id ? "groupe" : ""))}</td>
+      <td>${esc(fmtDT(i.expire_le))}</td><td>${i.usages}/${i.max}</td><td>${lib(i)}</td><td>${i.actif ? '<button type="button" class="btn sm sec del" data-ri="revoquer">Révoquer</button>' : ""}</td></tr>`).join("")}</tbody></table></div>` : '<div class="meta">Aucune invitation créée.</div>'}`;
+}
+
+function blocRoles() {
+  const per = perimetres();
+  const actifs = acces.filter(a => a.statut === "actif");
+  const roleOpts = ROLES_ATTRIBUABLES.filter(([r]) => isSuper() || r !== "admin_site").map(([r, t]) => `<option value="${r}" data-t="${t}">${esc(ROLES_LIB[r])}</option>`).join("");
+  const chips = a => (a.attributions || []).map(r => `<span class="chip">${esc(ROLES_LIB[r.role] || r.role)}${r.perimetre ? ` <span class="meta">· ${esc(r.perimetre)}</span>` : ""}
+      <button type="button" class="btn sm sec del" style="padding:0 6px" data-rr="${r.id}" aria-label="Retirer ce rôle">✕</button></span>`).join(" ") || '<span class="meta">aucun rôle visible</span>';
+  return `<h3>🎭 Rôles par site et par promo</h3>
+    <div class="meta">Un administrateur de site gère son établissement ; un administrateur de promo, sa promo. Les rôles se cumulent. Vous ne voyez et ne modifiez que ceux de votre périmètre.</div>
+    ${actifs.length && per.length ? `<div class="grow" data-rol="form"><select data-rl="email" aria-label="Personne">${actifs.map(a => `<option value="${esc(a.email)}">${esc(a.prenom || a.email)} — ${esc(a.email)}</option>`).join("")}</select>
+      <select data-rl="role" aria-label="Rôle à attribuer">${roleOpts}</select>
+      <select data-rl="perim" aria-label="Périmètre">${per.map(x => `<option value="${esc(x[0])}" data-t="${x[2]}">${esc(x[1])}</option>`).join("")}</select>
+      <button type="button" class="btn sm" data-rl="ajouter">Attribuer</button></div>` : '<div class="meta">Aucune personne active ou aucun périmètre à gérer.</div>'}
+    ${actifs.length ? `<div class="wrap"><table class="adm"><thead><tr><th>Personne</th><th>Rôles</th></tr></thead><tbody>${actifs.map(a => `<tr><td>${esc(a.prenom || a.email)}<div class="meta">${esc(a.email)}</div></td><td>${chips(a)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+}
+
+// Le périmètre proposé suit le rôle choisi : site pour admin de site et formateur, promo pour admin de promo et étudiant.
+function ajusterPerimetres(form) {
+  const role = form.querySelector('[data-rl="role"]'), per = form.querySelector('[data-rl="perim"]');
+  if (!role || !per) return;
+  const t = role.selectedOptions[0] ? role.selectedOptions[0].dataset.t : "p";
+  let premier = null;
+  [...per.options].forEach(o => { const ok = o.dataset.t === t; o.hidden = !ok; o.disabled = !ok; if (ok && !premier) premier = o; });
+  if (per.selectedOptions[0] && per.selectedOptions[0].disabled && premier) per.value = premier.value;
+}
+
+async function lancerDelegation(b, appel, apres) {
+  b.disabled = true;
+  try {
+    const res = await enCours("Enregistrement…", appel);
+    if (apres) apres(res);
+    await loadAdmin();
+    renderAdmin();
+  } catch (err) {
+    b.disabled = false;
+    if (err.code === "unauthorized") sessionError(err); else alert("Action impossible : " + err.message);
+  }
+}
+
+$("adminbox").addEventListener("change", e => {
+  const f = e.target.closest('[data-rol="form"]');
+  if (f && e.target.dataset.rl === "role") ajusterPerimetres(f);
+});
+$("adminbox").addEventListener("click", async e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.dn !== undefined) {
+    const id = Number(b.closest("tr").dataset.nid);
+    return lancerDelegation(b, () => api("nom_decision", { data: { id, accepte: b.dataset.dn === "1" } }), res => { demandesNom = res.demandes || []; });
+  }
+  if (b.dataset.ri === "copier") { try { await navigator.clipboard.writeText(b.dataset.code); b.textContent = "Copié ✓"; } catch (x) { prompt("Lien d’invitation :", b.dataset.code); } return; }
+  if (b.dataset.ri === "revoquer") {
+    if (!confirm("Révoquer cette invitation ? Elle ne pourra plus être utilisée.")) return;
+    const id = Number(b.closest("tr").dataset.iid);
+    return lancerDelegation(b, () => api("invitation_revoke", { data: { id } }), res => { invitationsAdmin = res.invitations || []; });
+  }
+  if (b.dataset.ri === "creer") {
+    const f = b.closest('[data-inv="form"]'), v = k => f.querySelector(`[data-ri="${k}"]`).value;
+    const email = v("email").trim(), role = v("role"), perim = v("perim");
+    if (!email) return alert("Indiquez l’adresse e-mail de la personne invitée.");
+    const data = { type: "personnel", email, role, jours: Number(v("jours")) || 30 };
+    if (perim.startsWith("p:")) data.promo_id = perim.slice(2); else data.etablissement_id = perim.slice(2);
+    return lancerDelegation(b, () => api("invitation_create", { data }), res => { lienPersonnel = res.invitation ? res.invitation.lien : null; });
+  }
+  if (b.dataset.rl === "ajouter") {
+    const f = b.closest('[data-rol="form"]'), v = k => f.querySelector(`[data-rl="${k}"]`).value;
+    const role = v("role"), perim = v("perim");
+    const data = { email: v("email"), role };
+    if (perim.startsWith("p:")) data.promo_id = perim.slice(2); else data.etablissement_id = perim.slice(2);
+    return lancerDelegation(b, () => api("attribution_add", { data }), null);
+  }
+  if (b.dataset.rr !== undefined) {
+    if (!confirm("Retirer ce rôle ?")) return;
+    return lancerDelegation(b, () => api("attribution_remove", { data: { id: Number(b.dataset.rr) } }), null);
+  }
+});

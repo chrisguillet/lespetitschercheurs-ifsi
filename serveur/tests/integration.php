@@ -206,7 +206,10 @@ verifie('pseudo vidé : retour à « prénom + initiale »', (appel('simple@ci.t
 verifie('demande de nom identique refusée', $err(appel('simple@ci.test', 'nom_demande', ['data' => ['prenom' => 'paul', 'nom' => 'MARTIN']])) === 'invalid');
 verifie('demande de nom invalide refusée', $err(appel('simple@ci.test', 'nom_demande', ['data' => ['prenom' => 'Pa1', 'nom' => 'Martin']])) === 'invalid');
 verifie('demande de nom enregistrée', (appel('simple@ci.test', 'nom_demande', ['data' => ['prenom' => 'Paul-Henri', 'nom' => 'Martin']])['ok'] ?? false) === true);
-verifie('une seule demande en attente à la fois', $err(appel('simple@ci.test', 'nom_demande', ['data' => ['prenom' => 'Pierre', 'nom' => 'Martin']])) === 'invalid');
+$moi = appel('simple@ci.test', 'init');
+verifie('me : identité légale et pseudo fournis pour « Mon profil »', strtolower($moi['me']['identite']['prenom'] ?? '') === 'paul' && strtolower($moi['me']['identite']['nom'] ?? '') === 'martin' && array_key_exists('pseudo', $moi['me']['identite'] ?? []));
+verifie('me : demande de changement de nom en attente visible', ($moi['me']['demande_nom']['prenom'] ?? '') === 'Paul-Henri' && ($moi['me']['demande_nom']['nom'] ?? '') === 'Martin');
+verifie('une seule demande en attente à la fois',$err(appel('simple@ci.test', 'nom_demande', ['data' => ['prenom' => 'Pierre', 'nom' => 'Martin']])) === 'invalid');
 verifie('le prénom ne change pas avant validation', valeur($pdo, 'SELECT prenom FROM utilisateurs WHERE id = ?', [$simple]) === 'Paul');
 $r = appel('promo@ci.test', 'nom_demandes');
 verifie('admin de promo : voit la demande de sa promo', count($r['demandes'] ?? []) === 1 && ($r['demandes'][0]['prenom'] ?? '') === 'Paul-Henri');
