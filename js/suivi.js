@@ -80,6 +80,9 @@ function majAlertes() {
         <button type="button" data-alr="${esc(j.id)}" data-j="1">Demain</button><button type="button" data-alr="${esc(j.id)}" data-j="3">Dans 3 jours</button><button type="button" data-alr="${esc(j.id)}" data-j="7">Dans 1 semaine</button><button type="button" data-alr="${esc(j.id)}" data-j="x">Ne plus me le rappeler</button></div></details></div>`;
   zone.innerHTML = `<button type="button" class="alertbtn" id="alertbtn" aria-expanded="${alertePop}" aria-label="${l.length} alerte${l.length > 1 ? "s" : ""} du rétroplanning" title="Alertes du rétroplanning">🔔<span class="alertpt">${l.length}</span></button>
     ${alertePop ? `<div class="alertpop" role="dialog" aria-label="Alertes du rétroplanning"><div class="alhead"><b>Rétroplanning</b><button type="button" class="btn sm sec" data-alr-fermer="1" aria-label="Fermer">✕</button></div>${l.slice(0, 8).map(ligne).join("")}${l.length > 8 ? `<div class="meta">+ ${l.length - 8} autre(s)</div>` : ""}<div class="alfoot"><button type="button" class="btn sm" data-alr-voir="1">Voir le rétroplanning</button></div></div>` : ""}`;
+  // Téléphone : le panneau est fixe sous la cloche et prend la largeur de l’écran (voir style.css).
+  const pop = zone.querySelector(".alertpop");
+  if (pop && window.innerWidth <= 640) pop.style.top = Math.round(zone.getBoundingClientRect().bottom + 8) + "px";
 }
 $("alertbell")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
