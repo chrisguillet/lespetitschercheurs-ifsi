@@ -133,6 +133,8 @@ function majSections() {
   const adm = document.querySelector('.tab[data-t="admin"]');
   $("adminlbl").textContent = isSuper() ? "👥 Administration" : "👥 Membres et accès";
   adm.dataset.g = sectionDe("admin");
+  const gt = document.querySelector('.gtab[data-g="groupe"]');
+  if (gt) { const c = gt.querySelector(".gcount"); gt.firstChild.textContent = isSuper() ? "🗓️ Groupes " : "🗓️ Mon groupe "; if (c) gt.appendChild(c); }
   document.querySelectorAll("#subtabs .tab").forEach(b => b.classList.toggle("hors", sectionDe(b.dataset.t) !== section));
   const pages = ordreOnglets().filter(t => sectionDe(t) === section && ongletVisible(t));
   $("subtabs").classList.toggle("hidden", pages.length < 2);

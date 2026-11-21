@@ -38,11 +38,18 @@ function renderCtx() {
   ctxSig = sig;
   const nvG = nonLusDe(g, "groupe"), nvP = nonLusDe(g, "promo"), vf = votesAFaire(g);
   const pastille = n => n ? ` <span class="count">${n}</span>` : "";
-  const choix = groupes.length > 1
+  // Administrateur général : pas de « mon groupe ». Sous Lectures il choisit une promo (toute la promo est montrée) ; sous Groupes, le groupe à consulter.
+  const parPromo = isSuper() && avecVue;
+  const promos = []; groupes.forEach(x => { if (!promos.some(p => memePromo(p, x))) promos.push(x); });
+  const choix = parPromo
+    ? (promos.length > 1
+      ? `<label class="meta" for="ctxg" style="margin:0">Promo</label><select id="ctxg" aria-label="Choisir la promo">${promos.map(x => `<option value="${esc(x.id)}" ${memePromo(x, g) ? "selected" : ""}>${esc(x.etablissement)} · ${esc(x.promo)}</option>`).join("")}</select>`
+      : `<span class="meta">${esc(g.etablissement)} · ${esc(g.promo)}</span>`)
+    : groupes.length > 1
     ? `<label class="meta" for="ctxg" style="margin:0">Groupe</label><select id="ctxg" aria-label="Choisir le groupe">${groupes.map(x => { const n = nonLusDe(x, "groupe"); return `<option value="${esc(x.id)}" ${x.id === g.id ? "selected" : ""}>${esc(x.etablissement)} · ${esc(x.promo)} — ${esc(x.nom)}${n ? " (" + n + " non lu" + (n > 1 ? "s" : "") + ")" : ""}</option>`; }).join("")}</select>`
     : `<span class="meta">${esc(g.nom)}</span>`;
   bar.innerHTML = `${choix}
-    ${avecVue ? `<span class="seg"><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "" : "on"}" id="vg" aria-pressed="${ctx.vue !== "promo"}">👥 Mon groupe${ctx.vue === "promo" ? pastille(nvG) : ""}</button><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "on" : ""}" id="vp" aria-pressed="${ctx.vue === "promo"}">🌐 Toute la promo${ctx.vue === "promo" ? "" : pastille(nvP)}</button></span>` : ""}`;
+    ${avecVue && !isSuper() ? `<span class="seg"><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "" : "on"}" id="vg" aria-pressed="${ctx.vue !== "promo"}">👥 Mon groupe${ctx.vue === "promo" ? pastille(nvG) : ""}</button><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "on" : ""}" id="vp" aria-pressed="${ctx.vue === "promo"}">🌐 Toute la promo${ctx.vue === "promo" ? "" : pastille(nvP)}</button></span>` : ""}`;
   if ($("ctxg")) $("ctxg").onchange = e => changerContexte({ gid: e.target.value });
   if ($("vg")) { $("vg").onclick = () => changerContexte({ vue: "groupe" }); $("vp").onclick = () => changerContexte({ vue: "promo" }); }
 }

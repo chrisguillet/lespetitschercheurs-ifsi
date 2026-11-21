@@ -205,6 +205,7 @@ function deriver() {
   const g = groupeCourant();
   if (!g) { items = []; comments = []; return; }
   ctx.gid = g.id;
+  if (isSuper()) ctx.vue = "promo";   // l'administrateur voit toujours toute la promo
   // Vue promo : les fiches terminées de toute la promo, plus celles (même en cours) du groupe affiché, déjà visibles de ses membres.
   const monG = groupes.some(x => x.id === g.id);
   items = ctx.vue === "promo" ? itemsAll.filter(i => (i.portee === "promo" && memePromo(i, g)) || (monG && i.groupe_id === g.id)) : itemsAll.filter(i => i.groupe_id === g.id);
