@@ -648,3 +648,21 @@ input:focus,select:focus,textarea:focus{border-color:var(--pri);outline:0;box-sh
 h1,h2,h3{letter-spacing:-.01em}
 a{color:var(--pri)}
 ::selection{background:color-mix(in srgb,var(--pri) 30%,transparent)}
+
+/* Corrections : sélection visible dans l'en-tête, calendrier plus compact */
+header .btn.on,header .btn.sec.on{background:#fff;color:var(--pri);border-color:#fff;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+header .btn.on:hover,header .btn.sec.on:hover{background:#fff;color:var(--pri)}
+header .seg .btn:last-child{border-left:1px solid rgba(255,255,255,.38)}
+header .seg .btn.on:last-child{border-left-color:#fff}
+header .ctxbar,header .ctxbar .meta,header .ctxbar label{color:rgba(255,255,255,.92)}
+header .ctxbar select{background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.38)}
+header .ctxbar select option{color:#18203a;background:#fff}
+.ctxbar{padding:10px 0 12px}
+.rp{grid-template-columns:minmax(0,860px) minmax(250px,310px);justify-content:start}
+@media (max-width:900px){.rp{grid-template-columns:1fr}}
+.rc{min-height:68px;padding:3px 4px;gap:1px}
+.rcn{width:20px;height:20px;line-height:20px;font-size:11px}
+.rchip{font-size:10.5px;padding:0 4px;line-height:1.3}
+.rgrille{gap:3px}
+.rh{padding:2px 0}
+@media (max-width:640px){.rc{min-height:52px;padding:2px}.rchip{font-size:10px;padding:0 3px}}
