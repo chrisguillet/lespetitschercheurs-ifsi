@@ -20,7 +20,7 @@ function artRow(g) {
 // Ligne dépliée : tableau des fiches de lecture du document (mots-clés, concepts, objet, opinion, controverse, libre).
 function fichesRow(g) {
   const k = cleArt(g[0]);
-  return `<tr class="fiches-row ${artOuvert(k) ? "show" : ""}" data-fa="${esc(k)}"><td colspan="5"><div class="fichesbox"><table class="inner"><thead><tr><th>Fiche de lecture</th><th>Concepts</th><th>Objet / sujet</th><th>Opinion</th><th>Controverse</th><th>Libre</th></tr></thead>
+  return `<tr class="fiches-row ${artOuvert(k) ? "show" : ""}" data-fa="${esc(k)}"><td colspan="5"><div class="fichesbox"><table class="inner"><thead><tr><th>Fiche de lecture ${kwSwitch()}</th><th>Concepts</th><th>Objet / sujet</th><th>Opinion</th><th>Controverse</th><th>Libre</th></tr></thead>
    <tbody>${g.map(cells).join("")}</tbody></table></div></td></tr>`;
 }
 
@@ -67,7 +67,7 @@ function cardHtml(i) {
   return `<article class="cardc fiche ${prog} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
    <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}</div>
    <h3><span class="chev" aria-hidden="true"></span>Fiche de lecture de ${esc(i.etudiant)}</h3>
-   ${motsListe(i.mots).length ? `<div class="sect"><b>Mots-clés</b><div class="chipsc">${chips(i.mots)}</div></div>` : ""}${motsListe(i.kw).length ? `<div class="sect"><b>Keywords (EN)</b><div class="chipsc">${chips(i.kw)}</div></div>` : ""}
+   ${kwLang !== "en" && motsListe(i.mots).length ? `<div class="sect"><b>Mots-clés</b><div class="chipsc">${chips(i.mots)}</div></div>` : ""}${kwLang !== "fr" && motsListe(i.kw).length ? `<div class="sect"><b>Keywords (EN)</b><div class="chipsc">${chips(i.kw)}</div></div>` : ""}
    ${sect("Concepts en sciences infirmières", i.concepts)}${sect("Objet / sujet principal", i.objet)}${sect("Opinion de l’auteur", i.opinion)}${sect("Controverse", i.controverse)}${sect("Libre", i.libre)}
    <div class="acts">${actionsHtml(i)}</div>
   </article>`;
@@ -119,9 +119,22 @@ function commentsBox(i, scope) {
   return list + form;
 }
 
+// Mots-clés : en français par défaut ; le sélecteur FR / EN / les deux (mémorisé) change l'affichage partout.
+let kwLang = "fr";
+try { const v = localStorage.getItem("lpc_kwlang"); if (v === "en" || v === "both") kwLang = v; } catch (e) { /* ignoré */ }
+const kwSwitch = () => `<span class="kwsw" role="group" aria-label="Langue des mots-clés">${[["fr", "FR"], ["en", "EN"], ["both", "FR+EN"]].map(([v, l]) =>
+  `<button type="button" class="kwl ${kwLang === v ? "on" : ""}" data-kwl="${v}" aria-pressed="${kwLang === v}" title="Mots-clés : ${v === "fr" ? "français" : v === "en" ? "anglais" : "les deux"}">${l}</button>`).join("")}</span>`;
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-kwl]");
+  if (!b) return;
+  kwLang = b.dataset.kwl;
+  try { localStorage.setItem("lpc_kwlang", kwLang); } catch (x) { /* ignoré */ }
+  renderTable();
+});
+
 // Mots-clés et keywords : sous les boutons de la première colonne, pour laisser la largeur aux colonnes de texte.
 function motsCle(i) {
   const bloc = (t, v) => motsListe(v).length ? `<div class="kwbloc"><span class="kwt">${t}</span><div class="chipsc">${chips(v)}</div></div>` : "";
-  const html = bloc("Mots-clés", i.mots) + bloc("Keywords (EN)", i.kw);
+  const html = (kwLang !== "en" ? bloc("Mots-clés", i.mots) : "") + (kwLang !== "fr" ? bloc("Keywords (EN)", i.kw) : "");
   return html ? `<div class="kwzone">${html}</div>` : "";
 }

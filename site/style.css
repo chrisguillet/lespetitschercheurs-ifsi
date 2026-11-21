@@ -819,3 +819,7 @@ header .logo{display:inline-block;width:40px;height:40px;background:#fff url(qoc
 .kwt{display:block;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
 table.inner td.first{min-width:270px;max-width:320px}
 table.inner{min-width:900px}
+.kwsw{display:inline-flex;gap:2px;margin-left:8px;vertical-align:middle;text-transform:none;letter-spacing:0}
+.kwl{font:inherit;font-size:11px;padding:1px 7px;border:1px solid var(--bd);border-radius:999px;background:transparent;color:var(--tx);cursor:pointer}
+.kwl.on{background:var(--pri);border-color:var(--pri);color:#fff}
+:root[data-theme="dark"] .kwl.on{color:#0e1325}
