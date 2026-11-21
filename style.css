@@ -727,3 +727,7 @@ header .btn.on,header .btn.sec.on{color:var(--pri)}
 .fopt input{width:auto;margin:0}
 .fmode .btn{min-width:38px;padding:2px 8px}
 .fhelp{font-size:12px;line-height:1.35}
+.colpop.pop-filtres{display:grid;width:min(380px,92vw);max-height:min(75vh,640px);overflow-y:auto}
+.colpop.pop-filtres .fopt{display:inline-flex;font-size:13px;font-weight:400;color:var(--tx);margin:0}
+.colpop.pop-filtres .fopt input{width:auto;min-width:0}
+.colpop.pop-filtres .fmode .btn{width:auto}
