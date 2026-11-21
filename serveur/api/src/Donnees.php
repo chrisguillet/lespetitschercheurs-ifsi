@@ -172,7 +172,7 @@ final class Donnees
 
     /**
      * Établissements et promos que la personne administre. Les champs « code_* » gardent la forme de l'ancien code d'invitation
-     * de promo ; ils sont vides tant que les invitations (lot B) ne sont pas migrées.
+     * de promo, et décrivent la dernière invitation de promo valable (« code » reste vide : seul le hachage est conservé).
      *
      * @return list<array<string,mixed>>
      */
@@ -182,6 +182,14 @@ final class Donnees
         $pdo = $c->db->principale();
         $promosOk = $d->promosAdministrees();
         $etabsOk = $d->etablissementsVisibles();
+        // Invitation de promo la plus récente encore valable, par promo (le jeton lui-même n'est jamais relisible).
+        $codes = [];
+        $st = $pdo->prepare("SELECT promo_id, expire_le, max_usages, usages FROM invitations
+                             WHERE type = 'promo' AND revoque_le IS NULL AND expire_le > ? ORDER BY id DESC");
+        $st->execute([Temps::maintenant()]);
+        foreach ($st->fetchAll() as $r) {
+            $codes[(string) $r['promo_id']] ??= $r;
+        }
         $out = [];
         foreach ($pdo->query('SELECT id, nom FROM etablissements ORDER BY nom')->fetchAll() as $e) {
             if ($etabsOk !== null && !in_array((string) $e['id'], $etabsOk, true)) {
@@ -194,8 +202,12 @@ final class Donnees
                 if ($promosOk !== null && !in_array((string) $p['id'], $promosOk, true)) {
                     continue;
                 }
-                $promos[] = ['id' => (string) $p['id'], 'nom' => (string) $p['nom'], 'code' => '', 'code_expire' => '',
-                    'code_max' => 0, 'code_usages' => 0, 'code_actif' => false];
+                $code = $codes[(string) $p['id']] ?? null;
+                $promos[] = ['id' => (string) $p['id'], 'nom' => (string) $p['nom'], 'code' => '',
+                    'code_expire' => $code === null ? '' : Temps::iso((string) $code['expire_le']),
+                    'code_max' => $code === null ? 0 : (int) $code['max_usages'],
+                    'code_usages' => $code === null ? 0 : (int) $code['usages'],
+                    'code_actif' => $code !== null];
             }
             $out[] = ['id' => (string) $e['id'], 'nom' => (string) $e['nom'], 'promos' => $promos];
         }

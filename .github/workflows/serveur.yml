@@ -147,6 +147,21 @@ jobs:
             exit "$code"
           fi
 
+      # Secret facultatif MIGRATION_JETON : le jeton dont le SHA-256 figure dans config.php (migration_jeton_sha256).
+      # Les fichiers viennent d'être envoyés ; les migrations s'appliquent tout de suite après, une seule fois chacune.
+      - name: Appliquer les migrations SQL
+        if: steps.config.outputs.pret == 'true'
+        env:
+          MIGRATION_JETON: ${{ secrets.MIGRATION_JETON }}
+        run: |
+          if [ -z "$MIGRATION_JETON" ]; then
+            echo "::warning::Secret MIGRATION_JETON absent : migrations non appliquées automatiquement."
+            exit 0
+          fi
+          reponse=$(curl -sS -m 120 -X POST -H "X-Migration-Token: $MIGRATION_JETON" https://lespetitschercheurs.qocot.eu/api/migrer.php || true)
+          echo "$reponse"
+          echo "$reponse" | grep -q '"ok":true' || { echo "::error::Migration échouée : $reponse"; exit 1; }
+
       - name: Vérifier le service en ligne
         if: steps.config.outputs.pret == 'true'
         run: |

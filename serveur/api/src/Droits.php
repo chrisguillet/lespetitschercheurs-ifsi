@@ -120,6 +120,21 @@ final class Droits
         return array_values(array_unique($ids));
     }
 
+    /** Établissements dont la personne est admin de site : null = tous (admin global). @return list<string>|null */
+    public function etablissementsAdministres(): ?array
+    {
+        if ($this->estAdmin()) {
+            return null;
+        }
+        $ids = [];
+        foreach ($this->attributions() as $a) {
+            if ($a['role'] === 'admin_site' && $a['etablissement_id'] !== null) {
+                $ids[] = $a['etablissement_id'];
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
     /** Établissements dont la personne administre au moins une partie : null = tous. @return list<string>|null */
     public function etablissementsVisibles(): ?array
     {

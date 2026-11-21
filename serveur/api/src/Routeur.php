@@ -3,7 +3,10 @@ declare(strict_types=1);
 
 namespace Lpc;
 
+use Lpc\Actions\Acces;
+use Lpc\Actions\Invitations;
 use Lpc\Actions\Profil;
+use Lpc\Actions\Rgpd;
 use Lpc\Actions\Session;
 use Lpc\Actions\Structure;
 
@@ -29,8 +32,12 @@ final class Routeur
         'admin_list', 'admin_set', 'admin_erase', 'mes_donnees', 'admin_delete',
     ];
 
-    /** Actions apparues avec le nouveau serveur (changement de nom sur demande). */
-    public const NOUVELLES = ['nom_demande', 'nom_demandes', 'nom_decision'];
+    /** Actions apparues avec le nouveau serveur (changement de nom sur demande, invitations, rôles avec périmètre). */
+    public const NOUVELLES = [
+        'nom_demande', 'nom_demandes', 'nom_decision',
+        'invitation_create', 'invitation_list', 'invitation_revoke',
+        'attribution_add', 'attribution_remove',
+    ];
 
     /** @var array<string,callable(Contexte,array<string,mixed>):array<string,mixed>> */
     private array $implementees;
@@ -55,6 +62,21 @@ final class Routeur
             'group_create' => [Structure::class, 'groupCreate'],
             'group_update' => [Structure::class, 'groupUpdate'],
             'group_delete' => [Structure::class, 'groupDelete'],
+            'onboarding' => [Acces::class, 'onboarding'],
+            'onboarding_demande' => [Acces::class, 'onboardingDemande'],
+            'admin_list' => [Acces::class, 'adminList'],
+            'admin_set' => [Acces::class, 'adminSet'],
+            'admin_delete' => [Acces::class, 'adminDelete'],
+            'attribution_add' => [Acces::class, 'attributionAdd'],
+            'attribution_remove' => [Acces::class, 'attributionRemove'],
+            'join_code' => [Invitations::class, 'utiliser'],
+            'promo_code' => [Invitations::class, 'promoCode'],
+            'promo_code_revoke' => [Invitations::class, 'promoCodeRevoke'],
+            'invitation_create' => [Invitations::class, 'creer'],
+            'invitation_list' => [Invitations::class, 'liste'],
+            'invitation_revoke' => [Invitations::class, 'revoquer'],
+            'admin_erase' => [Rgpd::class, 'adminErase'],
+            'mes_donnees' => [Rgpd::class, 'mesDonnees'],
         ];
     }
 
