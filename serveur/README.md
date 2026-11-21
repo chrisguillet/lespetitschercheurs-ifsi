@@ -1,0 +1,80 @@
+# Serveur PHP + MariaDB (étape 1 : socle)
+
+Remplace l'ancien backend Apps Script (`apps-script/Code.gs`) sans changer l'interface : même `POST` JSON
+`{action, token, ...}`, mêmes noms d'actions, même enveloppe de réponse `{ok, ...}` / `{ok:false, error, message, extra}`,
+toujours en HTTP 200.
+
+## Où va quoi sur IONOS
+
+```
+/qocot/lespetitschercheurs/            racine web du site (lespetitschercheurs.qocot.eu)
+    index.html, style.css, js/ ...     le front
+    api/                               contenu de serveur/api/ (index.php, src/, .htaccess)
+/qocot/_prive/lespetitschercheurs/     jamais servi par le web
+    config.php                         secrets (modèle : serveur/config.exemple.php), hors dépôt
+    cache/                             clés publiques de Google (créé automatiquement)
+    fichiers/ sauvegardes/             à venir (étapes 3 et 5)
+```
+
+Le compte SFTP de déploiement (GitHub) est limité à `/qocot/lespetitschercheurs` : il ne peut pas toucher à `_prive/`.
+`config.php` se dépose donc avec l'accès administrateur (SFTP + SSH), une fois.
+
+## Mise en route
+
+1. Copier `config.exemple.php` en `config.php` **hors du dépôt**, le remplir, le déposer dans `/qocot/_prive/lespetitschercheurs/`.
+2. Créer les tables, en SSH : `php serveur/bin/migrer.php principale` puis `php serveur/bin/migrer.php chat`
+   (ou importer `sql/001_principal.sql` et `sql/002_chat.sql` dans phpMyAdmin, chacun dans sa base).
+3. Déposer `serveur/api/` dans `/qocot/lespetitschercheurs/api/` et, le temps du test, `serveur/diagnostic/diag.php`
+   sous `api/diag.php`. Ouvrir `https://lespetitschercheurs.qocot.eu/api/diag.php?cle=<diagnostic_cle>`, **puis supprimer `diag.php`**.
+4. Vérifier : `GET https://lespetitschercheurs.qocot.eu/api/` renvoie `{"ok":true,"service":"lespetitschercheurs"}`.
+
+## Tests
+
+- `php serveur/tests/run.php` : tests unitaires (jeton Google, identifiants, dates), sans base de données.
+- `LPC_CONFIG=... php serveur/tests/integration.php` : chemin complet d'une requête contre de vraies bases
+  (accès, rôles, droits, contraintes SQL, cascades). **Écrit dans les bases : réservé à des bases de test vides**, le script
+  refuse de s'exécuter si la base contient déjà des utilisateurs.
+- Le workflow `.github/workflows/serveur.yml` lance tout à chaque `push` touchant `serveur/` : syntaxe et tests unitaires
+  sous PHP 8.2, 8.3 et 8.4, puis schéma et intégration sur MariaDB 11.8 et MySQL 8.0 (portabilité du SQL).
+
+## Ce que fait l'étape 1
+
+| Élément | Fichier | Note |
+|---|---|---|
+| Point d'entrée, cycle d'une requête | `api/index.php`, `Application.php` | erreurs internes jamais exposées, journalisées |
+| Configuration hors web | `Config.php` | `CONSENT_VERSION = '2026-11-20'` reprise telle quelle |
+| Deux bases | `Db.php` | principale + chat, UTC, mode SQL strict |
+| Jeton Google vérifié localement | `GoogleJeton.php` | signature RS256, émetteur, audience, expiration, adresse vérifiée ; clés Google en cache disque (1 h) |
+| Accès | `Auth.php`, `Utilisateurs.php` | mêmes règles et messages que l'ancien `authentifier_` |
+| Droits | `Droits.php`, `Attributions.php` | rôles avec périmètre, hiérarchie admin > admin de site > admin de promo |
+| Routeur | `Routeur.php` | les 64 actions de l'ancien script sont listées ; seules `init` (partielle) et `bye` existent |
+| Schéma | `sql/001_principal.sql`, `002_chat.sql` | voir ci-dessous |
+
+Une action listée mais pas encore migrée répond `{ok:false, error:"not_implemented"}`.
+
+## Décisions de conception
+
+- **Rôles** : table `attributions` (personne, rôle, établissement ou promo). Un compte peut cumuler des rôles.
+  Pour l'interface actuelle, `me.role` reste `admin | etudiant | formateur` (admin global ; sinon étudiant s'il a une promo ;
+  sinon formateur). Le détail est dans `me.roles`. Les écrans d'un admin de site ou de promo viennent avec l'étape 2.
+- **Identité** : `prenom` et `nom` fixes (changement par `demandes_nom`, validé par un admin de promo ou plus),
+  `pseudo` libre. Le nom affiché est le pseudo s'il existe, sinon « prénom + initiale du nom ».
+- **Invitations** : table `invitations` (jeton stocké haché, expiration, usages max, révocation) ; le compte créé garde
+  `invitation_id` pour tracer l'origine. Une invitation personnelle est liée à une adresse précise.
+- **Visibilité** : `analyses.portee` vaut `groupe`, `promo`, `etablissement` ou `tout`. Seuls `groupe` et `promo` servent
+  aujourd'hui. Le partage entre promos et établissements reste fermé tant que RGPD et droit d'auteur ne sont pas tranchés.
+- **Quota** : `groupes.quota_octets` (NULL = pas de quota) et `fichiers.taille` permettent la somme par groupe.
+- **Présence et chat** : dans la base du chat (écritures fréquentes). Le chat passera par une interrogation régulière.
+- **Identifiants** : UUID conservés à l'import pour les lectures, articles, groupes… ; les personnes ont un identifiant
+  numérique et un `pid` identique à celui de l'ancien script (12 caractères dérivés de l'adresse).
+- **Administrateur** : l'adresse `admin_email` de `config.php` est créée au besoin, active, avec le rôle admin global.
+  Contrairement à l'ancien script, elle passe aussi par le consentement (elle a désormais une ligne en base).
+
+## Limites connues
+
+- Rien de tout ceci n'a encore été exécuté : sur le poste de développement, Windows (Smart App Control) bloque `php.exe`.
+  Les tests et la vérification de syntaxe passent par GitHub Actions ; le premier résultat est à lire après le premier `push`.
+- `init` ne renvoie que `me` : les sections de données arrivent à l'étape 2.
+- Les codes d'invitation de promo de l'ancien Sheet ne sont pas repris (le nouveau mécanisme utilise des liens).
+- Pas de `CHECK` SQL sur rôle et périmètre (MySQL 8 les refuse avec des clés étrangères en `CASCADE`) : la cohérence est
+  vérifiée par `Attributions.php`.

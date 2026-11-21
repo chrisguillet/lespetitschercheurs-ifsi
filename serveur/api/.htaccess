@@ -1,0 +1,4 @@
+Options -Indexes
+<FilesMatch "\.(sql|md|log|json|php\.dist)$">
+  Require all denied
+</FilesMatch>

@@ -1,0 +1,95 @@
+name: Serveur PHP
+
+on:
+  push:
+    paths:
+      - 'serveur/**'
+      - '.github/workflows/serveur.yml'
+  pull_request:
+    paths:
+      - 'serveur/**'
+      - '.github/workflows/serveur.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: PHP ${{ matrix.php }} (syntaxe et tests)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, openssl, pdo_mysql, curl
+          coverage: none
+      - name: Syntaxe de tous les fichiers PHP
+        run: find serveur -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Tests unitaires
+        run: php serveur/tests/run.php
+
+  base:
+    name: ${{ matrix.image }} (schéma et intégration)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: mariadb:11.8
+            args: ''
+          - image: mysql:8.0
+            args: '--default-authentication-plugin=mysql_native_password'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, openssl, pdo_mysql, curl
+          coverage: none
+
+      - name: Démarrer la base
+        run: |
+          docker run -d --name bdd -e MYSQL_ROOT_PASSWORD=ci -e MARIADB_ROOT_PASSWORD=ci -p 3306:3306 ${{ matrix.image }} ${{ matrix.args }}
+          for i in $(seq 1 60); do
+            php -r 'new PDO("mysql:host=127.0.0.1;port=3306", "root", "ci");' 2>/dev/null && exit 0
+            sleep 2
+          done
+          docker logs bdd
+          exit 1
+
+      - name: Configuration de test
+        run: |
+          mkdir -p "$RUNNER_TEMP/prive"
+          cat > "$RUNNER_TEMP/prive/config.php" <<'EOF'
+          <?php
+          return [
+              'google_client_id' => 'client-ci.apps.googleusercontent.com',
+              'admin_email' => 'admin@ci.test',
+              'origines' => [],
+              'db_principale' => ['hote' => '127.0.0.1', 'port' => 3306, 'nom' => 'principale', 'utilisateur' => 'root', 'mot_de_passe' => 'ci'],
+              'db_chat' => ['hote' => '127.0.0.1', 'port' => 3306, 'nom' => 'chat', 'utilisateur' => 'root', 'mot_de_passe' => 'ci'],
+          ];
+          EOF
+
+      - name: Créer les deux bases vides
+        run: php serveur/tests/preparer-ci.php "$RUNNER_TEMP/prive/config.php"
+
+      - name: Appliquer le schéma (principale et chat)
+        run: |
+          php serveur/bin/migrer.php principale "$RUNNER_TEMP/prive/config.php"
+          php serveur/bin/migrer.php chat "$RUNNER_TEMP/prive/config.php"
+
+      - name: Rejouer la migration (doit être sans effet)
+        run: |
+          php serveur/bin/migrer.php principale "$RUNNER_TEMP/prive/config.php" | tee /tmp/rejeu.txt
+          grep -q 'déjà appliqué' /tmp/rejeu.txt
+
+      - name: Tests d'intégration
+        env:
+          LPC_CONFIG: ${{ runner.temp }}/prive/config.php
+        run: php serveur/tests/integration.php
