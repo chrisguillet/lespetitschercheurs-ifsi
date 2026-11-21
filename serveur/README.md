@@ -19,6 +19,14 @@ toujours en HTTP 200.
 Le compte SFTP de déploiement (GitHub) est limité à `/qocot/lespetitschercheurs` : il ne peut pas toucher à `_prive/`.
 `config.php` se dépose donc avec l'accès administrateur (SFTP + SSH), une fois.
 
+## Déploiement automatique
+
+Un `push` sur `main` lance les tests, puis (s'ils sont verts) envoie `serveur/api/` en miroir sur IONOS par SFTP
+(`.github/workflows/serveur.yml`, job « Déploiement »). Il utilise le compte SFTP seul limité à `/qocot/lespetitschercheurs`,
+dont l'hôte, l'utilisateur et le mot de passe sont dans les secrets GitHub `SFTP_HOTE`, `SFTP_UTILISATEUR` et `SFTP_MOT_DE_PASSE`.
+Le miroir supprime du serveur ce qui n'est plus dans le dépôt. Restent manuels : `config.php` et les migrations SQL
+(scripts `deploiement/envoyer.ps1` et `deploiement/migrer.ps1`, avec le compte administrateur).
+
 ## Mise en route
 
 0. Raccourci : remplir `serveur/config.php` (ignoré par git), puis `.\serveur\deploiement\envoyer.ps1` fait les étapes 1 et 3
