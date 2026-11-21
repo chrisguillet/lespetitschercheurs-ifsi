@@ -112,7 +112,7 @@ $r = Purge::executer($config, $db, $maintenant, true);
 verifie('réel : deux comptes retirés', $r['mode'] === 'reel' && $r['retires'] === 2);
 verifie('réel : le compte et l\'adresse ont disparu', val($pdo, 'SELECT COUNT(*) FROM utilisateurs WHERE id IN (?, ?)', [$ancien, $attente]) == 0);
 verifie('réel : les autres comptes sont intacts', (int) val($pdo, 'SELECT COUNT(*) FROM utilisateurs') === 5);
-verifie('tronc commun : l\'article reste, sans auteur', val($pdo, 'SELECT titre FROM articles WHERE id = ?', [$art]) === 'Titre commun' && val($pdo, 'SELECT cree_par FROM articles WHERE id = ?', [$art]) === null);
+verifie('tronc commun : l\'article reste, et passe à l\'autrice de l\'autre fiche', val($pdo, 'SELECT titre FROM articles WHERE id = ?', [$art]) === 'Titre commun' && val($pdo, 'SELECT cree_par FROM articles WHERE id = ?', [$art]) == $recent);
 verifie('tronc commun : la fiche terminée reste, anonyme', val($pdo, 'SELECT libre FROM analyses WHERE id = ?', [$fin]) === 'Analyse terminée' && val($pdo, 'SELECT utilisateur_id FROM analyses WHERE id = ?', [$fin]) === null);
 verifie('tronc commun : « modifié par » est anonymisé', val($pdo, 'SELECT modifie_par FROM analyses WHERE id = ?', [$fin]) === null);
 verifie('tronc commun : le commentaire reste, sans auteur', val($pdo, 'SELECT texte FROM commentaires WHERE id = ?', [$com]) === 'Commentaire de l\'ancien' && val($pdo, 'SELECT auteur_id FROM commentaires WHERE id = ?', [$com]) === null);
