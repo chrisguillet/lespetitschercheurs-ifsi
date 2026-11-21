@@ -46,7 +46,7 @@ function accesRow(a) {
     : a.statut === "en_attente"
       ? `<button class="btn sm" data-as="actif">Valider</button> <button class="btn sm sec del" data-as="refuse">Refuser</button>`
       : `<button class="btn sm" data-as="actif">Réactiver</button>`;
-  const suppr = sup ? ` <button class="btn sm sec del" data-del="1" title="Retire l’accès ; ses fiches et commentaires restent dans le Sheet">🗑 Supprimer l’accès</button> <button class="btn sm sec del" data-erase="1" title="Droit à l’effacement : supprime l’accès et les données de cette personne ; ses contributions sont anonymisées ou supprimées, au choix">🧹 Effacer ses données</button>` : "";
+  const suppr = sup ? ` <button class="btn sm sec del" data-del="1" title="Retire l’accès ; ses fiches et commentaires restent dans la base de données">🗑 Supprimer l’accès</button> <button class="btn sm sec del" data-erase="1" title="Droit à l’effacement : supprime l’accès et les données de cette personne ; ses contributions sont anonymisées ou supprimées, au choix">🧹 Effacer ses données</button>` : "";
   const adresse = sup ? `<td><input data-f="nouvel_email" type="email" value="${k}"></td>` : `<td>${k}</td>`;
   const couleur = sup ? `<td><input data-f="couleur" type="color" value="${esc(a.couleur)}" style="min-width:48px;padding:2px"></td>` : "";
   return `<tr data-k="${k}">${adresse}${dates}<td><input data-f="prenom" maxlength="60" value="${esc(a.prenom)}" placeholder="Prénom">${dem && (dem.promo || dem.role) ? `<div class="meta">Demande : ${esc(dem.role === "etudiant" ? "étudiant" : dem.role === "formateur" ? "formateur" : "")}${dem.promo ? " · " + esc(dem.promo) : ""}</div>` : ""}</td>${couleur}
@@ -86,7 +86,7 @@ async function supprimerUtilisateur(b) {
   const a = acces.find(x => x.email === email);
   if (!a) return;
   const n = a.nb_lectures || 0;
-  const garde = n ? `\n\nSes ${n} lecture${n > 1 ? "s" : ""} et ses commentaires sont conservés dans le Google Sheet mais ne seront plus affichés (ses commentaires sur les lectures des autres apparaîtront sous « Utilisateur supprimé »).` : "";
+  const garde = n ? `\n\nSes ${n} lecture${n > 1 ? "s" : ""} et ses commentaires sont conservés dans la base de données mais ne seront plus affichés (ses commentaires sur les lectures des autres apparaîtront sous « Utilisateur supprimé »).` : "";
   if (!confirm(`Supprimer ${a.prenom || email} (${email}) ? Cette personne n’aura plus accès à l’application.${garde}`)) return;
   b.disabled = true;
   try {

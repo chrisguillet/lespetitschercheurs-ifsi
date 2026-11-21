@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace Lpc;
 
 /**
- * Chat de groupe et de promo, dans la base du chat. Deux salons par groupe : « groupe » (ses membres et ses administrateurs) et
+ * Chat de groupe et de promo, dans la base du chat. Deux salons par groupe : « groupe » (ses membres seulement : les administrateurs n'y ont pas accès) et
  * « promo » (toutes les personnes qui lisent la promo). Limites : 4 messages par personne sur une minute glissante, 500 caractères,
  * 1000 messages par salon de groupe et 5000 par salon de promo, 7 jours de conservation. Interrogation régulière côté client (pas de temps réel).
  */
@@ -115,7 +115,8 @@ final class Chat
         }
         $d = $c->droits();
         $cible = substr((string) $m['canal'], 2);
-        $admin = $d->estAdmin() || (str_starts_with((string) $m['canal'], 'g:') ? $d->peutAdministrerGroupe($cible) : $d->peutAdministrerPromo($cible));
+        // Salon de groupe : réservé à ses membres, les administrateurs n'y modèrent pas. Salon de promo : les administrateurs de la promo modèrent.
+        $admin = !str_starts_with((string) $m['canal'], 'g:') && ($d->estAdmin() || $d->peutAdministrerPromo($cible));
         if ((int) $m['auteur_id'] !== $c->user->id && !$admin) {
             throw new Erreur('forbidden', 'Vous ne pouvez retirer que vos messages');
         }
@@ -138,7 +139,7 @@ final class Chat
             }
             return 'p:' . $promo;
         }
-        if (!Membres::estMembre($c->db->principale(), $gid, (int) $c->user->id) && !$c->droits()->peutAdministrerGroupe($gid)) {
+        if (!Membres::estMembre($c->db->principale(), $gid, (int) $c->user->id)) {
             throw new Erreur('forbidden', 'Vous ne faites pas partie de ce groupe');
         }
         return 'g:' . $gid;

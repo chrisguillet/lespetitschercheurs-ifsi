@@ -10,7 +10,12 @@ const EMOJIS = ["😀", "😃", "😄", "😁", "😅", "😂", "🤣", "🙂", 
 
 // Fonctionnalité masquée par défaut : on l'active avec « CHAT_ACTIF: true » dans config.js (le serveur, lui, répond toujours aux actions chat_*).
 const chatActif = () => !!(CFG && CFG.CHAT_ACTIF);
-const chatGroupe = () => (me && chatActif() ? groupeCourant() : null);
+// Le chat n'est proposé qu'aux membres du groupe : un administrateur qui consulte un groupe sans en faire partie ne le voit pas.
+const chatGroupe = () => {
+  if (!me || !chatActif()) return null;
+  const g = groupeCourant();
+  return g && (g.membres || []).some(m => m.moi) ? g : null;
+};
 const chatCleVu = t => { const g = chatGroupe(); return g ? "lydia_chat_vu:" + (t === "promo" ? "p:" + g.etablissement + "|" + g.promo : "g:" + g.id) : ""; };
 const chatVu = () => { const o = {}; ["groupe", "promo"].forEach(t => { try { o[t] = localStorage.getItem(chatCleVu(t)) || ""; } catch (e) { o[t] = ""; } }); return o; };
 function chatMarquerVu() {

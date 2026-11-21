@@ -243,7 +243,7 @@ function blocGroupes() {
     </details>`;
   return `<h3>🏫 Établissements, promos et groupes</h3>
     ${stockage ? `<div class="meta">📎 Fichiers déposés : ${stockage.nb} (${esc(fmtTaille(stockage.octets))}) dans le Drive du propriétaire du script.</div>` : ""}
-    <div class="note">Établissement → promo → groupe. Un étudiant n’est que dans un groupe par promo ; un formateur peut être rattaché à plusieurs groupes (il ne voit que ceux-là, et les fiches de lecture terminées de leur promo). Renommer un établissement ou une promo met à jour tous ses groupes. On ne supprime un établissement qu’une fois ses promos supprimées, une promo qu’une fois ses groupes supprimés. Supprimer un groupe conserve ses fiches dans le Google Sheet mais ne les affiche plus.</div>
+    <div class="note">Établissement → promo → groupe. Un étudiant n’est que dans un groupe par promo ; un formateur peut être rattaché à plusieurs groupes (il ne voit que ceux-là, et les fiches de lecture terminées de leur promo). Renommer un établissement ou une promo met à jour tous ses groupes. On ne supprime un établissement qu’une fois ses promos supprimées, une promo qu’une fois ses groupes supprimés. Supprimer un groupe conserve ses fiches dans la base de données mais ne les affiche plus.</div>
     <div class="grow" style="margin:8px 0"><input id="ne_nom" maxlength="60" placeholder="Nouvel établissement (ex. IFSI Saint-Nazaire)"><button type="button" class="btn sm" data-s="etab_create">＋ Ajouter l’établissement</button></div>
     ${structureAdmin.map(etabBloc).join("") || '<div class="meta">Aucun établissement pour l’instant.</div>'}`;
 }
@@ -306,7 +306,7 @@ async function actionGroupeAdmin(b) {
     appel = () => api("group_update", { data });
   } else if (a === "del") {
     const g = groupesAdmin.find(x => x.id === gid);
-    if (!g || !confirm(`Supprimer le groupe « ${g.nom} » ?\n\nSes membres sont détachés. Ses fiches et commentaires restent dans le Google Sheet mais ne sont plus affichés.`)) return;
+    if (!g || !confirm(`Supprimer le groupe « ${g.nom} » ?\n\nSes membres sont détachés. Ses fiches et commentaires restent dans la base de données mais ne sont plus affichés.`)) return;
     appel = () => api("group_delete", { id: gid });
   } else if (a === "add") {
     const email = val("[data-gadd]");

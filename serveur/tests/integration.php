@@ -1123,7 +1123,8 @@ verifie('chat : « vu » dans le futur : plus de nouveaux', (appel('a2@ci.test',
 verifie('chat : salon de groupe fermé aux autres', $err(appel('a6@ci.test', 'chat_list', $salon('groupe'))) === 'forbidden' && $err(appel('a4@ci.test', 'chat_list', $salon('groupe'))) === 'forbidden'
     && $err(appel('formc@ci.test', 'chat_list', $salon('groupe'))) === 'forbidden');
 verifie('chat : le formateur du groupe et l\'admin de la promo y accèdent', (appel('forma@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'Bonne séance'])['ok'] ?? false) === true
-    && (appel('ap@ci.test', 'chat_list', $salon('groupe'))['ok'] ?? false) === true);
+    && $err(appel('ap@ci.test', 'chat_list', $salon('groupe'))) === 'forbidden' && $err(appel($admin, 'chat_list', $salon('groupe'))) === 'forbidden'
+    && $err(appel('ap@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'Je ne suis pas membre'])) === 'forbidden');
 appel('a1@ci.test', 'chat_send', $salon('promo') + ['texte' => 'Pour toute la promo']);
 verifie('chat : salon de promo lu par les étudiantes de la promo, même sans groupe', count(appel('a6@ci.test', 'chat_list', $salon('promo'))['messages'] ?? []) === 1
     && count(appel('a4@ci.test', 'chat_list', $salon('promo'))['messages'] ?? []) === 1 && count(appel('formc@ci.test', 'chat_list', $salon('promo'))['messages'] ?? []) === 1);

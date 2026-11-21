@@ -58,7 +58,7 @@ function renderNListe() {
 }
 function renderNEdit() {
   const d = N.d, box = $("nedit");
-  if (!d) { box.innerHTML = '<div class="note">Choisissez une note ou créez-en une. 🔒 Vos notes sont invisibles des autres membres, des formateurs et de l’application ; seul l’administrateur du Google Sheet pourrait techniquement les lire. 🩺 N’y mettez aucune information permettant d’identifier un patient.</div>'; return; }
+  if (!d) { box.innerHTML = '<div class="note">Choisissez une note ou créez-en une. 🔒 Vos notes sont invisibles des autres membres, des formateurs et de l’application ; seules les personnes qui administrent techniquement la base de données pourraient les lire. 🩺 N’y mettez aucune information permettant d’identifier un patient.</div>'; return; }
   const liens = d.liens.map(id => { const it = ficheLiee(id);
     return `<span class="nlien">${it ? `<button type="button" class="btn sm sec" data-ngo="${esc(id)}" title="Ouvrir cette fiche dans le tableau">📄 ${esc(it.titre)} <span class="meta">${esc(it.etudiant)}</span></button>` : '<span class="meta">📄 fiche indisponible</span>'}<button type="button" class="btn sm sec" data-nunlink="${esc(id)}" aria-label="Retirer le lien">✕</button></span>`; }).join("");
   const proposees = toutesEtiquettes().filter(t => !d.etiquettes.includes(t));
