@@ -416,6 +416,17 @@ final class Lectures
                 Fichiers::retirerFichiersArticle($c, $pdo, (string) $a['article_id']);
                 $pdo->prepare("DELETE FROM historique WHERE cible = 'article' AND cible_id = ?")->execute([$a['article_id']]);
                 $pdo->prepare('DELETE FROM articles WHERE id = ?')->execute([$a['article_id']]);
+            } else {
+                // L'article reste : si c'était son créateur, la propriété passe à l'autrice de la plus ancienne fiche restante.
+                $st = $pdo->prepare('SELECT cree_par FROM articles WHERE id = ?');
+                $st->execute([$a['article_id']]);
+                $createur = $st->fetchColumn();
+                if ($createur !== false && $createur !== null && (int) $createur === $uid) {
+                    $st = $pdo->prepare('SELECT utilisateur_id FROM analyses WHERE article_id = ? AND utilisateur_id IS NOT NULL ORDER BY ajoute, id LIMIT 1');
+                    $st->execute([$a['article_id']]);
+                    $suivante = $st->fetchColumn();
+                    $pdo->prepare('UPDATE articles SET cree_par = ? WHERE id = ?')->execute([$suivante === false ? null : (int) $suivante, $a['article_id']]);
+                }
             }
             $pdo->commit();
         } catch (\Throwable $e) {

@@ -986,6 +986,7 @@ verifie('fiche supprimée : ses commentaires, « lus » et historique aussi', (i
     && (int) valeur($pdo, 'SELECT COUNT(*) FROM commentaires_lus WHERE commentaire_id = ?', [$idc4]) === 0
     && (int) valeur($pdo, "SELECT COUNT(*) FROM historique WHERE cible = 'analyse' AND cible_id = ?", [$f1]) === 0);
 verifie('article conservé tant qu\'une fiche l\'utilise', (int) valeur($pdo, 'SELECT COUNT(*) FROM articles WHERE id = ?', [$art]) === 1);
+verifie('article : la propriété passe à l\'autrice de la fiche restante', (int) valeur($pdo, 'SELECT COUNT(*) FROM articles ar WHERE ar.id = ? AND ar.cree_par IS NOT NULL AND ar.cree_par <> ? AND EXISTS (SELECT 1 FROM analyses an WHERE an.article_id = ar.id AND an.utilisateur_id = ar.cree_par)', [$art, $B['a1']]) === 1);
 appel('a6@ci.test', 'delete', ['id' => $f6]);
 verifie('article supprimé avec sa dernière fiche, et son historique et ses propositions', (int) valeur($pdo, 'SELECT COUNT(*) FROM articles WHERE id = ?', [$art]) === 0
     && (int) valeur($pdo, "SELECT COUNT(*) FROM historique WHERE cible = 'article' AND cible_id = ?", [$art]) === 0
