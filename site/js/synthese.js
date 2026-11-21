@@ -33,7 +33,7 @@ function paysDe(texte) {
   return t.trim() ? PAYS.filter(p => p.re.test(t)) : [];
 }
 
-function nuageMotsCles(listes) {
+function nuageMotsCles(listes, imprimable) {
   const c = compter(listes.flatMap(l => l), 60);
   if (!c.length) return "";
   const max = Math.max(...c.map(e => e[1])), min = Math.min(...c.map(e => e[1]));
@@ -42,7 +42,7 @@ function nuageMotsCles(listes) {
     const t = max === min ? 0.5 : Math.sqrt((n - min) / (max - min));
     return `<button type="button" class="nuagemot" data-nuage="${esc(mot)}" style="font-size:${(13 + t * 23).toFixed(1)}px;color:${COULEURS[(i * 7 + mot.length) % COULEURS.length]};opacity:${(0.6 + t * 0.4).toFixed(2)}" title="${n} fiche${n > 1 ? "s" : ""} : cliquer pour filtrer le tableau">${esc(mot)}</button>`;
   }).join(" ");
-  return `<div class="card nuage"><h3>Mots-clés les plus fréquents <span class="meta">(plus c’est gros, plus c’est fréquent)</span> ${kwSwitch()}</h3><div class="nuagebox">${mots}</div></div>`;
+  return `<div class="card nuage"><h3>Mots-clés les plus fréquents <span class="meta">(plus c’est gros, plus c’est fréquent)</span> ${imprimable ? "" : kwSwitch()}</h3><div class="nuagebox">${mots}</div></div>`;
 }
 
 function carteNationalites(arts) {
@@ -65,31 +65,120 @@ function carteNationalites(arts) {
     <div>${legende}</div>${non}</div>`;
 }
 
-function renderSynth() {
-  if (!items.length) { $("synthbox").innerHTML = '<div class="card empty">Pas encore de données à synthétiser.</div>'; return; }
-  const fin = items.filter(i => i.statut === "Terminée").length;
-  const annees = new Map();
+// ----- Avancement : fiches terminées / en cours / à lire, par groupe (vue promo) ou par étudiant (vue groupe) -----
+const STAT_COULEURS = { "Terminée": "#16a34a", "En cours": "#d97706", "À lire": "#64748b" };
+function avancementHtml() {
+  const parGroupe = ctx.vue === "promo";
+  const unites = new Map();
+  items.forEach(i => {
+    const k = parGroupe ? (i.groupe || "Sans groupe") : i.etudiant;
+    const u = unites.get(k) || { "Terminée": 0, "En cours": 0, "À lire": 0, total: 0, couleur: i.couleur };
+    u[i.statut] = (u[i.statut] || 0) + 1; u.total++; unites.set(k, u);
+  });
+  if (!unites.size) return { html: "", lignes: [] };
+  const l = [...unites.entries()].sort((a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0], "fr"));
+  const max = l[0][1].total;
+  const html = `<div class="card avanc"><h3>Avancement ${parGroupe ? "par groupe" : "par étudiant"} <span class="meta">(fiches terminées, en cours, à lire)</span></h3>
+    ${l.map(([nom, u]) => `<div class="bar avrow"><span class="bl" title="${esc(nom)}">${esc(nom)}</span><div class="bt"><div class="avstack" style="width:${Math.round(u.total / max * 100)}%">${Object.keys(STAT_COULEURS).filter(s => u[s]).map(s => `<span style="flex:${u[s]};background:${STAT_COULEURS[s]}" title="${esc(s)} : ${u[s]}"></span>`).join("")}</div></div><span class="bn">${u.total}</span></div>`).join("")}
+    <div class="avleg">${Object.keys(STAT_COULEURS).map(s => `<span><i style="background:${STAT_COULEURS[s]}"></i>${esc(s)}</span>`).join("")}</div></div>`;
+  return { html, lignes: l.flatMap(([nom, u]) => Object.keys(STAT_COULEURS).map(s => ["Avancement", nom + " · " + s, u[s] || 0])) };
+}
+
+// ----- Chronologie : fiches saisies par semaine (26 dernières semaines au plus) -----
+function chronologieHtml() {
+  const lundi = d => { const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7)); return x.getTime(); };
+  const dates = items.map(i => Date.parse(i.ajoute)).filter(t => t > 0);
+  if (!dates.length) return { html: "", lignes: [] };
+  const sem = new Map();
+  dates.forEach(t => { const k = lundi(new Date(t)); sem.set(k, (sem.get(k) || 0) + 1); });
+  const fin = Math.max(...sem.keys()), SEM = 7 * 86400000;
+  const debut = Math.max(Math.min(...sem.keys()), fin - 25 * SEM);
+  const cols = [];
+  for (let t = debut; t <= fin; t += SEM) cols.push([t, sem.get(t) || 0]);
+  const max = Math.max(...cols.map(c => c[1])), total = cols.reduce((n, c) => n + c[1], 0);
+  const lib = t => { const d = new Date(t); return String(d.getUTCDate()).padStart(2, "0") + "/" + String(d.getUTCMonth() + 1).padStart(2, "0"); };
+  const pas = cols.length > 18 ? 4 : cols.length > 9 ? 2 : 1;
+  const html = `<div class="card chrono"><h3>Fiches saisies par semaine <span class="meta">(${total} sur ${cols.length} semaine${cols.length > 1 ? "s" : ""})</span></h3>
+    <div class="chbars">${cols.map(([t, n], i) => `<div class="chcol" title="Semaine du ${lib(t)} : ${n} fiche${n > 1 ? "s" : ""}"><span class="chn">${n || ""}</span><div class="chbw"><div class="chbar" style="height:${n ? Math.max(4, Math.round(n / max * 100)) : 0}%"></div></div><span class="chl">${i % pas === 0 ? lib(t) : ""}</span></div>`).join("")}</div></div>`;
+  return { html, lignes: cols.map(([t, n]) => ["Chronologie", "Semaine du " + lib(t), n]) };
+}
+
+// ----- Mots-clés qui vont ensemble : paires présentes dans une même fiche -----
+function pairesMotsCles(listes) {
+  const paires = new Map(), noms = new Map();
+  listes.forEach(l => {
+    const cles = [...new Map(l.map(m => [cleTitre(m), m])).entries()].filter(([k]) => k);
+    cles.forEach(([k, m]) => { if (!noms.has(k)) noms.set(k, m); });
+    for (let a = 0; a < cles.length; a++) for (let b = a + 1; b < cles.length; b++) {
+      const [x, y] = [cles[a][0], cles[b][0]].sort(), id = x + "\u0001" + y;
+      paires.set(id, (paires.get(id) || 0) + 1);
+    }
+  });
+  const top = [...paires.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, n]) => { const [x, y] = id.split("\u0001"); return [noms.get(x), noms.get(y), n]; });
+  if (!top.length) return { html: "", lignes: [] };
+  const max = top[0][2];
+  const html = `<div class="card"><h3>Mots-clés qui vont ensemble <span class="meta">(cités dans les mêmes fiches ; cliquer pour filtrer le tableau)</span></h3>${top.map(([a, b, n]) =>
+    `<div class="bar"><button type="button" class="bl lnk" data-paire="${esc(a)}|${esc(b)}" title="Filtrer sur ces deux mots-clés (les deux à la fois)">${esc(a)} + ${esc(b)}</button><div class="bt"><div class="bf" style="width:${Math.round(n / max * 100)}%;background:var(--pri)"></div></div><span class="bn">${n}</span></div>`).join("")}</div>`;
+  return { html, lignes: top.map(([a, b, n]) => ["Mots-clés associés", a + " + " + b, n]) };
+}
+
+// ----- Assemblage -----
+function donneesSynthese(imprimable) {
   const arts = parArticle(items);
+  const annees = new Map();
   arts.forEach(i => { const a = (/^(\d{4})/.exec(i.parution || "") || [])[1]; if (a) annees.set(a, (annees.get(a) || 0) + 1); });
   const parAnnee = [...annees.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12);
   const kpi = (n, t) => `<div class="kpi"><b>${n}</b>${t}</div>`;
-  // Mots-clés selon la langue choisie dans le tableau (FR par défaut).
   const motsDe = i => (kwLang !== "en" ? motsListe(i.mots) : []).concat(kwLang !== "fr" ? motsListe(i.kw) : []);
-  const parEtudiant = ctx.vue === "promo" ? "" : barres("Lectures par étudiant", students().map(s => [s.prenom, items.filter(i => i.etudiant === s.prenom).length, s.couleur]), "var(--pri)");
-  $("synthbox").innerHTML = `<div class="kpis">${kpi(items.length, "lectures")}${kpi(fin, "terminées")}${kpi(items.filter(i => i.statut === "En cours").length, "en cours")}${items.some(i => i.statut === "À lire") ? kpi(items.filter(i => i.statut === "À lire").length, "à lire") : ""}${kpi(comments.length, "commentaires")}</div>
-   ${nuageMotsCles(items.map(motsDe))}
+  const listesMots = items.map(motsDe);
+  const av = avancementHtml(), ch = chronologieHtml(), pa = pairesMotsCles(listesMots);
+  const html = `<div class="kpis">${kpi(items.length, "lectures")}${kpi(items.filter(i => i.statut === "Terminée").length, "terminées")}${kpi(items.filter(i => i.statut === "En cours").length, "en cours")}${items.some(i => i.statut === "À lire") ? kpi(items.filter(i => i.statut === "À lire").length, "à lire") : ""}${kpi(comments.length, "commentaires")}</div>
+   ${nuageMotsCles(listesMots, imprimable)}
    ${carteNationalites(arts)}
+   ${av.html}${ch.html}${pa.html}
    <div class="synth">
-   ${parEtudiant}
    ${barres("Types d’articles", compter(arts.map(i => i.type), 8), "var(--pri)")}
    ${barres("Qualité des auteurs (plusieurs possibles par lecture)", compter(arts.flatMap(i => metiersListe(i.qualite)), 8), "var(--pri)")}
    ${barres("Années de parution", parAnnee, "var(--pri)")}
    ${barres("Revues et sources les plus citées", compter(arts.map(i => i.source), 8), "var(--pri)")}
    </div>`;
+  const lignes = [["Rubrique", "Élément", "Nombre"], ["Chiffres clés", "Lectures", items.length], ["Chiffres clés", "Terminées", items.filter(i => i.statut === "Terminée").length], ["Chiffres clés", "Commentaires", comments.length]]
+    .concat(compter(listesMots.flatMap(l => l), 60).map(([m, n]) => ["Mots-clés", m, n]))
+    .concat(compter(arts.map(i => i.nation), 60).map(([m, n]) => ["Nationalité des auteurs", m, n]))
+    .concat(compter(arts.map(i => i.type), 20).map(([m, n]) => ["Types d’articles", m, n]))
+    .concat(compter(arts.flatMap(i => metiersListe(i.qualite)), 20).map(([m, n]) => ["Qualité des auteurs", m, n]))
+    .concat(parAnnee.map(([m, n]) => ["Années de parution", m, n]), compter(arts.map(i => i.source), 20).map(([m, n]) => ["Revues et sources", m, n]), av.lignes, ch.lignes, pa.lignes);
+  return { html, lignes };
 }
 
-// Un mot du nuage : on retourne au tableau, filtré sur ce mot-clé.
+function renderSynth() {
+  if (!items.length) { $("synthbox").innerHTML = '<div class="card empty">Pas encore de données à synthétiser.</div>'; return; }
+  $("synthbox").innerHTML = `<div class="grow" style="margin-bottom:10px"><button type="button" class="btn sm sec" id="synthexp" title="Aperçu de la synthèse, puis impression ou enregistrement en PDF">🖨 Aperçu / PDF</button><button type="button" class="btn sm sec" id="synthcsv" title="Les chiffres de cette synthèse, pour un tableur">Chiffres (CSV)</button></div>` + donneesSynthese(false).html;
+}
+
+// Aperçu imprimable (même fenêtre que le compte rendu) : thème clair, sans boutons.
+function synthesePage() {
+  const g = groupeCourant() || {};
+  const portee = ctx.vue === "promo" ? "toute la promo" : "groupe « " + (g.nom || "") + " »";
+  return `<article class="crpage crsynth"><div class="crhead"><div class="crsup">${esc([g.etablissement, g.promo].filter(Boolean).join(" · "))}</div>
+    <h2>Synthèse des lectures</h2><div class="crsous">${esc(portee)} · édité le ${esc(fmtD(new Date().toISOString()))}</div></div>${donneesSynthese(true).html}</article>`;
+}
+function exporterSynthesesCsv() {
+  telecharger(new Blob(["﻿" + versCsv(donneesSynthese(true).lignes[0], donneesSynthese(true).lignes.slice(1))], { type: "text/csv;charset=utf-8" }), "synthese-lectures-" + stamp() + ".csv");
+}
+
 $("synthbox").addEventListener("click", e => {
+  if (e.target.closest("#synthexp")) return ouvrirCompteRendu("", "synthese");
+  if (e.target.closest("#synthcsv")) return exporterSynthesesCsv();
+  // Un mot du nuage, ou une paire de mots-clés : on retourne au tableau, filtré.
+  const paire = e.target.closest("[data-paire]");
+  if (paire) {
+    const [a, b] = paire.dataset.paire.split("|");
+    setTab("all");
+    F.kw = [cleTitre(a), cleTitre(b)]; F.kwLabels = { [cleTitre(a)]: a, [cleTitre(b)]: b }; F.mode.kw = "et";
+    renderFilters(true); renderTable();
+    return;
+  }
   const b = e.target.closest("[data-nuage]");
   if (!b) return;
   setTab("all");

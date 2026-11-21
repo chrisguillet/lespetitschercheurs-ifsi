@@ -27,7 +27,9 @@ function ouvrirCompteRendu(id, type = "reunion") {
   if (!$("crmodal")) return;
   CR.ouvert = true; CR.id = id; CR.type = type; CR.focus = document.activeElement;
   const html = crPageCourante(); if (!html) return fermerCompteRendu();
-  $("crtitle").textContent = type === "fiche" ? "📄 Aperçu de la fiche de lecture" : "📄 Aperçu du compte rendu";
+  $("crtitle").textContent = type === "fiche" ? "📄 Aperçu de la fiche de lecture" : type === "synthese" ? "📄 Aperçu de la synthèse" : "📄 Aperçu du compte rendu";
+  $("crpdf").classList.toggle("hidden", type === "synthese");   // la synthèse s'imprime ou s'enregistre en PDF par la fenêtre d'impression du navigateur
+  $("crprint").textContent = type === "synthese" ? "🖨 Imprimer / enregistrer en PDF" : "🖨 Imprimer";
   $("crbody").innerHTML = html;
   $("crmodal").classList.remove("hidden"); document.body.classList.add("modalopen");
   $("crprint").focus();
@@ -96,6 +98,7 @@ function fichePage(i) {
   </article>`;
 }
 function crPageCourante() {
+  if (CR.type === "synthese") return synthesePage();
   if (CR.type === "fiche") { const i = ficheDeApercu(); return i ? fichePage(i) : ""; }
   const r = crReunion(); return r ? crPage(r) : "";
 }
