@@ -110,7 +110,8 @@ $idAdmin = (int) valeur($pdo, 'SELECT id FROM utilisateurs WHERE email = ?', [$c
 verifie('admin : un seul rôle global, même après deux connexions', (int) valeur($pdo, "SELECT COUNT(*) FROM attributions WHERE utilisateur_id = ? AND role = 'admin'", [$idAdmin]) === 1);
 verifie('admin : discret (aucune présence)', (int) valeur($chat, 'SELECT COUNT(*) FROM presence WHERE utilisateur_id = ?', [$idAdmin]) === 0);
 verifie('action inconnue : « bad_request »', (appel($config->emailAdmin(), 'nimporte_quoi')['error'] ?? '') === 'bad_request');
-verifie('action connue mais pas migrée : « not_implemented »', (appel($config->emailAdmin(), 'notes_list')['error'] ?? '') === 'not_implemented');
+verifie('toutes les actions de l\'ancien serveur ont un traitement', array_diff(Routeur::ACTIONS, $routeur->actionsImplementees()) === []);
+verifie('les actions nouvelles aussi', array_diff(Routeur::NOUVELLES, $routeur->actionsImplementees()) === []);
 
 // ---------- Étudiante : rôle, consentement, nom affiché, présence ----------
 $etab = creerEtablissement($pdo, 'IFSI Saint-Nazaire');
@@ -950,7 +951,7 @@ verifie('commentaires : tout marquer comme lu', in_array($idc4, $lus('a1@ci.test
 
 // suppression et sections d'init
 $r = appel('a1@ci.test', 'init');
-verifie('init : sections de lecture présentes', array_key_exists('lectures', $r) && array_key_exists('commentaires', $r) && array_key_exists('lus', $r) && array_key_exists('propositions', $r) && ($r['migration'] ?? '') === 'lot-c');
+verifie('init : sections de lecture présentes', array_key_exists('lectures', $r) && array_key_exists('commentaires', $r) && array_key_exists('lus', $r) && array_key_exists('propositions', $r) && ($r['migration'] ?? '') === 'complet');
 verifie('suppression : refusée à une autre', $err(appel('a2@ci.test', 'delete', ['id' => $f1])) === 'not_owner');
 verifie('suppression : fiche inconnue', $err(appel('a1@ci.test', 'delete', ['id' => Ids::uuid()])) === 'not_found');
 verifie('suppression : un formateur est en lecture seule', $err(appel('forma@ci.test', 'delete', ['id' => $f1])) === 'forbidden');
@@ -968,6 +969,236 @@ verifie('article supprimé avec sa dernière fiche, et son historique et ses pro
 appel('a6@ci.test', 'delete', ['id' => $f6b]);
 appel('a6@ci.test', 'delete', ['id' => $f6c]);
 verifie('toutes les fiches de test supprimées', (int) valeur($pdo, 'SELECT COUNT(*) FROM analyses WHERE utilisateur_id = ?', [$B['a6']]) === 0 && $lect('a6@ci.test') === []);
+
+// ---------- Lot D : suivi de projet ----------
+$reunion = ['date' => '2026-12-01', 'titre' => 'Point lectures', 'participants' => 'Ana, Ben', 'vu' => 'Voir les articles', 'attendu' => 'Choisir une question', 'suite' => 'Relire'];
+$r = appel('a1@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'data' => $reunion]);
+verifie('réunion créée, réponse partielle', ($r['ok'] ?? false) === true && ($r['partiel'] ?? false) === true && array_key_exists('reunions', $r) && array_key_exists('jalons', $r)
+    && count($r['reunions']) === 1 && $r['reunions'][0]['modifiable'] === true && $r['reunions'][0]['par'] === 'Ana T.' && $r['reunions'][0]['date'] === '2026-12-01');
+$rid = (string) ($r['reunions'][0]['id'] ?? '');
+$suivi = static fn (string $email, string $section): array => appel($email, 'init')[$section] ?? [];
+verifie('réunion : visible du groupe, de son formateur et des administrateurs', count($suivi('a2@ci.test', 'reunions')) === 1 && count($suivi('forma@ci.test', 'reunions')) === 1
+    && count($suivi('ap@ci.test', 'reunions')) === 1 && count($suivi($admin, 'reunions')) >= 1);
+verifie('réunion : invisible hors du groupe', $suivi('a6@ci.test', 'reunions') === [] && $suivi('a4@ci.test', 'reunions') === [] && $suivi('formc@ci.test', 'reunions') === []);
+verifie('réunion : le formateur ne modifie pas', ($suivi('forma@ci.test', 'reunions')[0]['modifiable'] ?? true) === false);
+verifie('réunion : date invalide', $err(appel('a1@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'data' => array_merge($reunion, ['date' => '2026-02-30'])])) === 'invalid');
+verifie('réunion : un titre ou un compte rendu au moins', $err(appel('a1@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'data' => ['date' => '2026-12-01']])) === 'invalid');
+verifie('réunion : titre trop long', $err(appel('a1@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'data' => array_merge($reunion, ['titre' => str_repeat('a', 201)])])) === 'invalid');
+verifie('réunion : refusée hors du groupe', $err(appel('a6@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'data' => $reunion])) === 'forbidden');
+verifie('réunion : un formateur est en lecture seule', $err(appel('forma@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'data' => $reunion])) === 'forbidden');
+verifie('réunion : élément introuvable', $err(appel('a1@ci.test', 'reunion_save', ['id' => Ids::uuid(), 'data' => $reunion])) === 'not_found');
+$r = appel('a2@ci.test', 'reunion_save', ['id' => $rid, 'data' => array_merge($reunion, ['suite' => 'Relire et résumer'])]);
+verifie('réunion modifiée par une autre membre', ($r['reunions'][0]['suite'] ?? '') === 'Relire et résumer' && ($r['reunions'][0]['modifie_par'] ?? '') === 'Ben T.' && ($r['reunions'][0]['modifie_le'] ?? '') !== '');
+verifie('réunion : suppression refusée hors du groupe', $err(appel('a6@ci.test', 'reunion_delete', ['id' => $rid])) === 'forbidden' && $err(appel('forma@ci.test', 'reunion_delete', ['id' => $rid])) === 'forbidden');
+verifie('réunion supprimée par l\'admin de la promo (modération)', (appel('ap@ci.test', 'reunion_delete', ['id' => $rid])['reunions'] ?? null) === []);
+verifie('réunion : suppression d\'un élément inconnu', $err(appel('ap@ci.test', 'reunion_delete', ['id' => Ids::uuid()])) === 'not_found');
+
+$jalon = ['titre' => 'Rendu du plan', 'echeance' => '2027-01-15', 'statut' => 'en_cours', 'note' => '', 'debut' => '2027-01-10', 'alerte_jours' => '7'];
+$r = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => $jalon]);
+verifie('jalon créé avec plage et alerte', ($r['ok'] ?? false) === true && count($r['jalons'] ?? []) === 1 && $r['jalons'][0]['debut'] === '2027-01-10'
+    && $r['jalons'][0]['alerte_jours'] === '7' && $r['jalons'][0]['statut'] === 'en_cours');
+$jid = (string) $r['jalons'][0]['id'];
+$r = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Sans statut', 'echeance' => '2027-02-01']]);
+verifie('jalon : statut « à faire » par défaut, sans alerte', ($r['ok'] ?? false) === true && (array_values(array_filter($r['jalons'], static fn (array $j): bool => $j['titre'] === 'Sans statut'))[0]['statut'] ?? '') === 'a_faire');
+$r = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Un jour', 'echeance' => '2027-03-01', 'debut' => '2027-03-01']]);
+verifie('jalon : une plage d\'un jour est une date fixe', (array_values(array_filter($r['jalons'], static fn (array $j): bool => $j['titre'] === 'Un jour'))[0]['debut'] ?? 'x') === '');
+verifie('jalon : début après la fin refusé', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => array_merge($jalon, ['debut' => '2027-02-01'])])) === 'invalid');
+verifie('jalon : statut invalide refusé', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => array_merge($jalon, ['statut' => 'zzz'])])) === 'invalid');
+verifie('jalon : alerte invalide refusée', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => array_merge($jalon, ['alerte_jours' => '400'])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => array_merge($jalon, ['alerte_jours' => 'x'])])) === 'invalid');
+verifie('jalon : échéance et titre obligatoires', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => array_merge($jalon, ['echeance' => ''])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => array_merge($jalon, ['titre' => ''])])) === 'invalid');
+$r = appel('a3@ci.test', 'jalon_save', ['id' => $jid, 'data' => array_merge($jalon, ['statut' => 'fait'])]);
+verifie('jalon modifié et supprimé', (array_values(array_filter($r['jalons'] ?? [], static fn (array $j): bool => $j['id'] === $jid))[0]['statut'] ?? '') === 'fait'
+    && (appel('a2@ci.test', 'jalon_delete', ['id' => $jid])['ok'] ?? false) === true);
+
+$terme = ['mot' => 'Bientraitance', 'definition' => 'Démarche de soin respectueuse de la personne', 'reference' => 'HAS, 2012'];
+$r = appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => $terme]);
+verifie('terme créé, réponse partielle (termes)', ($r['ok'] ?? false) === true && count($r['termes'] ?? []) === 1 && !array_key_exists('reunions', $r) && $r['termes'][0]['reference'] === 'HAS, 2012');
+$tid = (string) $r['termes'][0]['id'];
+verifie('terme : doublon refusé (casse et accents)', $err(appel('a2@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => array_merge($terme, ['mot' => 'bientraitancé'])])) === 'duplicate');
+verifie('terme : modification de la définition', (appel('a2@ci.test', 'terme_save', ['id' => $tid, 'data' => array_merge($terme, ['definition' => 'Autre définition'])])['termes'][0]['definition'] ?? '') === 'Autre définition');
+verifie('terme : mot, définition et références bornés', $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => array_merge($terme, ['mot' => ''])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => array_merge($terme, ['mot' => str_repeat('a', 121)])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => array_merge($terme, ['mot' => 'Autre', 'definition' => ''])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => array_merge($terme, ['mot' => 'Autre', 'reference' => str_repeat('r', 501)])])) === 'invalid');
+verifie('terme supprimé', (appel('a1@ci.test', 'terme_delete', ['id' => $tid])['termes'] ?? null) === []);
+
+// ---------- Lot D : notes privées ----------
+$note = ['titre' => 'Idées', 'date' => '2026-11-20', 'texte' => 'Penser aux entretiens', 'liens' => ['abc', 'abc', str_repeat('x', 65)],
+    'etiquettes' => ['Méthode', 'méthode', '  Soins  ', 'x'], 'epingle' => true];
+$r = appel('a1@ci.test', 'note_save', ['data' => $note]);
+verifie('note créée : liens et étiquettes dédoublonnés', ($r['ok'] ?? false) === true && count($r['notes'] ?? []) === 1 && $r['notes'][0]['liens'] === ['abc']
+    && $r['notes'][0]['etiquettes'] === ['Méthode', 'Soins', 'x'] && $r['notes'][0]['epingle'] === true);
+$nid = (string) $r['notes'][0]['id'];
+verifie('notes : strictement privées', (appel('a2@ci.test', 'notes_list')['notes'] ?? null) === [] && (appel($admin, 'notes_list')['notes'] ?? null) === [] && (appel('ap@ci.test', 'notes_list')['notes'] ?? null) === []);
+appel('a1@ci.test', 'note_save', ['data' => ['titre' => 'Ancienne', 'date' => '2026-01-01']]);
+appel('a1@ci.test', 'note_save', ['data' => ['titre' => 'Récente', 'date' => '2026-11-30']]);
+verifie('notes : épinglées d\'abord, puis les plus récentes', array_column(appel('a1@ci.test', 'notes_list')['notes'], 'titre') === ['Idées', 'Récente', 'Ancienne']);
+verifie('note modifiée', (appel('a1@ci.test', 'note_save', ['data' => array_merge($note, ['id' => $nid, 'titre' => 'Idées v2'])])['notes'][0]['titre'] ?? '') === 'Idées v2');
+verifie('note : modification et suppression par un autre refusées', $err(appel('a2@ci.test', 'note_save', ['data' => array_merge($note, ['id' => $nid])])) === 'not_found'
+    && $err(appel('a2@ci.test', 'note_delete', ['id' => $nid])) === 'not_found');
+verifie('note : validations', $err(appel('a1@ci.test', 'note_save', ['data' => array_merge($note, ['titre' => ''])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'note_save', ['data' => array_merge($note, ['titre' => str_repeat('a', 121)])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'note_save', ['data' => array_merge($note, ['texte' => str_repeat('a', 20001)])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'note_save', ['data' => array_merge($note, ['date' => '2026-02-30'])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'note_save', ['data' => array_merge($note, ['liens' => array_map(static fn (int $i): string => 'l' . $i, range(1, 31))])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'note_save', ['data' => array_merge($note, ['etiquettes' => array_map(static fn (int $i): string => 'e' . $i, range(1, 11))])])) === 'invalid');
+verifie('note supprimée', count(appel('a1@ci.test', 'note_delete', ['id' => $nid])['notes'] ?? []) === 2);
+
+// ---------- Lot D : retours sur l'outil ----------
+$fb = ['type' => 'idee', 'texte' => 'Un mode sombre', 'contexte' => "page\nlectures"];
+$r = appel('a1@ci.test', 'feedback_save', ['data' => $fb]);
+verifie('retour enregistré, quota restant', ($r['ok'] ?? false) === true && count($r['feedbacks'] ?? []) === 1 && $r['feedbackRestant'] === 1 && $r['feedbackParJour'] === 2);
+verifie('retour : contexte sur une seule ligne', valeur($pdo, 'SELECT contexte FROM feedback WHERE auteur_id = ? ORDER BY cree_le LIMIT 1', [$B['a1']]) === 'page lectures');
+$fid = (string) $r['feedbacks'][0]['id'];
+verifie('retour : deuxième permis, troisième refusé', (appel('a1@ci.test', 'feedback_save', ['data' => array_merge($fb, ['texte' => 'Autre'])])['feedbackRestant'] ?? -1) === 0
+    && $err(appel('a1@ci.test', 'feedback_save', ['data' => $fb])) === 'limit');
+$r = appel('a1@ci.test', 'feedback_save', ['id' => $fid, 'data' => array_merge($fb, ['texte' => 'Modifié'])]);
+verifie('retour : modifié le jour même', (array_values(array_filter($r['feedbacks'] ?? [], static fn (array $f): bool => $f['id'] === $fid))[0]['texte'] ?? '') === 'Modifié');
+verifie('retour : celui d\'un autre introuvable', $err(appel('a2@ci.test', 'feedback_save', ['id' => $fid, 'data' => $fb])) === 'not_found');
+verifie('retour : validations', $err(appel('a2@ci.test', 'feedback_save', ['data' => array_merge($fb, ['type' => 'zzz'])])) === 'invalid'
+    && $err(appel('a2@ci.test', 'feedback_save', ['data' => array_merge($fb, ['texte' => '  '])])) === 'invalid'
+    && $err(appel('a2@ci.test', 'feedback_save', ['data' => array_merge($fb, ['texte' => str_repeat('a', 2001)])])) === 'invalid');
+$ancien = Ids::uuid();
+$pdo->prepare('INSERT INTO feedback (id, auteur_id, type, texte, jour, cree_le) VALUES (?, ?, ?, ?, ?, ?)')->execute([$ancien, $B['a2'], 'bug', 'Hier', gmdate('Y-m-d', time() - 3 * 86400), gmdate('Y-m-d H:i:s', time() - 3 * 86400)]);
+verifie('retour : plus modifiable un autre jour', $err(appel('a2@ci.test', 'feedback_save', ['id' => $ancien, 'data' => $fb])) === 'forbidden');
+verifie('retours : liste du jour de la personne', count(appel('a1@ci.test', 'feedback_list')['feedbacks'] ?? []) === 2 && count(appel('a2@ci.test', 'feedback_list')['feedbacks'] ?? []) === 0);
+$r = appel($admin, 'admin_list');
+verifie('retours : lus par l\'admin global seulement', count($r['feedbacks'] ?? []) >= 3 && ($r['feedbacks'][0]['par'] ?? '') !== '' && isset($r['feedbacks'][0]['email']) && !array_key_exists('feedbacks', appel('ap@ci.test', 'admin_list')));
+
+// ---------- Lot D : chat ----------
+$salon = static fn (string $type): array => ['groupe_id' => $alpha, 'type' => $type];
+$r = appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => "Bonjour\r\n\r\n\r\n\r\nà tous"]);
+verifie('chat : message envoyé, retour du salon', ($r['ok'] ?? false) === true && $r['total'] === 1 && $r['messages'][0]['moi'] === true && $r['messages'][0]['auteur'] === 'Ana T.'
+    && $r['messages'][0]['texte'] === "Bonjour\n\nà tous" && $r['restant'] === 0);
+$r = appel('a2@ci.test', 'chat_list', $salon('groupe') + ['vu' => ['groupe' => '2000-01-01T00:00:00.000Z']]);
+verifie('chat : lu par un camarade, avec les nouveaux messages d\'autrui', count($r['messages'] ?? []) === 1 && $r['messages'][0]['moi'] === false && ($r['nouveaux']['groupe'] ?? 0) === 1
+    && $r['messages'][0]['couleur'] !== '');
+verifie('chat : « vu » dans le futur : plus de nouveaux', (appel('a2@ci.test', 'chat_list', $salon('groupe') + ['vu' => ['groupe' => '2999-01-01T00:00:00.000Z']])['nouveaux']['groupe'] ?? -1) === 0);
+verifie('chat : salon de groupe fermé aux autres', $err(appel('a6@ci.test', 'chat_list', $salon('groupe'))) === 'forbidden' && $err(appel('a4@ci.test', 'chat_list', $salon('groupe'))) === 'forbidden'
+    && $err(appel('formc@ci.test', 'chat_list', $salon('groupe'))) === 'forbidden');
+verifie('chat : le formateur du groupe et l\'admin de la promo y accèdent', (appel('forma@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'Bonne séance'])['ok'] ?? false) === true
+    && (appel('ap@ci.test', 'chat_list', $salon('groupe'))['ok'] ?? false) === true);
+appel('a1@ci.test', 'chat_send', $salon('promo') + ['texte' => 'Pour toute la promo']);
+verifie('chat : salon de promo lu par les étudiantes de la promo, même sans groupe', count(appel('a6@ci.test', 'chat_list', $salon('promo'))['messages'] ?? []) === 1
+    && count(appel('a4@ci.test', 'chat_list', $salon('promo'))['messages'] ?? []) === 1 && count(appel('formc@ci.test', 'chat_list', $salon('promo'))['messages'] ?? []) === 1);
+verifie('chat : salons indépendants', count(appel('a2@ci.test', 'chat_list', $salon('groupe'))['messages'] ?? []) === 2 && ($r2 = appel('a6@ci.test', 'chat_list', $salon('promo'))) && ($r2['nouveaux']['groupe'] ?? -1) === 0);
+verifie('chat : salon de promo fermé à une autre promo', $err(appel('nouvelle@ci.test', 'chat_list', $salon('promo'))) === 'forbidden');
+verifie('chat : groupe inconnu', $err(appel('a1@ci.test', 'chat_list', ['groupe_id' => Ids::uuid(), 'type' => 'groupe'])) === 'not_found');
+verifie('chat : message vide ou trop long refusé', $err(appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => '   '])) === 'invalid'
+    && $err(appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => str_repeat('a', 501)])) === 'invalid');
+for ($i = 1; $i <= 5; $i++) {
+    $e = appel('a3@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'Message ' . $i]);
+}
+verifie('chat : cinq messages permis', ($e['ok'] ?? false) === true && ($e['restant'] ?? 0) >= 1);
+$e = appel('a3@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'Sixième']);
+verifie('chat : limite de cinq messages sur deux minutes', ($e['error'] ?? '') === 'rate' && str_contains((string) ($e['message'] ?? ''), 'encore'));
+$mid = (string) (appel('a2@ci.test', 'chat_list', $salon('groupe'))['messages'][0]['id'] ?? '');
+verifie('chat : on ne retire que ses messages', $err(appel('a2@ci.test', 'chat_delete', $salon('groupe') + ['id' => $mid])) === 'forbidden');
+verifie('chat : message retiré par son auteur', (appel('a1@ci.test', 'chat_delete', $salon('groupe') + ['id' => $mid])['ok'] ?? false) === true);
+$mid2 = (string) (appel('a2@ci.test', 'chat_list', $salon('groupe'))['messages'][0]['id'] ?? '');
+verifie('chat : message retiré par l\'admin de la promo', (appel('ap@ci.test', 'chat_delete', $salon('groupe') + ['id' => $mid2])['ok'] ?? false) === true);
+verifie('chat : message inconnu', $err(appel('a1@ci.test', 'chat_delete', $salon('groupe') + ['id' => '99999999'])) === 'not_found');
+$chat->prepare('INSERT INTO chat_messages (canal, auteur_id, auteur_nom, cree_le, texte) VALUES (?, ?, ?, ?, ?)')->execute(['g:ancien', $B['a7'], 'Gus T.', gmdate('Y-m-d H:i:s', time() - 8 * 86400), 'très vieux']);
+appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => 'Nettoyage']);
+verifie('chat : les messages de plus de sept jours sont purgés à l\'envoi', (int) valeur($chat, "SELECT COUNT(*) FROM chat_messages WHERE canal = 'g:ancien'") === 0);
+$gamma = $gid('Gamma');
+$lot = [];
+for ($i = 0; $i < 1001; $i++) {
+    $lot[] = '(?, ?, ?, ?, ?)';
+}
+$chat->prepare('INSERT INTO chat_messages (canal, auteur_id, auteur_nom, cree_le, texte) VALUES ' . implode(', ', $lot))
+    ->execute(array_merge(...array_map(static fn (int $i): array => ['g:' . $gamma, $B['a7'], 'Gus T.', gmdate('Y-m-d H:i:s'), 'bruit ' . $i], range(1, 1001))));
+appel('a6@ci.test', 'chat_send', ['groupe_id' => $gamma, 'type' => 'groupe', 'texte' => 'Un de plus']);
+verifie('chat : au plus mille messages par salon', (int) valeur($chat, 'SELECT COUNT(*) FROM chat_messages WHERE canal = ?', ['g:' . $gamma]) === 1000);
+
+// ---------- Lot D : traduction des mots-clés ----------
+$r = appel('a1@ci.test', 'translate', ['texte' => 'soins palliatifs, Douleur; fin de vie, Éthique, douleur']);
+verifie('traduction : termes du glossaire, sans service externe', ($r['ok'] ?? false) === true && array_column($r['items'], 'en') === ['palliative care', 'pain', 'end of life', 'ethics']
+    && array_unique(array_column($r['items'], 'niveau')) === ['haute']);
+$r = appel('a1@ci.test', 'translate', ['texte' => 'cirrhose']);
+verifie('traduction : terme inconnu sans service, signalé', ($r['items'][0]['en'] ?? 'x') === '' && ($r['items'][0]['niveau'] ?? '') === 'faible' && str_contains((string) ($r['items'][0]['raison'] ?? ''), 'aucun service'));
+verifie('traduction : validations', $err(appel('a1@ci.test', 'translate', ['texte' => ' , ; '])) === 'invalid' && $err(appel('a1@ci.test', 'translate', ['texte' => str_repeat('a', 601)])) === 'invalid'
+    && $err(appel('a1@ci.test', 'translate', ['texte' => implode(',', array_map(static fn (int $i): string => 'terme' . $i, range(1, 31)))])) === 'invalid'
+    && $err(appel('forma@ci.test', 'translate', ['texte' => 'douleur'])) === 'forbidden');
+$faux = static function (array $termes, string $de, string $vers): array {
+    $aller = ['cirrhose' => 'cirrhosis', 'hépatite virale' => 'viral hepatitis', 'ADN' => 'ADN', 'prise en charge globale' => 'comprehensive care', 'foie gras' => 'fatty liver', 'x y z' => 'a b c'];
+    $retour = ['cirrhosis' => 'cirrhose', 'viral hepatitis' => 'hépatite virale', 'ADN' => 'ADN', 'comprehensive care' => 'prise en charge', 'fatty liver' => 'foie gras', 'a b c' => 'u v w'];
+    return array_map(static fn (string $t): string => ($de === 'fr' ? $aller : $retour)[$t] ?? '', $termes);
+};
+$r = \Lpc\Traduction::traduire('cirrhose, hépatite virale, ADN, prise en charge globale, foie gras, x y z, santé publique', $faux);
+$niv = array_column($r, 'niveau', 'fr');
+verifie('traduction : fiabilité selon la retraduction', $niv['cirrhose'] === 'haute' && $niv['hépatite virale'] === 'haute' && $niv['ADN'] === 'moyenne' && $niv['prise en charge globale'] === 'moyenne'
+    && $niv['foie gras'] === 'haute' && $niv['x y z'] === 'faible' && $niv['santé publique'] === 'haute' && array_column($r, 'en', 'fr')['santé publique'] === 'public health');
+$r = \Lpc\Traduction::traduire('cirrhose', static function (array $t, string $d, string $v): array {
+    throw new RuntimeException('service coupé');
+});
+verifie('traduction : service en panne, terme signalé sans traduction', $r[0]['en'] === '' && $r[0]['niveau'] === 'faible' && $r[0]['raison'] === 'aucune traduction obtenue');
+
+// ---------- Lot D : pièces jointes ----------
+$pdf = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n";
+$png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+$dossierFichiers = $config->dossierPrive() . '/fichiers';
+$r = appel('a6@ci.test', 'add', ['data' => array_merge($art1, ['titre' => 'Article pour pièces jointes', 'statut' => 'Terminée'])]);
+$fx = (string) ($r['id'] ?? '');
+$ax = (string) valeur($pdo, 'SELECT article_id FROM analyses WHERE id = ?', [$fx]);
+$fa1 = (string) (appel('a1@ci.test', 'add', ['data' => ['article_id' => $ax, 'statut' => 'À lire']])['id'] ?? '');
+verifie('pièces jointes : fiche de départ', $fx !== '' && $fa1 !== '');
+$envoi = static fn (string $email, string $contenu, string $nom = 'rapport.pdf'): array => appel($email, 'file_add', ['article_id' => $ax, 'nom' => $nom, 'data' => base64_encode($contenu)]);
+verifie('pièce jointe : refusée sans fiche sur l\'article', $err($envoi('a2@ci.test', $pdf)) === 'forbidden');
+verifie('pièce jointe : lecture seule pour un formateur', $err($envoi('forma@ci.test', $pdf)) === 'forbidden');
+verifie('pièce jointe : article invisible', $err(appel('nouvelle@ci.test', 'file_add', ['article_id' => $ax, 'nom' => 'a.pdf', 'data' => base64_encode($pdf)])) === 'not_found');
+verifie('pièce jointe : vide, illisible, format ou taille refusés', $err(appel('a6@ci.test', 'file_add', ['article_id' => $ax, 'nom' => 'a.pdf', 'data' => ''])) === 'invalid'
+    && $err(appel('a6@ci.test', 'file_add', ['article_id' => $ax, 'nom' => 'a.pdf', 'data' => '!!!'])) === 'invalid'
+    && $err($envoi('a6@ci.test', 'bonjour, ce n\'est pas un PDF')) === 'invalid'
+    && $err($envoi('a6@ci.test', '%PDF' . str_repeat('A', 6 * 1024 * 1024))) === 'invalid');
+$r = $envoi('a6@ci.test', $pdf, "..\\dossier/Mon Rapport.PDF");
+$fic = $r['fichiers'][0] ?? [];
+verifie('pièce jointe : déposée, nom assaini, réponse partielle', ($r['ok'] ?? false) === true && ($r['partiel'] ?? false) === true && ($fic['nom'] ?? '') === 'Mon Rapport.pdf'
+    && ($fic['type'] ?? '') === 'application/pdf' && ($fic['taille'] ?? 0) === strlen($pdf) && ($fic['par'] ?? '') === 'Fay T.' && ($fic['supprimable'] ?? false) === true);
+$fid = (string) ($fic['id'] ?? '');
+$chemin = (string) valeur($pdo, 'SELECT chemin FROM fichiers WHERE id = ?', [$fid]);
+verifie('pièce jointe : stockée hors du web, en base seulement le chemin relatif', str_ends_with($chemin, '.pdf') && !str_contains($chemin, '/') && is_file($dossierFichiers . '/' . $chemin)
+    && file_get_contents($dossierFichiers . '/' . $chemin) === $pdf);
+verifie('pièce jointe : une seule par article', $err($envoi('a1@ci.test', $pdf)) === 'invalid');
+verifie('pièce jointe : visible de qui voit l\'article', count($suivi('a1@ci.test', 'fichiers')) === 1 && count($suivi('a4@ci.test', 'fichiers')) === 1 && $suivi('nouvelle@ci.test', 'fichiers') === []);
+verifie('pièce jointe : supprimable par une autre autrice d\'une fiche sur l\'article', ($suivi('a1@ci.test', 'fichiers')[0]['supprimable'] ?? false) === true && ($suivi('a4@ci.test', 'fichiers')[0]['supprimable'] ?? true) === false);
+$lu = appel('a4@ci.test', 'file_get', ['id' => $fid]);
+verifie('pièce jointe : lue par qui voit l\'article', ($lu['ok'] ?? false) === true && base64_decode((string) $lu['data']) === $pdf && $lu['nom'] === 'Mon Rapport.pdf' && $lu['type'] === 'application/pdf');
+verifie('pièce jointe : introuvable pour qui ne voit pas l\'article', $err(appel('nouvelle@ci.test', 'file_get', ['id' => $fid])) === 'not_found' && $err(appel('a4@ci.test', 'file_get', ['id' => Ids::uuid()])) === 'not_found');
+verifie('pièce jointe : suppression refusée à qui n\'a pas de fiche sur l\'article', $err(appel('a4@ci.test', 'file_delete', ['id' => $fid])) === 'forbidden');
+verifie('pièce jointe supprimée par une autre autrice, fichier effacé du disque', (appel('a1@ci.test', 'file_delete', ['id' => $fid])['fichiers'] ?? null) === [] && !is_file($dossierFichiers . '/' . $chemin));
+$r = $envoi('a1@ci.test', $png, 'schema.pdf');
+verifie('pièce jointe : le type vient du contenu, pas du nom', ($r['fichiers'][0]['type'] ?? '') === 'image/png' && ($r['fichiers'][0]['nom'] ?? '') === 'schema.png');
+appel('a1@ci.test', 'file_delete', ['id' => (string) valeur($pdo, 'SELECT id FROM fichiers WHERE article_id = ?', [$ax])]);
+$pdo->prepare('UPDATE groupes SET quota_octets = 10 WHERE id = ?')->execute([$gamma]);
+$r = $envoi('a6@ci.test', $pdf);
+verifie('pièce jointe : refusée au-delà du quota du groupe', ($r['error'] ?? '') === 'invalid' && str_contains((string) ($r['message'] ?? ''), 'quota')
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM fichiers WHERE article_id = ?', [$ax]) === 0);
+$pdo->prepare('UPDATE groupes SET quota_octets = NULL WHERE id = ?')->execute([$gamma]);
+if (function_exists('imagecreatetruecolor') && function_exists('imagejpeg')) {
+    $im = imagecreatetruecolor(2400, 1200);
+    for ($i = 0; $i < 600; $i++) {
+        imagefilledrectangle($im, random_int(0, 2300), random_int(0, 1100), random_int(0, 2300) + 100, random_int(0, 1100) + 100, (int) imagecolorallocate($im, random_int(0, 255), random_int(0, 255), random_int(0, 255)));
+    }
+    ob_start();
+    imagejpeg($im, null, 95);
+    $grande = (string) ob_get_clean();
+    $r = $envoi('a6@ci.test', $grande, 'grande.jpg');
+    $stocke = (string) file_get_contents($dossierFichiers . '/' . (string) valeur($pdo, 'SELECT chemin FROM fichiers WHERE article_id = ?', [$ax]));
+    $dim = getimagesizefromstring($stocke) ?: [0, 0];
+    verifie('image trop grande : réduite à 1600 px', ($r['ok'] ?? false) === true && $dim[0] === 1600 && $dim[1] === 800 && strlen($stocke) < strlen($grande));
+} else {
+    echo "saut   réduction d'image : GD absent\n";
+}
+verifie('stockage : visible de l\'admin global', ($s = appel($admin, 'admin_list')['stockage'] ?? []) && $s['nb'] >= 1 && $s['octets'] > 0);
+$stockes = array_map('strval', $pdo->query('SELECT chemin FROM fichiers')->fetchAll(PDO::FETCH_COLUMN));
+appel('a6@ci.test', 'delete', ['id' => $fx]);
+appel('a1@ci.test', 'delete', ['id' => $fa1]);
+verifie('article supprimé : ses pièces jointes aussi, base et disque', (int) valeur($pdo, 'SELECT COUNT(*) FROM articles WHERE id = ?', [$ax]) === 0
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM fichiers WHERE article_id = ?', [$ax]) === 0
+    && array_filter($stockes, static fn (string $c): bool => is_file($GLOBALS['dossierFichiers'] . '/' . $c)) === []);
 
 // ---------- Contraintes de la base (portabilité MariaDB / MySQL) ----------
 verifie('établissement : nom unique sans tenir compte de la casse ni des accents', leveSql(fn () => creerEtablissement($pdo, 'ifsi saint-nazairé'), '23000'));

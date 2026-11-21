@@ -316,7 +316,7 @@ final class Acces
         if ($c->droits()->estAdmin()) {
             $s = $pdo->query('SELECT COUNT(*) AS nb, COALESCE(SUM(taille), 0) AS octets FROM fichiers')->fetch();
             $r['stockage'] = ['nb' => (int) $s['nb'], 'octets' => (int) $s['octets']];
-            $r['feedbacks'] = [];   // retours sur l'outil : lot D
+            $r['feedbacks'] = \Lpc\Feedback::pourAdmin($c);
         }
         return $r;
     }

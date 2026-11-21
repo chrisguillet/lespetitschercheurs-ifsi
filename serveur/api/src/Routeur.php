@@ -7,6 +7,7 @@ use Lpc\Actions\Acces;
 use Lpc\Actions\Fiches;
 use Lpc\Actions\Groupes;
 use Lpc\Actions\Invitations;
+use Lpc\Actions\Outils;
 use Lpc\Actions\Profil;
 use Lpc\Actions\Rgpd;
 use Lpc\Actions\Session;
@@ -77,6 +78,24 @@ final class Routeur
             'invitation_create' => [Invitations::class, 'creer'],
             'invitation_list' => [Invitations::class, 'liste'],
             'invitation_revoke' => [Invitations::class, 'revoquer'],
+            'reunion_save' => [Outils::class, 'reunionSave'],
+            'reunion_delete' => [Outils::class, 'reunionDelete'],
+            'jalon_save' => [Outils::class, 'jalonSave'],
+            'jalon_delete' => [Outils::class, 'jalonDelete'],
+            'terme_save' => [Outils::class, 'termeSave'],
+            'terme_delete' => [Outils::class, 'termeDelete'],
+            'file_add' => [Outils::class, 'fileAdd'],
+            'file_get' => [Outils::class, 'fileGet'],
+            'file_delete' => [Outils::class, 'fileDelete'],
+            'notes_list' => [Outils::class, 'notesList'],
+            'note_save' => [Outils::class, 'noteSave'],
+            'note_delete' => [Outils::class, 'noteDelete'],
+            'feedback_list' => [Outils::class, 'feedbackList'],
+            'feedback_save' => [Outils::class, 'feedbackSave'],
+            'chat_list' => [Outils::class, 'chatList'],
+            'chat_send' => [Outils::class, 'chatSend'],
+            'chat_delete' => [Outils::class, 'chatDelete'],
+            'translate' => [Outils::class, 'translate'],
             'add' => [Fiches::class, 'add'],
             'update' => [Fiches::class, 'update'],
             'article_update' => [Fiches::class, 'articleUpdate'],
@@ -102,6 +121,12 @@ final class Routeur
             'admin_erase' => [Rgpd::class, 'adminErase'],
             'mes_donnees' => [Rgpd::class, 'mesDonnees'],
         ];
+    }
+
+    /** Noms des actions qui ont un traitement (sert aux tests : toutes celles de l'ancien serveur doivent y être). @return list<string> */
+    public function actionsImplementees(): array
+    {
+        return array_keys($this->implementees);
     }
 
     /**

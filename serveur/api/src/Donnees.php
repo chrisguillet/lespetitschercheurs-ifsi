@@ -5,8 +5,8 @@ namespace Lpc;
 
 /**
  * Sections de données renvoyées avec « init », « list » et la plupart des actions (mêmes noms et mêmes formes que l'ancien donnees_).
- * Lots A à C : utilisateurs, enLigne, groupes, votes, propositions, promosMoi, rattachements, lectures, commentaires, lus, enAttente
- * (+ groupesAdmin et structure pour les administrateurs). Les sections du lot D (fichiers, suivi, glossaire…) arrivent ensuite.
+ * Toutes les sections de l'ancien donnees_ : utilisateurs, enLigne, groupes, votes, propositions, promosMoi, rattachements, fichiers,
+ * reunions, jalons, termes, lectures, commentaires, lus, enAttente (+ groupesAdmin et structure pour les administrateurs).
  */
 final class Donnees
 {
@@ -52,6 +52,10 @@ final class Donnees
             'propositions' => static fn (): array => Lectures::propositionsPourClient($c),
             'promosMoi' => static fn (): array => Votes::promosMoi($c),
             'rattachements' => static fn (): array => Votes::rattachements($c),
+            'fichiers' => static fn (): array => Fichiers::pourClient($c),
+            'reunions' => static fn (): array => Suivi::pourClient($c, 'reunion'),
+            'jalons' => static fn (): array => Suivi::pourClient($c, 'jalon'),
+            'termes' => static fn (): array => Suivi::pourClient($c, 'terme'),
             'lectures' => static fn (): array => Lectures::lister($c),
             'commentaires' => static fn (): array => Commentaires::lister($c),
             'lus' => static fn (): array => Commentaires::lus($c),
