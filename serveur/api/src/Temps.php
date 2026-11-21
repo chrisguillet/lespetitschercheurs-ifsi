@@ -16,6 +16,13 @@ final class Temps
         return gmdate('Y-m-d H:i:s', time() + $secondes);
     }
 
+    /** Date de la base augmentée d'un nombre de secondes. */
+    public static function plus(string $datetime, int $secondes): string
+    {
+        $t = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $datetime, new \DateTimeZone('UTC'));
+        return $t === false ? $datetime : gmdate('Y-m-d H:i:s', $t->getTimestamp() + $secondes);
+    }
+
     /** « 2026-11-21 08:30:00 » -> « 2026-11-21T08:30:00.000Z » ; vide si la valeur est absente. */
     public static function iso(?string $datetime): string
     {

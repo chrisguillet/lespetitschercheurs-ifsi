@@ -566,6 +566,199 @@ verifie('accès supprimé : le compte disparaît', (appel($admin, 'admin_delete'
 verifie('accès supprimé : ses contributions restent, sans auteur', (int) valeur($pdo, 'SELECT COUNT(*) FROM analyses WHERE id = ? AND utilisateur_id IS NULL', [$xan3]) === 1);
 verifie('journal : les décisions d\'administration sont tracées', (int) valeur($pdo, "SELECT COUNT(*) FROM journal_admin WHERE action IN ('admin_set','admin_erase','admin_delete','attribution_add','attribution_remove')") >= 8);
 
+// ---------- Lot B2 : membres, votes, adhésions, rattachements ----------
+$e3 = creerEtablissement($pdo, 'IFSI Vannes');
+$pv = creerPromo($pdo, $e3, 'Promo V');
+$B = [];
+foreach (['a1' => 'Ana', 'a2' => 'Ben', 'a3' => 'Cléo', 'a4' => 'Dan', 'a5' => 'Eva', 'a6' => 'Fay', 'a7' => 'Gus'] as $k => $prenom) {
+    $B[$k] = creerUtilisateur($pdo, $k . '@ci.test');
+    Attributions::ajouter($pdo, $B[$k], 'etudiant', null, $pv);
+    $pdo->prepare('UPDATE utilisateurs SET prenom = ?, nom = ? WHERE id = ?')->execute([$prenom, 'Test', $B[$k]]);
+}
+foreach (['forma' => 'Alice', 'formb' => 'Bob', 'formc' => 'Chloé'] as $k => $prenom) {
+    $B[$k] = creerUtilisateur($pdo, $k . '@ci.test');
+    Attributions::ajouter($pdo, $B[$k], 'formateur', $e3);
+    $pdo->prepare('UPDATE utilisateurs SET prenom = ?, nom = ? WHERE id = ?')->execute([$prenom, 'Prof', $B[$k]]);
+}
+$B['ap'] = creerUtilisateur($pdo, 'ap@ci.test');
+Attributions::ajouter($pdo, $B['ap'], 'admin_promo', null, $pv);
+appel('ap@ci.test', 'group_create', ['data' => ['promo_id' => $pv, 'nom' => 'Alpha', 'membres' => ['a1@ci.test', 'a2@ci.test', 'a3@ci.test']]]);
+appel('ap@ci.test', 'group_create', ['data' => ['promo_id' => $pv, 'nom' => 'Beta', 'membres' => ['a4@ci.test']]]);
+$gid = static fn (string $nom): string => (string) valeur($GLOBALS['pdo'], 'SELECT id FROM groupes WHERE promo_id = ? AND nom = ?', [$GLOBALS['pv'], $nom]);
+$alpha = $gid('Alpha');
+$beta = $gid('Beta');
+$effectif = static fn (string $g): int => (int) valeur($GLOBALS['pdo'], 'SELECT COUNT(*) FROM membres WHERE groupe_id = ?', [$g]);
+$estMembre = static fn (string $g, string $k): bool => (int) valeur($GLOBALS['pdo'], 'SELECT COUNT(*) FROM membres WHERE groupe_id = ? AND utilisateur_id = ?', [$g, $GLOBALS['B'][$k]]) === 1;
+$votes = static fn (string $email): array => appel($email, 'init')['votes'] ?? [];
+$statutId = static fn (string $id): ?string => valeur($GLOBALS['pdo'], 'SELECT statut FROM votes WHERE id = ?', [$id]);
+
+verifie('lot B2 : groupes de départ', $alpha !== '' && $beta !== '' && $effectif($alpha) === 3 && $effectif($beta) === 1);
+
+// membres : candidats et ajout
+$r = appel('a1@ci.test', 'member_candidates', ['groupe_id' => $alpha]);
+verifie('candidats : étudiantes de la promo sans groupe, désignées par identifiant public', ($r['ok'] ?? false) === true && count($r['candidats'] ?? []) === 3
+    && ($r['candidats'][0]['pid'] ?? '') === Ids::pid('a5@ci.test') && !isset($r['candidats'][0]['email']) && ($r['candidats'][0]['prenom'] ?? '') === 'Eva T.');
+verifie('candidats : refusés à une personne étrangère au groupe', $err(appel('a5@ci.test', 'member_candidates', ['groupe_id' => $alpha])) === 'forbidden');
+verifie('candidats : permis à l\'admin de la promo', count(appel('ap@ci.test', 'member_candidates', ['groupe_id' => $alpha])['candidats'] ?? []) === 3);
+verifie('candidats : groupe inconnu', $err(appel('a1@ci.test', 'member_candidates', ['groupe_id' => Ids::uuid()])) === 'not_found');
+verifie('membre ajouté par une étudiante du groupe', (appel('a1@ci.test', 'member_add', ['groupe_id' => $alpha, 'pid' => Ids::pid('a5@ci.test')])['ok'] ?? false) === true && $estMembre($alpha, 'a5'));
+verifie('ajout : déjà membre refusé', $err(appel('a1@ci.test', 'member_add', ['groupe_id' => $alpha, 'pid' => Ids::pid('a5@ci.test')])) === 'invalid');
+verifie('ajout : étudiante déjà dans un groupe de la promo refusée', $err(appel('a1@ci.test', 'member_add', ['groupe_id' => $alpha, 'pid' => Ids::pid('a4@ci.test')])) === 'invalid');
+verifie('ajout : un formateur ne s\'ajoute pas par une étudiante', $err(appel('a1@ci.test', 'member_add', ['groupe_id' => $alpha, 'pid' => Ids::pid('forma@ci.test')])) === 'forbidden');
+verifie('ajout : refusé à une étudiante étrangère au groupe', $err(appel('a4@ci.test', 'member_add', ['groupe_id' => $alpha, 'pid' => Ids::pid('a6@ci.test')])) === 'forbidden');
+verifie('ajout : personne introuvable', $err(appel('a1@ci.test', 'member_add', ['groupe_id' => $alpha, 'pid' => 'inexistant'])) === 'not_found');
+verifie('ajout : groupe introuvable', $err(appel('a1@ci.test', 'member_add', ['groupe_id' => Ids::uuid(), 'pid' => Ids::pid('a6@ci.test')])) === 'not_found');
+verifie('ajout d\'un formateur par l\'admin de la promo, par adresse', (appel('ap@ci.test', 'member_add', ['groupe_id' => $alpha, 'email' => 'forma@ci.test'])['ok'] ?? false) === true && $estMembre($alpha, 'forma'));
+verifie('retrait : refusé à une étudiante', $err(appel('a1@ci.test', 'member_remove', ['groupe_id' => $alpha, 'email' => 'forma@ci.test'])) === 'forbidden');
+verifie('retrait par l\'admin de la promo', (appel('ap@ci.test', 'member_remove', ['groupe_id' => $alpha, 'email' => 'forma@ci.test'])['ok'] ?? false) === true && !$estMembre($alpha, 'forma'));
+verifie('retrait : ce n\'est plus un membre', $err(appel('ap@ci.test', 'member_remove', ['groupe_id' => $alpha, 'email' => 'forma@ci.test'])) === 'not_found');
+verifie('retrait : adresse inconnue', $err(appel('ap@ci.test', 'member_remove', ['groupe_id' => $alpha, 'email' => 'rien@ci.test'])) === 'not_found');
+
+// vote de retrait
+$r = appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'retrait', 'pid' => Ids::pid('a5@ci.test')]);
+verifie('retrait : proposition ouverte avec le vote de l\'auteur', ($r['ok'] ?? false) === true && count($r['votes'] ?? []) === 1);
+$v = $votes('a2@ci.test')[0] ?? [];
+verifie('retrait : forme du vote côté client', ($v['type'] ?? '') === 'retrait' && ($v['oui'] ?? 0) === 1 && ($v['n'] ?? 0) === 3 && ($v['besoin'] ?? 0) === 2
+    && ($v['cible_pid'] ?? '') === Ids::pid('a5@ci.test') && ($v['cible'] ?? '') === 'Eva T.' && ($v['peut_voter'] ?? false) === true && array_key_exists('mon_vote', $v) && $v['mon_vote'] === null);
+verifie('retrait : l\'auteur voit sa proposition', ($votes('a1@ci.test')[0]['proposant'] ?? false) === true && ($votes('a1@ci.test')[0]['mon_vote'] ?? null) === 1);
+verifie('retrait : la personne visée ne vote pas', $err(appel('a5@ci.test', 'vote_answer', ['id' => $v['id'] ?? '', 'oui' => false])) === 'forbidden');
+verifie('retrait : un groupe étranger ne voit pas le vote', $votes('a4@ci.test') === []);
+verifie('retrait : l\'admin de la promo voit le vote', count($votes('ap@ci.test')) === 1 && ($votes('ap@ci.test')[0]['peut_voter'] ?? true) === false);
+verifie('retrait : l\'admin global voit le vote', count($votes($admin)) >= 1);
+verifie('retrait : proposition en double refusée', $err(appel('a2@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'retrait', 'pid' => Ids::pid('a5@ci.test')])) === 'invalid');
+appel('a2@ci.test', 'vote_answer', ['id' => $v['id'], 'oui' => true]);
+verifie('retrait adopté à la majorité : le membre est retiré', $statutId($v['id']) === 'adopte' && !$estMembre($alpha, 'a5') && $effectif($alpha) === 3);
+verifie('retrait adopté : plus de vote ouvert', $votes('a1@ci.test') === []);
+verifie('vote clos : réponse refusée', $err(appel('a3@ci.test', 'vote_answer', ['id' => $v['id'], 'oui' => true])) === 'invalid');
+verifie('vote inconnu : introuvable', $err(appel('a3@ci.test', 'vote_answer', ['id' => Ids::uuid(), 'oui' => true])) === 'not_found');
+verifie('retrait de soi-même refusé', $err(appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'retrait', 'pid' => Ids::pid('a1@ci.test')])) === 'invalid');
+verifie('retrait : membre introuvable', $err(appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'retrait', 'pid' => Ids::pid('a7@ci.test')])) === 'not_found');
+verifie('retrait : type inconnu refusé', $err(appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'magie'])) === 'invalid');
+verifie('retrait : refusé à une étudiante étrangère au groupe', $err(appel('a4@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'retrait', 'pid' => Ids::pid('a1@ci.test')])) === 'forbidden');
+appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'retrait', 'pid' => Ids::pid('a3@ci.test')]);
+$v = $votes('a2@ci.test')[0] ?? [];
+verifie('retrait : à deux électrices, la majorité est de deux', ($v['n'] ?? 0) === 2 && ($v['besoin'] ?? 0) === 2);
+appel('a2@ci.test', 'vote_answer', ['id' => $v['id'], 'oui' => false]);
+verifie('retrait refusé dès que la majorité n\'est plus atteignable', $statutId($v['id']) === 'refuse' && $estMembre($alpha, 'a3'));
+verifie('retrait refusé : proposition bloquée 14 jours', $err(appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'retrait', 'pid' => Ids::pid('a3@ci.test')])) === 'invalid');
+verifie('retrait : seule membre du groupe, rien à proposer', $err(appel('a4@ci.test', 'vote_propose', ['groupe_id' => $beta, 'type' => 'retrait', 'pid' => Ids::pid('a4@ci.test')])) === 'invalid');
+
+// vote de nom, annulation
+verifie('nom : déjà le nom du groupe', $err(appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'nom', 'nom' => 'alpha'])) === 'invalid');
+verifie('nom : déjà pris dans la promo', $err(appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'nom', 'nom' => 'Beta'])) === 'invalid');
+verifie('nom : vide refusé', $err(appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'nom', 'nom' => '  '])) === 'invalid');
+appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'nom', 'nom' => 'Alpha 2']);
+verifie('nom : proposition ouverte', count($votes('a3@ci.test')) === 1 && ($votes('a3@ci.test')[0]['valeur'] ?? '') === 'Alpha 2');
+verifie('nom : un seul changement de nom à la fois', $err(appel('a2@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'nom', 'nom' => 'Alpha 3'])) === 'invalid');
+$vn = $votes('a3@ci.test')[0] ?? [];
+appel('a3@ci.test', 'vote_answer', ['id' => $vn['id'], 'oui' => true]);
+verifie('nom adopté : le groupe est renommé', $statutId($vn['id']) === 'adopte' && valeur($pdo, 'SELECT nom FROM groupes WHERE id = ?', [$alpha]) === 'Alpha 2');
+appel('a2@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'nom', 'nom' => 'Alpha 3']);
+$vc = $votes('a1@ci.test')[0] ?? [];
+verifie('annulation : refusée à qui n\'est ni auteur ni admin', $err(appel('a1@ci.test', 'vote_cancel', ['id' => $vc['id'] ?? ''])) === 'forbidden');
+verifie('annulation par l\'auteur', (appel('a2@ci.test', 'vote_cancel', ['id' => $vc['id']])['ok'] ?? false) === true && $statutId($vc['id']) === 'annule');
+verifie('annulation : vote déjà clos', $err(appel('a2@ci.test', 'vote_cancel', ['id' => $vc['id']])) === 'invalid');
+appel('a2@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'nom', 'nom' => 'Alpha 4']);
+$vc = $votes('a1@ci.test')[0] ?? [];
+verifie('annulation par l\'admin de la promo', (appel('ap@ci.test', 'vote_cancel', ['id' => $vc['id'] ?? ''])['ok'] ?? false) === true);
+verifie('annulation : vote inconnu', $err(appel('a2@ci.test', 'vote_cancel', ['id' => Ids::uuid()])) === 'not_found');
+
+// vote d'expiration
+$ancien = Ids::uuid();
+$pdo->prepare('INSERT INTO votes (id, groupe_id, type, valeur, propose_par, cree_le, statut) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    ->execute([$ancien, $alpha, 'nom', 'Trop tard', $B['a1'], gmdate('Y-m-d H:i:s', time() - 8 * 86400), 'ouvert']);
+verifie('vote vieux de huit jours : absent des votes ouverts', array_filter($votes('a2@ci.test'), static fn (array $x): bool => $x['id'] === $ancien) === []);
+verifie('vote expiré : réponse refusée et vote clos', $err(appel('a2@ci.test', 'vote_answer', ['id' => $ancien, 'oui' => true])) === 'invalid'
+    && valeur($pdo, 'SELECT statut FROM votes WHERE id = ?', [$ancien]) === 'expire');
+
+// formateurs : invitation par le groupe
+$r = appel('a1@ci.test', 'formateur_candidates', ['groupe_id' => $alpha]);
+verifie('formateurs invitables : ceux de l\'établissement', ($r['ok'] ?? false) === true && count($r['candidats'] ?? []) === 3);
+verifie('formateurs invitables : refusés à une étudiante étrangère', $err(appel('a4@ci.test', 'formateur_candidates', ['groupe_id' => $alpha])) === 'forbidden');
+verifie('invitation : un étudiant n\'est pas un formateur', $err(appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'formateur_invite', 'pid' => Ids::pid('a7@ci.test')])) === 'not_found');
+appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'formateur_invite', 'pid' => Ids::pid('forma@ci.test')]);
+verifie('invitation : proposition ouverte, formateur retiré des invitables', count($votes('a2@ci.test')) === 1
+    && count(appel('a1@ci.test', 'formateur_candidates', ['groupe_id' => $alpha])['candidats'] ?? []) === 2);
+verifie('invitation : une seule proposition par formateur', $err(appel('a2@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'formateur_invite', 'pid' => Ids::pid('forma@ci.test')])) === 'invalid');
+$vf = $votes('a2@ci.test')[0] ?? [];
+appel('a2@ci.test', 'vote_answer', ['id' => $vf['id'], 'oui' => true]);
+verifie('invitation adoptée : le formateur rejoint le groupe', $statutId($vf['id']) === 'adopte' && $estMembre($alpha, 'forma'));
+verifie('invitation : formateur déjà membre refusé', $err(appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'formateur_invite', 'pid' => Ids::pid('forma@ci.test')])) === 'invalid');
+appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'formateur_invite', 'pid' => Ids::pid('formb@ci.test')]);
+$vf = $votes('a2@ci.test')[0] ?? [];
+verifie('un formateur membre ne vote pas', $err(appel('forma@ci.test', 'vote_answer', ['id' => $vf['id'], 'oui' => true])) === 'forbidden');
+appel('a2@ci.test', 'vote_answer', ['id' => $vf['id'], 'oui' => false]);
+appel('a3@ci.test', 'vote_answer', ['id' => $vf['id'], 'oui' => false]);
+verifie('invitation refusée : le formateur ne rejoint pas', $statutId($vf['id']) === 'refuse' && !$estMembre($alpha, 'formb'));
+verifie('invitation refusée : bloquée 14 jours', $err(appel('a1@ci.test', 'vote_propose', ['groupe_id' => $alpha, 'type' => 'formateur_invite', 'pid' => Ids::pid('formb@ci.test')])) === 'invalid');
+
+// formateurs : demande de rattachement
+$r = appel('formb@ci.test', 'init');
+verifie('rattachements : groupes des promos de l\'établissement', count($r['rattachements'] ?? []) === 1 && ($r['rattachements'][0]['titre'] ?? '') === 'IFSI Vannes · Promo V'
+    && count($r['rattachements'][0]['groupes'] ?? []) === 2);
+verifie('formateur : sections étudiantes vides', ($r['promosMoi'] ?? null) === []);
+verifie('demande de rattachement : réservée aux formateurs de l\'établissement', $err(appel('a1@ci.test', 'formateur_request', ['groupe_id' => $alpha])) === 'forbidden'
+    && $err(appel('prof@ci.test', 'formateur_request', ['groupe_id' => $alpha])) === 'forbidden');
+verifie('demande : déjà membre refusée', $err(appel('forma@ci.test', 'formateur_request', ['groupe_id' => $alpha])) === 'invalid');
+verifie('demande : groupe introuvable', $err(appel('formb@ci.test', 'formateur_request', ['groupe_id' => Ids::uuid()])) === 'not_found');
+verifie('demande : proposition faite', (appel('formb@ci.test', 'formateur_request', ['groupe_id' => $alpha])['ok'] ?? false) === true);
+$r = appel('formb@ci.test', 'init');
+$gAlpha = array_values(array_filter($r['rattachements'][0]['groupes'] ?? [], static fn (array $g): bool => $g['id'] === $alpha))[0] ?? [];
+verifie('demande : visible côté formateur avec le décompte', ($gAlpha['demande']['n'] ?? 0) === 3 && ($gAlpha['demande']['besoin'] ?? 0) === 2 && ($gAlpha['demande']['oui'] ?? -1) === 0 && ($gAlpha['membre'] ?? true) === false);
+verifie('demande : une seule à la fois', $err(appel('formb@ci.test', 'formateur_request', ['groupe_id' => $alpha])) === 'invalid');
+$vd = $votes('a1@ci.test')[0] ?? [];
+verifie('demande : visible des étudiantes du groupe', ($vd['type'] ?? '') === 'formateur_demande' && ($vd['cible'] ?? '') === 'Bob P.');
+appel('a1@ci.test', 'vote_answer', ['id' => $vd['id'], 'oui' => true]);
+appel('a2@ci.test', 'vote_answer', ['id' => $vd['id'], 'oui' => true]);
+verifie('demande adoptée : le formateur rejoint le groupe', $statutId($vd['id']) === 'adopte' && $estMembre($alpha, 'formb'));
+verifie('rattachement : appartenance visible côté formateur', (array_values(array_filter(appel('formb@ci.test', 'init')['rattachements'][0]['groupes'] ?? [], static fn (array $g): bool => $g['id'] === $alpha))[0]['membre'] ?? false) === true);
+appel('formc@ci.test', 'formateur_request', ['groupe_id' => $beta]);
+$vb = $votes('a4@ci.test')[0] ?? [];
+appel('a4@ci.test', 'vote_answer', ['id' => $vb['id'], 'oui' => false]);
+verifie('demande refusée : bloquée 14 jours', $statutId($vb['id']) === 'refuse' && $err(appel('formc@ci.test', 'formateur_request', ['groupe_id' => $beta])) === 'invalid');
+verifie('demande refusée : « bloque » côté formateur', (array_values(array_filter(appel('formc@ci.test', 'init')['rattachements'][0]['groupes'] ?? [], static fn (array $g): bool => $g['id'] === $beta))[0]['bloque'] ?? false) === true);
+
+// étudiantes : demande d'adhésion et groupe créé par soi
+$r = appel('a5@ci.test', 'init');
+verifie('promosMoi : promo de l\'étudiante sans groupe, avec les groupes possibles', count($r['promosMoi'] ?? []) === 1 && ($r['promosMoi'][0]['mon_groupe_id'] ?? 'x') === ''
+    && count($r['promosMoi'][0]['groupes'] ?? []) === 2 && array_key_exists('demande', $r['promosMoi'][0]['groupes'][0]) && $r['promosMoi'][0]['groupes'][0]['demande'] === null);
+verifie('promosMoi : camarades du groupe listés sans adresse', count($r['promosMoi'][0]['groupes'][0]['membres'] ?? []) >= 1 && !isset($r['promosMoi'][0]['groupes'][0]['membres'][0]['email']));
+verifie('adhésion : une personne non inscrite est refusée', $err(appel('sansrole@ci.test', 'join_request', ['groupe_id' => $alpha])) === 'forbidden');
+verifie('adhésion : groupe introuvable', $err(appel('a5@ci.test', 'join_request', ['groupe_id' => Ids::uuid()])) === 'not_found');
+verifie('adhésion : déjà dans un groupe refusée', $err(appel('a4@ci.test', 'join_request', ['groupe_id' => $alpha])) === 'invalid');
+appel('ap@ci.test', 'group_create', ['data' => ['promo_id' => $pv, 'nom' => 'Vide']]);
+verifie('adhésion : groupe sans étudiante refusé', $err(appel('a5@ci.test', 'join_request', ['groupe_id' => $gid('Vide')])) === 'invalid');
+verifie('adhésion : demande déposée', (appel('a5@ci.test', 'join_request', ['groupe_id' => $alpha])['ok'] ?? false) === true);
+$r = appel('a5@ci.test', 'init');
+$ga = array_values(array_filter($r['promosMoi'][0]['groupes'] ?? [], static fn (array $g): bool => $g['id'] === $alpha))[0] ?? [];
+verifie('adhésion : demande visible dans promosMoi', ($ga['demande']['n'] ?? 0) === 3 && ($ga['demande']['oui'] ?? -1) === 0);
+verifie('adhésion : une seule demande ouverte par promo', $err(appel('a5@ci.test', 'join_request', ['groupe_id' => $beta])) === 'invalid');
+$va = array_values(array_filter($votes('a1@ci.test'), static fn (array $x): bool => $x['type'] === 'adhesion'))[0] ?? [];
+verifie('adhésion : visible des étudiantes du groupe', ($va['cible'] ?? '') === 'Eva T.' && ($va['peut_voter'] ?? false) === true);
+appel('a1@ci.test', 'vote_answer', ['id' => $va['id'], 'oui' => true]);
+appel('a3@ci.test', 'vote_answer', ['id' => $va['id'], 'oui' => true]);
+verifie('adhésion adoptée : l\'étudiante rejoint le groupe', $statutId($va['id']) === 'adopte' && $estMembre($alpha, 'a5'));
+verifie('adhésion : promosMoi indique le groupe', (appel('a5@ci.test', 'init')['promosMoi'][0]['mon_groupe_id'] ?? '') === $alpha && (appel('a5@ci.test', 'init')['promosMoi'][0]['groupes'] ?? null) === []);
+appel('a6@ci.test', 'join_request', ['groupe_id' => $beta]);
+$v6 = array_values(array_filter($votes('a4@ci.test'), static fn (array $x): bool => $x['type'] === 'adhesion'))[0] ?? [];
+verifie('adhésion : une autre demande dans la même promo est refusée', $err(appel('a6@ci.test', 'join_request', ['groupe_id' => $alpha])) === 'invalid');
+verifie('création d\'un groupe par soi : nom vide refusé', $err(appel('a6@ci.test', 'group_create_self', ['promo_id' => $pv, 'nom' => ''])) === 'invalid');
+verifie('création d\'un groupe par soi : nom déjà pris', $err(appel('a6@ci.test', 'group_create_self', ['promo_id' => $pv, 'nom' => 'beta'])) === 'invalid');
+verifie('création d\'un groupe par soi : promo inconnue', $err(appel('a6@ci.test', 'group_create_self', ['promo_id' => Ids::uuid(), 'nom' => 'Gamma'])) === 'not_found');
+verifie('création d\'un groupe par soi : réservée aux inscrites', $err(appel('sansrole@ci.test', 'group_create_self', ['promo_id' => $pv, 'nom' => 'Gamma'])) === 'forbidden');
+verifie('création d\'un groupe par soi : déjà dans un groupe', $err(appel('a1@ci.test', 'group_create_self', ['promo_id' => $pv, 'nom' => 'Gamma'])) === 'invalid');
+verifie('création d\'un groupe par soi : groupe créé', (appel('a6@ci.test', 'group_create_self', ['promo_id' => $pv, 'nom' => 'Gamma'])['ok'] ?? false) === true
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM membres WHERE groupe_id = ? AND utilisateur_id = ?', [$gid('Gamma'), $B['a6']]) === 1);
+verifie('création d\'un groupe par soi : sa demande d\'adhésion est annulée', $statutId($v6['id'] ?? '') === 'annule');
+appel('a7@ci.test', 'join_request', ['groupe_id' => $beta]);
+$vb = array_values(array_filter($votes('a4@ci.test'), static fn (array $x): bool => $x['type'] === 'adhesion'))[0] ?? [];
+appel('a4@ci.test', 'vote_answer', ['id' => $vb['id'], 'oui' => false]);
+verifie('adhésion refusée : l\'étudiante ne rejoint pas', $statutId($vb['id'] ?? '') === 'refuse' && !$estMembre($beta, 'a7'));
+verifie('adhésion refusée : bloquée 14 jours', $err(appel('a7@ci.test', 'join_request', ['groupe_id' => $beta])) === 'invalid');
+verifie('adhésion refusée : « bloque » dans promosMoi', (array_values(array_filter(appel('a7@ci.test', 'init')['promosMoi'][0]['groupes'] ?? [], static fn (array $g): bool => $g['id'] === $beta))[0]['bloque'] ?? false) === true);
+verifie('suppression d\'un groupe : ses votes disparaissent', (appel('ap@ci.test', 'group_delete', ['id' => $beta])['ok'] ?? false) === true
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM votes WHERE groupe_id = ?', [$beta]) === 0);
+
 // ---------- Contraintes de la base (portabilité MariaDB / MySQL) ----------
 verifie('établissement : nom unique sans tenir compte de la casse ni des accents', leveSql(fn () => creerEtablissement($pdo, 'ifsi saint-nazairé'), '23000'));
 verifie('promo : nom unique dans l\'établissement', leveSql(fn () => creerPromo($pdo, $etab, 'promo 24-27'), '23000'));

@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Lpc;
 
 use Lpc\Actions\Acces;
+use Lpc\Actions\Groupes;
 use Lpc\Actions\Invitations;
 use Lpc\Actions\Profil;
 use Lpc\Actions\Rgpd;
@@ -75,6 +76,16 @@ final class Routeur
             'invitation_create' => [Invitations::class, 'creer'],
             'invitation_list' => [Invitations::class, 'liste'],
             'invitation_revoke' => [Invitations::class, 'revoquer'],
+            'member_add' => [Groupes::class, 'memberAdd'],
+            'member_remove' => [Groupes::class, 'memberRemove'],
+            'member_candidates' => [Groupes::class, 'memberCandidates'],
+            'formateur_candidates' => [Groupes::class, 'formateurCandidates'],
+            'formateur_request' => [Groupes::class, 'formateurRequest'],
+            'vote_propose' => [Groupes::class, 'votePropose'],
+            'vote_answer' => [Groupes::class, 'voteAnswer'],
+            'vote_cancel' => [Groupes::class, 'voteCancel'],
+            'join_request' => [Groupes::class, 'joinRequest'],
+            'group_create_self' => [Groupes::class, 'groupCreateSelf'],
             'admin_erase' => [Rgpd::class, 'adminErase'],
             'mes_donnees' => [Rgpd::class, 'mesDonnees'],
         ];

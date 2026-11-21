@@ -24,7 +24,7 @@ final class Session
             ['ok' => true, 'me' => Profil::me($c)],
             Donnees::toutes($c),
             Donnees::admin($c),
-            ['migration' => 'lot-a']
+            ['migration' => 'lot-b']
         );
     }
 
@@ -36,7 +36,7 @@ final class Session
      */
     public static function liste(Contexte $c, array $req): array
     {
-        return array_merge(['ok' => true], Donnees::toutes($c), Donnees::admin($c), ['migration' => 'lot-a']);
+        return array_merge(['ok' => true], Donnees::toutes($c), Donnees::admin($c), ['migration' => 'lot-b']);
     }
 
     /**

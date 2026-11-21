@@ -5,7 +5,8 @@ namespace Lpc;
 
 /**
  * Sections de données renvoyées avec « init », « list » et la plupart des actions (mêmes noms et mêmes formes que l'ancien donnees_).
- * Lot A : utilisateurs, enLigne, groupes, enAttente (+ groupesAdmin et structure pour les administrateurs).
+ * Lots A et B : utilisateurs, enLigne, groupes, votes, promosMoi, rattachements, enAttente (+ groupesAdmin et structure pour les
+ * administrateurs). Les sections des lots C et D (lectures, commentaires, suivi, fichiers…) arrivent ensuite.
  */
 final class Donnees
 {
@@ -18,6 +19,9 @@ final class Donnees
             'utilisateurs' => self::utilisateurs($c),
             'enLigne' => self::enLigne($c),
             'groupes' => self::groupes($c),
+            'votes' => Votes::pourClient($c),
+            'promosMoi' => Votes::promosMoi($c),
+            'rattachements' => Votes::rattachements($c),
             'enAttente' => self::enAttente($c),
         ];
     }
@@ -223,6 +227,12 @@ final class Donnees
     private static function affichage(array $r): string
     {
         return Utilisateur::nomAffiche((string) $r['prenom'], (string) $r['nom'], $r['pseudo'] === null ? null : (string) $r['pseudo']);
+    }
+
+    /** Identifiants des groupes que la personne voit (les siens et ceux qu'elle administre). @return list<string> */
+    public static function idsGroupesVisibles(Contexte $c): array
+    {
+        return $c->user->id === null ? [] : array_map('strval', array_keys(self::lignesGroupes($c, true)));
     }
 
     /**
