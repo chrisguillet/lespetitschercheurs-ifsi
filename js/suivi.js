@@ -88,7 +88,8 @@ $("alertbell")?.addEventListener("click", e => {
   else if (b.dataset.alrVoir) { alertePop = false; majAlertes(); setTab("suivi"); }
   else if (b.dataset.alr) reporterAlerte(b.dataset.alr, b.dataset.j === "x" ? null : +b.dataset.j);
 });
-document.addEventListener("click", e => { if (alertePop && !e.target.closest("#alertbell")) { alertePop = false; majAlertes(); } });
+// Fermeture au clic ailleurs. composedPath() : le bouton cliqué a déjà été remplacé par le nouveau rendu, closest() ne le retrouverait plus.
+document.addEventListener("click", e => { if (alertePop && !e.composedPath().includes($("alertbell"))) { alertePop = false; majAlertes(); } });
 
 // Calendrier mensuel : jalons (date fixe ou plage sur plusieurs jours) et réunions du groupe.
 let calMois = null;
