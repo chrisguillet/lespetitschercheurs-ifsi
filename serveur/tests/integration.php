@@ -130,7 +130,7 @@ $r = appel('etu@ci.test', 'init');
 verifie('étudiante : consentement donné', ($r['me']['consentement'] ?? null) === true);
 verifie('nom affiché : prénom + initiale du nom', ($r['me']['prenom'] ?? '') === 'Marie D.');
 $pdo->prepare('UPDATE utilisateurs SET pseudo = ? WHERE id = ?')->execute(['Mimi', $etu]);
-verifie('nom affiché : le pseudo prime', (appel('etu@ci.test', 'init')['me']['prenom'] ?? '') === 'Mimi');
+verifie('nom affiché : le pseudo ne compte que s\'il est activé', ((appel('etu@ci.test', 'init')['me']['prenom'] ?? '') === 'Mimi') === \Lpc\Utilisateur::PSEUDO_ACTIF);
 verifie('dernière connexion enregistrée', valeur($pdo, 'SELECT derniere_connexion FROM utilisateurs WHERE id = ?', [$etu]) !== null);
 verifie('présence enregistrée dans la base du chat', (int) valeur($chat, 'SELECT COUNT(*) FROM presence WHERE utilisateur_id = ?', [$etu]) === 1);
 appel('etu@ci.test', 'bye');
@@ -193,7 +193,7 @@ verifie('consentement daté', valeur($pdo, 'SELECT consentement_le FROM utilisat
 verifie('init : consentement reconnu', (appel('simple@ci.test', 'init')['me']['consentement'] ?? null) === true);
 
 $r = appel('simple@ci.test', 'profile_update', ['data' => ['pseudo' => 'Pau-Pau']]);
-verifie('pseudo modifié', ($r['me']['prenom'] ?? '') === 'Pau-Pau');
+verifie('pseudo modifié (affiché seulement s\'il est activé)', (($r['me']['prenom'] ?? '') === 'Pau-Pau') === \Lpc\Utilisateur::PSEUDO_ACTIF);
 verifie('pseudo : la réponse porte aussi les données', array_key_exists('groupes', $r));
 verifie('pseudo : le prénom ne se modifie pas', $err(appel('simple@ci.test', 'profile_update', ['data' => ['prenom' => 'Pierre']])) === 'forbidden');
 verifie('pseudo : le nom ne se modifie pas', $err(appel('simple@ci.test', 'profile_update', ['data' => ['nom' => 'Autre', 'pseudo' => 'x']])) === 'forbidden');

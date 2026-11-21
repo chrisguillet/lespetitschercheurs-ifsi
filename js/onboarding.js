@@ -6,7 +6,7 @@
 const A = { structure: [], demande: null, msg: "", err: "" };
 
 // Texte de consentement : à garder aligné sur la politique de confidentialité (la version est portée par le serveur).
-const CONSENT_TEXTE = "L’outil est en version bêta : son fonctionnement va évoluer, avec pour but final de constituer une base de connaissances qui aide les étudiants à préparer leur mémoire. Mes contributions (fiches de lecture terminées, commentaires, termes du glossaire) sont conservées dans l’outil et pourront être mises à disposition des promotions suivantes, associées à mon pseudo (ou, à défaut, à mon prénom et à l’initiale de mon nom) et à ma promo, sans mon adresse e-mail. Mes données sont hébergées chez IONOS ; les administrateurs de mon site et de ma promo voient mon adresse e-mail et mon nom pour gérer les accès. Je peux retirer mon accord et demander l’effacement de mes données à tout moment auprès des responsables du projet. Mon accord sera redemandé si l’usage de l’outil change de façon importante.";
+const CONSENT_TEXTE = "L’outil est en version bêta : son fonctionnement va évoluer, avec pour but final de constituer une base de connaissances qui aide les étudiants à préparer leur mémoire. Mes contributions (fiches de lecture terminées, commentaires, termes du glossaire) sont conservées dans l’outil et pourront être mises à disposition des promotions suivantes, associées à mon prénom et à l’initiale de mon nom et à ma promo, sans mon adresse e-mail. Mes données sont hébergées chez IONOS ; les administrateurs de mon site et de ma promo voient mon adresse e-mail et mon nom pour gérer les accès. Je peux retirer mon accord et demander l’effacement de mes données à tout moment auprès des responsables du projet. Mon accord sera redemandé si l’usage de l’outil change de façon importante.";
 const CONSENT_CASE = "J’ai lu la politique de confidentialité et j’accepte que mes contributions soient conservées et partagées avec les promotions suivantes, comme décrit ci-dessus.";
 
 // Comptes déjà actifs avant le consentement explicite : fenêtre bloquante, accepter ou se déconnecter.
@@ -70,7 +70,7 @@ function renderAccueil() {
     ${A.err ? `<div class="note err" role="alert">${esc(A.err)}</div>` : ""}
     <div class="gsec" style="border-top:0"><b>Votre identité</b>
       <div class="grow"><input id="ac_prenom" maxlength="60" autocomplete="given-name" value="${esc(idn.prenom)}" placeholder="Prénom" aria-label="Prénom"><input id="ac_nom" maxlength="60" autocomplete="family-name" value="${esc(idn.nom)}" placeholder="Nom de famille" aria-label="Nom de famille"></div>
-      <div class="meta">Les autres membres verront votre pseudo, ou à défaut votre prénom et l’initiale de votre nom (ex. « Camille D. ») : jamais votre nom complet. Vous choisirez un pseudo dans « Mon profil ». Vérifiez bien : prénom et nom ne pourront ensuite être changés que sur demande, validée par un administrateur.</div>
+      <div class="meta">Les autres membres verront votre prénom et l’initiale de votre nom (ex. « Camille D. ») : jamais votre nom complet. Vérifiez bien : prénom et nom ne pourront ensuite être changés que sur demande, validée par un administrateur.</div>
       <label class="rgpdcheck"><input type="checkbox" id="ac_consent" ${A.consent ? "checked" : ""}> <span>${esc(CONSENT_CASE)}</span></label>
       <div class="meta">${esc(CONSENT_TEXTE)} <a href="privacy.html" target="_blank" rel="noopener">Politique de confidentialité</a></div></div>
     <div class="gsec"><h3>🔑 J’ai un lien ou un code d’invitation</h3>

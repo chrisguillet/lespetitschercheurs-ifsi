@@ -53,9 +53,12 @@ final class Utilisateur
         return self::nomAffiche($this->prenom, $this->nom, $this->pseudo);
     }
 
+    /** Le pseudo est mis de côté pour le moment : tout le monde apparaît sous « prénom + initiale du nom ». Le champ reste en base. */
+    public const PSEUDO_ACTIF = false;
+
     public static function nomAffiche(string $prenom, string $nom, ?string $pseudo): string
     {
-        if ($pseudo !== null && $pseudo !== '') {
+        if (self::PSEUDO_ACTIF && $pseudo !== null && $pseudo !== '') {
             return $pseudo;
         }
         $initiale = $nom === '' ? '' : ' ' . mb_strtoupper(mb_substr($nom, 0, 1)) . '.';
