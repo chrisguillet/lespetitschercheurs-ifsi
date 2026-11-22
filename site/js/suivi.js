@@ -181,9 +181,11 @@ function ouvrirSuiviForm(type, id) {
       <div class="grid"><div><label for="r_vu">Ce qui a été vu</label><textarea id="r_vu" maxlength="2500">${esc(x.vu)}</textarea></div>
       <div><label for="r_attendu">Ce qui est attendu</label><textarea id="r_attendu" maxlength="2500">${esc(x.attendu)}</textarea></div>
       </div>
-      <div class="meta">Les étapes pour la suite se gèrent sous le compte rendu, une par une, avec les personnes concernées et les liens.</div>
+      <div id="cr_attente"></div>
       <div class="savebar"><div id="rerr" class="err" role="alert"></div><button class="btn" id="rsave" type="button">Enregistrer le compte rendu</button> <button class="btn sec" id="rcancel" type="button">Annuler</button></div></div>`;
-    $("rsave").onclick = () => enregistrerSuivi("reunion", g.id, id, Object.assign(Object.fromEntries(["date", "titre", "participants", "vu", "attendu"].map(k => [k, $("r_" + k).value])), { suite: x.suite || "" }), "rerr");
+    crAttenteReinit(id);
+    crAttenteRafraichir();
+    $("rsave").onclick = () => enregistrerCompteRendu(id, g.id, "rerr");
     $("rcancel").onclick = () => fermerSuiviForm();
     $("r_vu").focus();
   }

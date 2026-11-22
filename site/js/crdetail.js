@@ -5,6 +5,7 @@
 
 const CR_PIECES_MAX = 5;
 const CR_IMAGE_SEUIL = 2 * 1024 * 1024;   // au-delà, une photo est réduite dans le navigateur avant l'envoi
+const CR_FICHIER_MAX = 5 * 1024 * 1024;   // taille maximale d'une pièce jointe (comme le serveur)
 const CR_LIENS = { mem: [] };              // blocs du mémoire chargés pour le choix d’un lien
 
 const crTaille = n => (n < 1024 * 1024 ? Math.round(n / 1024) + " Ko" : (n / 1024 / 1024).toFixed(1) + " Mo");
@@ -107,15 +108,35 @@ function remplirChoixLien(zone) {
 // Enregistre le lien posé sur un compte rendu ou sur une tâche.
 async function enregistrerLien(zone) {
   const rid = zone.dataset.rid, tid = zone.dataset.tid || "";
-  const r = reunionsAll.find(x => x.id === rid); if (!r) return;
+  const enAttente = rid === "";   // nouveau compte rendu : le lien est gardé jusqu'à l'enregistrement
+  const r = enAttente ? { groupe_id: (groupeCourant() || {}).id } : reunionsAll.find(x => x.id === rid);
+  if (!r) return;
   const cible = zone.querySelector("[data-li]").value, description = zone.querySelector("[data-ld]").value.trim();
   const err = zone.querySelector("[data-lerr]");
   if (!cible) { err.textContent = "Choisissez un élément à lier."; return; }
   if (!description) { err.textContent = "Indiquez pourquoi ce lien est utile."; return; }
   const cible_type = zone.querySelector("[data-lt]").value;
+  if (enAttente) {
+    const choix = zone.querySelector("[data-li]").selectedOptions[0];
+    crEnAttente.liens.push({ cible_type, cible_id: cible, description, libelle: choix ? choix.textContent : cible });
+    zone.innerHTML = "";
+    crAttenteRafraichir();
+    return;
+  }
   try {
     applyResult(await enCours("Enregistrement…", () => api("lien_save", { groupe_id: r.groupe_id, reunion_id: rid, tache_id: tid || undefined, data: { cible_type, cible_id: cible, description } })));
   } catch (e) { if (e.code === "unauthorized") sessionError(e); else err.textContent = "Enregistrement impossible : " + e.message; }
+}
+
+// Pièce jointe gardée pour le nouveau compte rendu ; le serveur contrôle le format et la taille à l'enregistrement.
+async function ajouterPieceEnAttente(file) {
+  if (crEnAttente.fichiers.length >= CR_PIECES_MAX) { alert("Cinq pièces jointes au plus par compte rendu."); return; }
+  if (!/^image\//.test(file.type) && file.size > CR_FICHIER_MAX) { alert("Fichier trop volumineux (5 Mo maximum)."); return; }
+  try {
+    const contenu = await crContenuFichier(file);
+    crEnAttente.fichiers.push({ nom: file.name, contenu });
+    crAttenteRafraichir();
+  } catch (e) { alert("Fichier illisible : " + e.message); }
 }
 
 async function supprimerLien(lid) {
@@ -168,6 +189,60 @@ async function supprimerPiece(fid) {
   catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Suppression impossible : " + e.message); }
 }
 
+// ---------- Éléments d'un nouveau compte rendu : saisis avant l'enregistrement, envoyés une fois le compte rendu créé ----------
+
+let crEnAttente = { taches: [], liens: [], fichiers: [] };
+
+function crAttenteReinit() { crEnAttente = { taches: [], liens: [], fichiers: [] }; }
+
+// Zone « Étapes, liens et pièces jointes » du formulaire de compte rendu.
+function crAttenteRafraichir() {
+  const z = $("cr_attente"); if (!z) return;
+  const m = crEnAttente, membres = (groupeCourant() || {}).membres || [];
+  const retrait = (cle, i) => `<button type="button" class="btn sm sec del" data-ca-del="${cle}:${i}" aria-label="Retirer">✕</button>`;
+  z.innerHTML = `<div class="sect"><b>Étapes pour la suite</b> <span class="meta">(facultatif, ajoutées au compte rendu à l’enregistrement)</span>
+    ${m.taches.length ? `<ul class="crtaches">${m.taches.map((t, i) => `<li>${esc(t.texte)} ${t.personnes.length ? `<span class="meta">— ${esc(t.personnes.map(p => ((membres.find(x => x.pid === p) || {}).prenom || "")).join(", "))}</span>` : ""} ${retrait("tache", i)}</li>`).join("")}</ul>` : ""}
+    <div class="tools"><input id="ca_tache" maxlength="300" placeholder="Nouvelle tâche" style="flex:1"><select id="ca_pers" multiple size="3" aria-label="Personnes concernées">${membres.map(x => `<option value="${esc(x.pid)}">${esc(x.prenom)}</option>`).join("")}</select><button type="button" class="btn sm sec" data-ca-tache>＋ Tâche</button></div></div>
+    <div class="sect"><b>Liens</b> <span class="meta">(un article, une fiche ou un bloc du mémoire, et pourquoi)</span>
+      ${m.liens.length ? `<ul class="crliens">${m.liens.map((l, i) => `<li>🔗 <b>${esc(l.libelle)}</b> — ${esc(l.description)} ${retrait("lien", i)}</li>`).join("")}</ul>` : ""}
+      <button type="button" class="btn sm sec" data-lnew="" data-rid="">🔗 Ajouter un lien</button><div id="lf__"></div></div>
+    <div class="sect"><b>Pièces jointes</b> <span class="meta">(${m.fichiers.length}/${CR_PIECES_MAX})</span>
+      ${m.fichiers.length ? `<ul class="crpieces">${m.fichiers.map((f, i) => `<li>📎 ${esc(f.nom)} ${retrait("fichier", i)}</li>`).join("")}</ul>` : ""}
+      ${m.fichiers.length < CR_PIECES_MAX ? `<button type="button" class="btn sm sec" data-ca-file>＋ Joindre un fichier</button><input type="file" hidden id="ca_file" accept="application/pdf,image/png,image/jpeg">` : ""}</div>`;
+}
+
+// Enregistre le compte rendu, puis ses étapes, liens et pièces jointes saisis avec lui.
+async function enregistrerCompteRendu(id, gid, errId) {
+  const data = Object.assign(Object.fromEntries(["date", "titre", "participants", "vu", "attendu"].map(k => [k, $("r_" + k).value])), { suite: (reunionsAll.find(r => r.id === id) || {}).suite || "" });
+  const avant = new Set(reunionsAll.map(r => r.id));
+  const erreurs = [];
+  try {
+    await enCours("Enregistrement…", async () => {
+      let res = await api("reunion_save", { groupe_id: gid, id: id || undefined, data });
+      const rid = id || ((res.reunions || []).find(r => !avant.has(r.id)) || {}).id;
+      if (!rid) throw new Error("compte rendu introuvable après enregistrement");
+      for (const t of crEnAttente.taches) {
+        try { res = await api("tache_save", { groupe_id: gid, reunion_id: rid, data: { texte: t.texte, fait: false, personnes: t.personnes } }); }
+        catch (e) { erreurs.push("tâche « " + t.texte + " » : " + e.message); }
+      }
+      for (const l of crEnAttente.liens) {
+        try { res = await api("lien_save", { groupe_id: gid, reunion_id: rid, data: { cible_type: l.cible_type, cible_id: l.cible_id, description: l.description } }); }
+        catch (e) { erreurs.push("lien « " + l.libelle + " » : " + e.message); }
+      }
+      for (const f of crEnAttente.fichiers) {
+        try { res = await api("reunion_fichier_ajouter", { reunion_id: rid, nom: f.nom, contenu: f.contenu }); }
+        catch (e) { erreurs.push("pièce jointe « " + f.nom + " » : " + e.message); }
+      }
+      crAttenteReinit();
+      fermerSuiviForm();
+      applyResult(res);
+    });
+    if (erreurs.length) alert("Le compte rendu est enregistré, mais certains éléments n’ont pas pu être ajoutés :\n" + erreurs.join("\n"));
+  } catch (e) {
+    if (e.code === "unauthorized") sessionError(e); else $(errId).textContent = "Enregistrement impossible : " + e.message;
+  }
+}
+
 // Gestes sur le détail des comptes rendus (délégation sur l'onglet Suivi).
 $("suivi")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
@@ -183,6 +258,19 @@ $("suivi")?.addEventListener("click", e => {
   if (d.lcancel !== undefined) { const z = b.closest(".crlform"); if (z) z.parentElement.innerHTML = ""; return; }
   if (d.lsave !== undefined) return enregistrerLien(b.closest(".crlform"));
   if (d.ldel !== undefined) { if (!confirm("Retirer ce lien ?")) return; return supprimerLien(d.ldel); }
+  if (d.caTache !== undefined) {
+    const texte = ($("ca_tache").value || "").trim();
+    if (!texte) return;
+    const personnes = [...$("ca_pers").selectedOptions].map(o => o.value);
+    crEnAttente.taches.push({ texte, personnes });
+    return crAttenteRafraichir();
+  }
+  if (d.caDel !== undefined) {
+    const [cle, i] = d.caDel.split(":"), liste = cle === "tache" ? crEnAttente.taches : cle === "lien" ? crEnAttente.liens : crEnAttente.fichiers;
+    liste.splice(Number(i), 1);
+    return crAttenteRafraichir();
+  }
+  if (d.caFile !== undefined) { const i = $("ca_file"); if (i) i.click(); return; }
   if (d.fadd !== undefined) { const i = document.querySelector('[data-fin="' + d.fadd + '"]'); if (i) i.click(); return; }
   if (d.fdl !== undefined) return telechargerPiece(d.fdl);
   if (d.fdel !== undefined) { if (!confirm("Supprimer cette pièce jointe ?")) return; return supprimerPiece(d.fdel); }
@@ -200,6 +288,10 @@ $("suivi")?.addEventListener("change", e => {
     return enregistrerTache(f.r.id, f.t.id, { texte: f.t.texte, fait: f.t.fait, personnes: pids });
   }
   if (t.matches("[data-lt]")) return remplirChoixLien(t.closest(".crlform"));
+  if (t.id === "ca_file" && t.files && t.files[0]) {
+    const file = t.files[0]; t.value = "";
+    return ajouterPieceEnAttente(file);
+  }
   if (t.matches("[data-fin]") && t.files && t.files[0]) {
     const file = t.files[0]; t.value = "";
     return ajouterPiece(t.dataset.fin, file);
