@@ -22,64 +22,98 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   // Personnes : patients, médecins, familles de toutes couleurs de peau, femmes, hommes et neutres, tirés au hasard.
   const TEINTES = ["\u{1F3FB}", "\u{1F3FC}", "\u{1F3FD}", "\u{1F3FE}", "\u{1F3FF}"];
   const auHasard = l => l[Math.floor(Math.random() * l.length)];
+  // Tirage « en sac » : chaque valeur sort une fois avant qu'on remélange. Un vrai hasard fait des séries
+  // (quatre peaux foncées sur neuf lits, par exemple) ; le sac garde une répartition égale à l'écran.
+  const sac = liste => { let reste = []; return () => { if (!reste.length) { reste = liste.slice(); for (let i = reste.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [reste[i], reste[j]] = [reste[j], reste[i]]; } } return reste.pop(); }; };
+  const teinteSuivante = sac(TEINTES);
   // Teinte de peau insérée après le premier caractère (elle s'applique aussi aux emojis composés : 👩‍🦰 → 👩🏾‍🦰).
-  const teinte = (e, t) => { const c = [...e]; return c[0] + (t || auHasard(TEINTES)) + c.slice(1).join(""); };
+  const teinte = (e, t) => { const c = [...e]; return c[0] + (t || teinteSuivante()) + c.slice(1).join(""); };
   const PATIENTS = ["👵", "👩", "👧", "👩‍🦰", "👩‍🦱", "👱‍♀️", "👴", "👨", "👦", "👨‍🦳", "👨‍🦱", "🧔", "🧑", "🧓", "🧒", "🧑‍🦱"];
   const PATIENTS_ADULTES = PATIENTS.filter(e => !["👧", "👦", "🧒"].includes(e));
-  const patientAuHasard = adultes => teinte(auHasard(adultes ? PATIENTS_ADULTES : PATIENTS));
+  const patientSuivant = sac(PATIENTS), adulteSuivant = sac(PATIENTS_ADULTES);
+  const patientAuHasard = adultes => teinte(adultes ? adulteSuivant() : patientSuivant());
   // Visiteurs (obstacle de la course) : deux personnes, chacune avec sa couleur de peau.
   const visiteursAuHasard = () => auHasard([
     () => teinte("👫"), () => teinte("👭"), () => teinte("👬"),
-    () => "🧑" + auHasard(TEINTES) + "‍🤝‍🧑" + auHasard(TEINTES)
+    () => "🧑" + teinteSuivante() + "‍🤝‍🧑" + teinteSuivante()
   ])();
   const PEAUX = ["#f5d6c0", "#e8b896", "#c98e62", "#9a6440", "#5c3b26"], CHEVEUX = ["#2b2118", "#6b4a32", "#a8743f", "#d8c08a", "#8a8a8a", "#111"];
+  const peauSuivante = sac(PEAUX);
 
-  // Le personnage joué : un bonhomme bâton, sans sexe ni couleur de peau, en blouse blanche et coiffe d'infirmier·ère.
-  // o : h (taille des pieds au haut de la coiffe), ph (phase de marche), allure (0..1), air, face (1 / -1), bras (0..1 levés),
-  // penche (radians), mine (grimace), accroupi, trait (couleur des traits, selon le thème).
+  // Le personnage joué : la poule du logo Qocot, en blouse blanche d'infirmier·ère (croix rouge sur la poche).
+  // o : h (taille des pattes au haut de la crête), ph (phase de marche), allure (0..1), air, face (1 : regarde à droite),
+  // bras (0..1 : ailes levées), penche (radians), mine (grimace), accroupi.
   function soignant(ctx, x, sol, o) {
-    // Couleurs fixes, lisibles sur fond clair comme sombre : membres gris-bleu, contours de la blouse et de la tête plus foncés.
-    const u = (o.h || 56) / 58, trait = "#6f7f96", contour = "#34404f", face = o.face || 1, marche = o.allure || 0, ph = o.ph || 0;
+    const u = (o.h || 56) / 58, f = o.face || 1, marche = o.allure || 0, ph = o.ph || 0;
+    const plume = "#fbe7c6", contour = "#b9772f", rouge = "#e0362c", bec = "#f2a42b", queue = ["#7a3f1a", "#a35a2a", "#8c4a20"];
+    const rebond = o.air ? 0 : -Math.abs(Math.sin(ph)) * 2 * marche * u;
+    const cy = -27 * u + rebond, hy = -45 * u + rebond, hx = f * 4 * u;   // centre du corps, centre de la tête
+    const ovale = (x0, y0, rx, ry, rot) => { ctx.beginPath(); ctx.ellipse(x0, y0, rx, ry, rot || 0, 0, Math.PI * 2); };
     ctx.save();
     ctx.translate(x, sol); ctx.rotate(o.penche || 0);
-    if (o.accroupi) ctx.scale(1.08, 0.58);
-    ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = trait; ctx.lineWidth = Math.max(2, 2.6 * u);
-    const rebond = o.air ? 0 : -Math.abs(Math.sin(ph)) * 2 * marche * u;
-    const hanche = -22 * u + rebond, epaule = -38 * u + rebond, cou = -41 * u + rebond, tete = -47.5 * u + rebond, r = 6.5 * u;
-    // Jambes : balancier en marche, repliées en l'air.
-    [0, Math.PI].forEach(dep => {
-      const ang = o.air ? (dep ? -0.5 : 0.7) : Math.sin(ph + dep) * 0.7 * marche;
-      const genou = { x: Math.sin(ang) * 11 * u, y: hanche + Math.cos(ang) * 11 * u };
-      const pliage = o.air ? 0.9 : Math.max(0, -Math.sin(ph + dep)) * 0.6 * marche;
-      ctx.beginPath(); ctx.moveTo(0, hanche); ctx.lineTo(genou.x, genou.y);
-      ctx.lineTo(genou.x + Math.sin(ang - pliage) * 11 * u, Math.min(0, genou.y + Math.cos(ang - pliage) * 11 * u)); ctx.stroke();
+    if (o.accroupi) ctx.scale(1.1, 0.6);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    // Queue : trois plumes brunes, derrière le corps.
+    [[-0.9, 0], [-0.5, 1], [-1.3, 2]].forEach(([a, k]) => {
+      ctx.fillStyle = queue[k]; ovale(-f * 13 * u, cy - 6 * u, 4 * u, 11 * u, f * a); ctx.fill();
     });
-    // Blouse blanche : trapèze des épaules aux cuisses, boutons et poche.
-    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = contour; ctx.lineWidth = Math.max(1.2, 1.5 * u);
-    ctx.beginPath(); ctx.moveTo(-5 * u, cou + 1 * u); ctx.lineTo(5 * u, cou + 1 * u); ctx.lineTo(9 * u, hanche + 6 * u); ctx.lineTo(-9 * u, hanche + 6 * u); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, cou + 3 * u); ctx.lineTo(0, hanche + 6 * u); ctx.stroke();
-    ctx.fillStyle = "#d33a3a"; ctx.fillRect(face * 3.2 * u - 1.6 * u, cou + 7 * u, 3.2 * u, 1.1 * u); ctx.fillRect(face * 3.2 * u - 0.55 * u, cou + 6 * u, 1.1 * u, 3.2 * u);   // croix sur la poche
-    // Bras : balancier opposé aux jambes, levés pour attraper, sauter ou au choc.
-    ctx.strokeStyle = trait; ctx.lineWidth = Math.max(2, 2.6 * u);
-    [[1, Math.PI], [-1, 0]].forEach(([cote, dep]) => {
-      const repos = cote * 0.25 + Math.sin(ph + dep) * 0.8 * marche;
-      const ang = repos + (cote * 2.6 - repos) * (o.bras || 0);
-      const coude = { x: cote * 4 * u + Math.sin(ang) * 9 * u, y: epaule + Math.cos(ang) * 9 * u };
-      ctx.beginPath(); ctx.moveTo(cote * 4 * u, epaule); ctx.lineTo(coude.x, coude.y); ctx.lineTo(coude.x + Math.sin(ang * 0.8) * 9 * u, coude.y + Math.cos(ang * 0.8) * 9 * u); ctx.stroke();
+    // Pattes orange (trois doigts), en balancier quand elle marche, repliées en l'air.
+    ctx.strokeStyle = bec; ctx.lineWidth = Math.max(1.8, 2.3 * u);
+    [0, Math.PI].forEach((dep, k) => {
+      const ang = o.air ? (k ? -0.35 : 0.45) : Math.sin(ph + dep) * 0.6 * marche;
+      const hx0 = (k ? -4 : 4) * u, hy0 = cy + 12 * u;
+      const px = hx0 + Math.sin(ang) * 14 * u, py = Math.min(0, hy0 + Math.cos(ang) * 14 * u);
+      ctx.beginPath(); ctx.moveTo(hx0, hy0); ctx.lineTo(px, py); ctx.stroke();
+      ctx.beginPath(); [-0.5, 0, 0.5].forEach(d => { ctx.moveTo(px, py); ctx.lineTo(px + f * Math.cos(d) * 4.5 * u, py + Math.sin(d) * 2 * u); }); ctx.stroke();
     });
-    // Tête : cercle blanc, yeux et bouche simples.
-    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = contour; ctx.lineWidth = Math.max(1.4, 1.8 * u);
-    ctx.beginPath(); ctx.arc(face * 0.5 * u, tete, r, 0, 7); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = contour; const ouvert = o.mine ? 0.5 : 1.2;
-    ctx.beginPath(); ctx.ellipse(face * 2.6 * u - 2.2 * u, tete - 0.5 * u, 0.9 * u, ouvert * u, 0, 0, 7); ctx.ellipse(face * 2.6 * u + 2.2 * u, tete - 0.5 * u, 0.9 * u, ouvert * u, 0, 0, 7); ctx.fill();
-    ctx.lineWidth = Math.max(1, 1.2 * u); ctx.beginPath();
-    if (o.mine) ctx.arc(face * 2.6 * u, tete + 4.5 * u, 2 * u, Math.PI * 1.15, Math.PI * 1.85); else ctx.arc(face * 2.6 * u, tete + 1.6 * u, 2.4 * u, 0.2 * Math.PI, 0.8 * Math.PI);
-    ctx.stroke();
-    // Coiffe d'infirmier·ère : bandeau et sommet arrondi, croix rouge.
-    const cy = tete - r * 0.72;
-    ctx.fillStyle = "#ffffff"; ctx.lineWidth = Math.max(1.1, 1.4 * u);
-    ctx.beginPath(); ctx.moveTo(-7.5 * u, cy + 1.5 * u); ctx.lineTo(-6 * u, cy - 5 * u); ctx.quadraticCurveTo(0, cy - 8.5 * u, 6 * u, cy - 5 * u); ctx.lineTo(7.5 * u, cy + 1.5 * u); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = "#d33a3a"; ctx.fillRect(-2.2 * u, cy - 3.6 * u, 4.4 * u, 1.4 * u); ctx.fillRect(-0.7 * u, cy - 5.1 * u, 1.4 * u, 4.4 * u);
+    // Corps : boule de plumes crème.
+    ctx.fillStyle = plume; ctx.strokeStyle = contour; ctx.lineWidth = Math.max(1.2, 1.5 * u);
+    ovale(0, cy, 14 * u, 15 * u); ctx.fill(); ctx.stroke();
+    // Blouse blanche : couvre le bas du corps (découpée à sa forme), col en V, boutons, poche à croix rouge.
+    ctx.save(); ovale(0, cy, 14.6 * u, 15.6 * u); ctx.clip();
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(-16 * u, cy - 7 * u, 32 * u, 24 * u);
+    ctx.beginPath(); ctx.moveTo(-9 * u, cy - 7 * u); ctx.lineTo(0, cy + 1 * u); ctx.lineTo(9 * u, cy - 7 * u); ctx.closePath(); ctx.fillStyle = plume; ctx.fill();
+    ctx.strokeStyle = "#9aa8bb"; ctx.lineWidth = Math.max(1, 1.2 * u);
+    ctx.beginPath(); ctx.moveTo(-16 * u, cy - 7 * u); ctx.lineTo(-9 * u, cy - 7 * u); ctx.lineTo(0, cy + 1 * u); ctx.lineTo(9 * u, cy - 7 * u); ctx.lineTo(16 * u, cy - 7 * u); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, cy + 1 * u); ctx.lineTo(0, cy + 17 * u); ctx.stroke();
+    ctx.fillStyle = "#9aa8bb"; [5, 10].forEach(d => { ctx.beginPath(); ctx.arc(-f * 1.8 * u, cy + d * u, 0.9 * u, 0, 7); ctx.fill(); });
+    const poche = f * 7 * u;   // centre de la poche, côté vers lequel elle regarde
+    ctx.strokeStyle = "#9aa8bb"; ctx.strokeRect(poche - 3 * u, cy + 3.5 * u, 6 * u, 5 * u);
+    ctx.fillStyle = "#d33a3a"; ctx.fillRect(poche - 2 * u, cy + 5.45 * u, 4 * u, 1.1 * u); ctx.fillRect(poche - 0.55 * u, cy + 4 * u, 1.1 * u, 4 * u);
+    ctx.restore();
+    ctx.strokeStyle = contour; ctx.lineWidth = Math.max(1.2, 1.5 * u); ovale(0, cy, 14 * u, 15 * u); ctx.stroke();
+    // Ailes : balancier opposé aux pattes ; levées pour attraper, sauter ou au choc. Manche blanche à la base.
+    const aile = cote => {
+      const repos = cote * 0.5 + Math.sin(ph + (cote > 0 ? Math.PI : 0)) * 0.5 * marche;
+      const ang = repos + (cote * 2.5 - repos) * (o.bras || 0);
+      const ax = cote * 12 * u, ay = cy - 5 * u;
+      ctx.save(); ctx.translate(ax, ay); ctx.rotate(-ang);
+      ctx.fillStyle = plume; ctx.strokeStyle = contour; ctx.lineWidth = Math.max(1, 1.3 * u);
+      ovale(0, 7 * u, 4.2 * u, 8.5 * u); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "rgba(185,119,47,.6)"; ctx.beginPath(); ctx.moveTo(-1.5 * u, 10 * u); ctx.lineTo(-1.5 * u, 14 * u); ctx.moveTo(1.5 * u, 10 * u); ctx.lineTo(1.5 * u, 14 * u); ctx.stroke();
+      ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#9aa8bb"; ctx.lineWidth = Math.max(1, 1.1 * u);
+      ovale(0, 2 * u, 4.6 * u, 3.6 * u); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    };
+    aile(-f);
+    // Tête : crête rouge, bec orange, barbillon, grand œil brun (fermé et plissé au choc), cils, joue rose.
+    ctx.fillStyle = rouge;
+    [[-6, -8.5, 3.6], [-2, -10.5, 4.2], [2.5, -9.5, 3.6]].forEach(([dx, dy, r]) => { ctx.beginPath(); ctx.arc(hx + f * dx * u, hy + dy * u, r * u, 0, 7); ctx.fill(); });
+    ctx.fillStyle = plume; ctx.strokeStyle = contour; ctx.lineWidth = Math.max(1.2, 1.5 * u);
+    ctx.beginPath(); ctx.arc(hx, hy, 9.5 * u, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = bec; ctx.strokeStyle = "#c27a12"; ctx.lineWidth = Math.max(1, 1.1 * u);
+    ctx.beginPath(); ctx.moveTo(hx + f * 8 * u, hy - 2.5 * u); ctx.lineTo(hx + f * 15 * u, hy + 0.5 * u); ctx.lineTo(hx + f * 8 * u, hy + 3 * u); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = rouge; ovale(hx + f * 8.5 * u, hy + 6 * u, 2 * u, 3.2 * u); ctx.fill();
+    ctx.fillStyle = "rgba(240,120,110,.35)"; ovale(hx + f * 1 * u, hy + 4 * u, 2.6 * u, 1.6 * u); ctx.fill();
+    const ex = hx + f * 4 * u, ey = hy - 2.5 * u;
+    if (o.mine) { ctx.strokeStyle = "#3b2414"; ctx.lineWidth = Math.max(1.2, 1.5 * u); ctx.beginPath(); ctx.moveTo(ex - 2.5 * u, ey - 1.5 * u); ctx.lineTo(ex + 2.5 * u, ey); ctx.lineTo(ex - 2.5 * u, ey + 1.5 * u); ctx.stroke(); }
+    else {
+      ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#3b2414"; ctx.lineWidth = Math.max(1, 1.1 * u); ovale(ex, ey, 3.2 * u, 3.8 * u); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#5a2f12"; ovale(ex + f * 0.8 * u, ey + 0.5 * u, 2 * u, 2.6 * u); ctx.fill();
+      ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(ex + f * 1.4 * u, ey - 0.4 * u, 0.7 * u, 0, 7); ctx.fill();
+      ctx.strokeStyle = "#3b2414"; ctx.beginPath(); [-0.6, 0, 0.6].forEach(d => { ctx.moveTo(ex + (d * 3) * u, ey - 3.6 * u); ctx.lineTo(ex + (d * 4.5) * u, ey - 5.4 * u); }); ctx.stroke();
+    }
+    aile(f);
     ctx.restore();
   }
 
@@ -814,7 +848,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
       s.prochainBrancard -= dt;
       if (!s.brancard && s.prochainBrancard <= 0) {
         const sens = Math.random() < 0.5 ? 1 : -1;
-        s.brancard = { x: sens > 0 ? -60 : W + 60, dir: sens, v: 0, alerte: 1.0, franchi: false, peau: auHasard(PEAUX), cheveux: auHasard(CHEVEUX) };
+        s.brancard = { x: sens > 0 ? -60 : W + 60, dir: sens, v: 0, alerte: 1.0, franchi: false, peau: peauSuivante(), cheveux: auHasard(CHEVEUX) };
         s.prochainBrancard = alea(6, 10) - 3 * Math.min(1, d);
       }
       const b = s.brancard;
