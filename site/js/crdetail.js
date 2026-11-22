@@ -8,6 +8,15 @@ const CR_IMAGE_SEUIL = 2 * 1024 * 1024;   // au-delà, une photo est réduite da
 const CR_FICHIER_MAX = 5 * 1024 * 1024;   // taille maximale d'une pièce jointe (comme le serveur)
 const CR_LIENS = { mem: [] };              // blocs du mémoire chargés pour le choix d’un lien
 
+// Sur téléphone ou tablette : bouton qui ouvre directement l'appareil photo (capture) ; la photo est ajoutée dès qu'elle est prise.
+const crTactile = () => !!(window.matchMedia && matchMedia("(pointer: coarse)").matches);
+const crBoutonPhoto = attrs => crTactile() ? ` <button type="button" class="btn sm sec" ${attrs.bouton}>📷 Prendre une photo</button><input type="file" hidden ${attrs.champ} accept="image/*" capture="environment">` : "";
+// Les photos de l'appareil arrivent souvent sous le nom « image.jpg » : on leur donne un nom daté.
+function crNomPhoto(file) {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return "photo-" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + ".jpg";
+}
+
 const crTaille = n => (n < 1024 * 1024 ? Math.round(n / 1024) + " Ko" : (n / 1024 / 1024).toFixed(1) + " Mo");
 
 // Liens d'une liste (tâche ou compte rendu).
@@ -50,7 +59,7 @@ function reunionDetailHtml(x) {
     <div class="sect"><b>Pièces jointes</b> <span class="meta">(${pieces.length}/${CR_PIECES_MAX} ; images réduites à 300 Ko)</span>
       ${pieces.length ? `<ul class="crpieces">${pieces.map(f => `<li><button type="button" class="btn sm sec" data-fdl="${esc(f.id)}">📎 ${esc(f.nom)}</button> <span class="meta">${esc(crTaille(f.taille))} · ${esc(f.par)}</span>
         ${ecrit ? ` <button type="button" class="btn sm sec del" data-fdel="${esc(f.id)}" aria-label="Supprimer la pièce jointe">🗑</button>` : ""}</li>`).join("")}</ul>` : '<div class="meta">Aucune pièce jointe.</div>'}
-      ${ecrit && pieces.length < CR_PIECES_MAX ? `<button type="button" class="btn sm sec" data-fadd="${esc(x.id)}">＋ Joindre un fichier</button><input type="file" hidden data-fin="${esc(x.id)}" accept="application/pdf,image/png,image/jpeg">` : ""}
+      ${ecrit && pieces.length < CR_PIECES_MAX ? `<button type="button" class="btn sm sec" data-fadd="${esc(x.id)}">＋ Joindre un fichier</button><input type="file" hidden data-fin="${esc(x.id)}" accept="application/pdf,image/png,image/jpeg">${crBoutonPhoto({ bouton: `data-fcam="${esc(x.id)}"`, champ: `data-fcin="${esc(x.id)}"` })}` : ""}
     </div></div>`;
 }
 
@@ -133,11 +142,11 @@ async function enregistrerLien(zone) {
 }
 
 // Pièce jointe gardée pour le nouveau compte rendu ; le serveur contrôle le format et la taille à l'enregistrement.
-async function ajouterPieceEnAttente(file) {
+async function ajouterPieceEnAttente(file, reduire = false) {
   if (crEnAttente.fichiers.length >= CR_PIECES_MAX) { alert("Cinq pièces jointes au plus par compte rendu."); return; }
   if (!/^image\//.test(file.type) && file.size > CR_FICHIER_MAX) { alert("Fichier trop volumineux (5 Mo maximum)."); return; }
   try {
-    const contenu = await crContenuFichier(file);
+    const contenu = await crContenuFichier(file, reduire);
     crEnAttente.fichiers.push({ nom: file.name, contenu });
     crAttenteRafraichir();
   } catch (e) { alert("Fichier illisible : " + e.message); }
@@ -159,8 +168,9 @@ function crLireBase64(blob) {
 }
 
 // Une photo lourde est réduite ici (1600 px, JPEG) avant l'envoi ; le serveur la ramène ensuite à 300 Ko au plus.
-async function crContenuFichier(file) {
-  if (!/^image\//.test(file.type) || file.size <= CR_IMAGE_SEUIL) return crLireBase64(file);
+// Une photo prise avec l'appareil (reduire = true) est toujours réduite, quelle que soit sa taille.
+async function crContenuFichier(file, reduire = false) {
+  if (!/^image\//.test(file.type) || (!reduire && file.size <= CR_IMAGE_SEUIL)) return crLireBase64(file);
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error("image illisible")); i.src = url; });
@@ -173,9 +183,9 @@ async function crContenuFichier(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 
-async function ajouterPiece(rid, file) {
+async function ajouterPiece(rid, file, reduire = false) {
   try {
-    const contenu = await crContenuFichier(file);
+    const contenu = await crContenuFichier(file, reduire);
     applyResult(await enCours("Envoi du fichier…", () => api("reunion_fichier_ajouter", { reunion_id: rid, nom: file.name, contenu })));
   } catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Envoi impossible : " + e.message); }
 }
@@ -237,7 +247,7 @@ function crAttenteRafraichir() {
       <button type="button" class="btn sm sec" data-lnew="" data-rid="">🔗 Ajouter un lien</button><div id="lf__"></div></div>
     <div class="sect"><b>Pièces jointes</b> <span class="meta">(${m.fichiers.length}/${CR_PIECES_MAX})</span>
       ${m.fichiers.length ? `<ul class="crpieces">${m.fichiers.map((f, i) => `<li>📎 ${esc(f.nom)} ${retrait("fichier:" + i)}</li>`).join("")}</ul>` : ""}
-      ${m.fichiers.length < CR_PIECES_MAX ? `<button type="button" class="btn sm sec" data-ca-file>＋ Joindre un fichier</button><input type="file" hidden id="ca_file" accept="application/pdf,image/png,image/jpeg">` : ""}</div>`;
+      ${m.fichiers.length < CR_PIECES_MAX ? `<button type="button" class="btn sm sec" data-ca-file>＋ Joindre un fichier</button><input type="file" hidden id="ca_file" accept="application/pdf,image/png,image/jpeg">${crBoutonPhoto({ bouton: "data-ca-cam", champ: 'id="ca_cam"' })}` : ""}</div>`;
 }
 
 // Enregistre le compte rendu, puis ses tâches (avec leurs liens), ses liens et ses pièces jointes saisis avec lui.
@@ -311,6 +321,8 @@ $("suivi")?.addEventListener("click", e => {
     return crAttenteRafraichir();
   }
   if (d.caFile !== undefined) { const i = $("ca_file"); if (i) i.click(); return; }
+  if (d.caCam !== undefined) { const i = $("ca_cam"); if (i) i.click(); return; }
+  if (d.fcam !== undefined) { const i = document.querySelector('[data-fcin="' + d.fcam + '"]'); if (i) i.click(); return; }
   if (d.fadd !== undefined) { const i = document.querySelector('[data-fin="' + d.fadd + '"]'); if (i) i.click(); return; }
   if (d.fdl !== undefined) return telechargerPiece(d.fdl);
   if (d.fdel !== undefined) { if (!confirm("Supprimer cette pièce jointe ?")) return; return supprimerPiece(d.fdel); }
@@ -339,5 +351,11 @@ $("suivi")?.addEventListener("change", e => {
   if (t.matches("[data-fin]") && t.files && t.files[0]) {
     const file = t.files[0]; t.value = "";
     return ajouterPiece(t.dataset.fin, file);
+  }
+  // Photo prise avec l'appareil : renommée, puis ajoutée tout de suite (réduite comme les autres images).
+  if ((t.id === "ca_cam" || t.matches("[data-fcin]")) && t.files && t.files[0]) {
+    const brut = t.files[0]; t.value = "";
+    const file = new File([brut], crNomPhoto(brut), { type: brut.type || "image/jpeg" });
+    return t.id === "ca_cam" ? ajouterPieceEnAttente(file, true) : ajouterPiece(t.dataset.fcin, file, true);
   }
 });
