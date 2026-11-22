@@ -160,8 +160,8 @@ function memBlocHtml(b, i, ecrit, portee, ind) {
     ? `<div class="meta memextrait" style="padding:4px 2px">${esc(memExtrait(b.texte))}</div>`
     : `<textarea class="memtxt memtxt-${esc(b.type)}" rows="${b.type === "paragraphe" || b.type === "citation" || b.type === "reference" ? 4 : 1}" ${dis} aria-label="Texte du bloc">${esc(b.texte)}</textarea>`;
   return `<div class="card memblc" data-bid="${esc(b.id)}" style="margin-left:${(ind || 0) * 28}px">
-    <div class="memtete">${bouton}<select data-mem-type ${dis} aria-label="Type du bloc">${Object.keys(MEM_TYPES).map(k => `<option value="${k}" ${k === b.type ? "selected" : ""}>${esc(MEM_TYPES[k])}</option>`).join("")}</select>
-      ${ecrit ? `<span class="memops"><button type="button" class="btn sm sec" data-mem-mv="-1" aria-label="Monter" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" class="btn sm sec" data-mem-mv="1" aria-label="Descendre">↓</button><button type="button" class="btn sm sec del" data-mem-del aria-label="Supprimer">🗑</button></span>` : ""}</div>
+    <div class="memtete" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${bouton}<select data-mem-type ${dis} aria-label="Type du bloc" style="width:auto;flex:0 1 240px;min-width:160px">${Object.keys(MEM_TYPES).map(k => `<option value="${k}" ${k === b.type ? "selected" : ""}>${esc(MEM_TYPES[k])}</option>`).join("")}</select>
+      ${ecrit ? `<span class="memops" style="margin-left:auto;display:flex;gap:4px"><button type="button" class="btn sm sec" data-mem-mv="-1" aria-label="Monter" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" class="btn sm sec" data-mem-mv="1" aria-label="Descendre">↓</button><button type="button" class="btn sm sec del" data-mem-del aria-label="Supprimer">🗑</button></span>` : ""}</div>
     ${corps}
   </div>`;
 }
