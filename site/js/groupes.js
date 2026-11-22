@@ -28,8 +28,9 @@ function renderCtx() {
       : "Aucun groupe ne vous est affecté pour le moment : contactez l’administrateur."; }
   }
   msg.classList.toggle("hidden", !(me && !g));
-  // Ligne fixe sous le titre : établissement, promo, groupe et personne connectée. Elle ne change ni avec la vue (groupe / promo) ni avec les filtres.
-  $("sub").textContent = !g ? "Outil partagé de suivi des lectures de mémoire" : `${g.etablissement} · ${g.promo} · ${g.nom} — ${me.prenom}`;
+  // Établissement · promo · groupe : à droite, sous le menu du compte (qui donne déjà le nom) ; le slogan ne reste qu'avant la connexion.
+  $("sub").textContent = g ? `${g.etablissement} · ${g.promo} · ${g.nom}` : "";
+  $("tagline").classList.toggle("hidden", !!me);
   if (!g || tab === "home" || tab === "dash" || (tab === "admin" && typeof adminComplet === "function" && adminComplet())) { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
   bar.classList.remove("hidden");
   const avecVue = !["mine", "suivi", "glossaire", "admin", "home", "dash"].includes(tab);   // groupe / promo n'a de sens que pour tableau, commentaires, biblio, synthèse

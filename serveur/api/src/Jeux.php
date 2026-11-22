@@ -10,7 +10,7 @@ namespace Lpc;
 final class Jeux
 {
     /** Jeux connus, avec les niveaux de difficulté permis (liste vide : pas de niveau). */
-    public const JEUX = ['course-m' => [], 'seringue' => [], 'urgences' => ['3', '6', '9'], 'couloir' => []];
+    public const JEUX = ['course-m' => [], 'seringue' => [], 'urgences' => ['3', '6', '9'], 'couloir' => [], 'dejeuner' => []];
     public const SCORE_MAX = 1000000;
 
     /** @return list<array{jeu:string,niveau:string,score:int,obtenu_le:?string}> les meilleurs scores de la personne */

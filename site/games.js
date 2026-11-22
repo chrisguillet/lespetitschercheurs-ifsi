@@ -595,7 +595,203 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     }
   };
 
-  const JEUX = { course, seringue, urgences, couloir };
+  /* ---------- 5. Pause déjeuner ---------- */
+  // L'infirmier·ère, en pause, se déplace sous les objets qui tombent : fruits et sandwichs donnent des points, les dossiers font perdre une vie.
+  const HD = 300, SOLD = HD - 34, VIES_D = 3;
+  const PERSOS = [
+    { nom: "Infirmière", cheveux: "#6b3f2a", coiffure: "chignon", calot: true },
+    { nom: "Infirmier", cheveux: "#2b2b33", coiffure: "court", calot: false },
+    { nom: "Neutre", cheveux: "#c9a24b", coiffure: "bandeau", calot: false }
+  ];
+  const lirePerso = () => { try { const v = +localStorage.getItem("lydia_jeu_perso"); return PERSOS[v] ? v : 0; } catch (e) { return 0; } };
+  const FRUITS_D = ["🍎", "🍌", "🍊", "🍇", "🍓", "🍐", "🍒", "🥕"];
+  const borne = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // Dossier patient : chemise cartonnée avec onglet, feuilles qui dépassent et bandeau rouge.
+  function dossier(ctx, x, y, rot) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#8a93a3"; ctx.lineWidth = 1;
+    ctx.fillRect(-12, -17, 22, 10); ctx.strokeRect(-12, -17, 22, 10);                    // feuilles qui dépassent
+    ctx.fillRect(-10, -19, 22, 10); ctx.strokeRect(-10, -19, 22, 10);
+    ctx.fillStyle = "#d9a441"; ctx.strokeStyle = "#8d6516"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-16, 13); ctx.lineTo(-16, -9); ctx.lineTo(-6, -9); ctx.lineTo(-3, -13); ctx.lineTo(16, -13); ctx.lineTo(16, 13); ctx.closePath(); ctx.fill(); ctx.stroke();   // chemise + onglet
+    ctx.fillStyle = "#c0392b"; ctx.fillRect(-16, -3, 32, 6);                              // bandeau
+    ctx.fillStyle = "#fff"; ctx.fillRect(-2, -3, 4, 6); ctx.fillRect(-4, -1, 8, 2);       // croix
+    ctx.restore();
+  }
+
+  // Le personnage, dessiné membre par membre : jambes et bras qui balancent quand il marche, corps légèrement penché, bras en l'air quand il attrape ou est touché.
+  function personnage(ctx, x, sol, p, a) {
+    const marche = a.allure, ph = a.phase, face = a.face;
+    const rebond = -Math.abs(Math.sin(ph)) * 2.6 * marche;
+    const peau = "#f1c7a0", tunique = "#2fa6b8", pantalon = "#1f6f86", contour = "rgba(20,30,45,.55)";
+    ctx.save();
+    ctx.translate(x, sol); ctx.rotate(a.penche);                                          // pivot aux pieds : le corps penche vers la direction
+    ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(0, 0, 17, 4, 0, 0, 7); ctx.fill();   // ombre au sol
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    const hanche = { x: 0, y: -26 + rebond };
+    // Jambes
+    [[1, 0], [-1, Math.PI]].forEach(([sens, dephasage], k) => {
+      const ang = Math.sin(ph + dephasage) * 0.75 * marche;
+      const fx = hanche.x + Math.sin(ang) * 25, fy = hanche.y + Math.cos(ang) * 25 - (ang * sens > 0.3 ? 2 : 0);
+      ctx.strokeStyle = k ? "#17566a" : pantalon; ctx.lineWidth = 7.5; ctx.beginPath(); ctx.moveTo(hanche.x + (k ? -3 : 3), hanche.y); ctx.lineTo(fx, Math.min(fy, -2)); ctx.stroke();
+      ctx.fillStyle = "#f4f7fb"; ctx.strokeStyle = contour; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.ellipse(fx + face * 3, Math.min(fy, -2) + 1.5, 7, 3.6, 0, 0, 7); ctx.fill(); ctx.stroke();   // chaussure
+    });
+    // Tronc (blouse), col en V, badge et stéthoscope
+    ctx.fillStyle = tunique; ctx.strokeStyle = contour; ctx.lineWidth = 1.4;
+    bord(ctx, -11, hanche.y - 26, 22, 30, 7); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-5, hanche.y - 26); ctx.lineTo(0, hanche.y - 18); ctx.lineTo(5, hanche.y - 26); ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.fillRect(face * 4 - 2, hanche.y - 14, 5, 4);                  // badge
+    ctx.strokeStyle = "#3b4658"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, hanche.y - 26, 7, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();   // stéthoscope
+    ctx.fillStyle = "#3b4658"; ctx.beginPath(); ctx.arc(-4 * face, hanche.y - 17, 2, 0, 7); ctx.fill();
+    // Bras : balancier opposé aux jambes, levés à l'attrape / au choc
+    const epaule = { y: hanche.y - 22 };
+    [[1, Math.PI], [-1, 0]].forEach(([cote, dephasage]) => {
+      const balan = Math.sin(ph + dephasage) * 0.8 * marche;
+      const repos = cote * (0.16 + balan);
+      const haut = cote * 2.5;
+      const ang = repos + (haut - repos) * a.bras;
+      const ex = cote * 11, ey = epaule.y, mx = ex + Math.sin(ang) * 21, my = ey + Math.cos(ang) * 21;
+      ctx.strokeStyle = tunique; ctx.lineWidth = 6.5; ctx.beginPath(); ctx.moveTo(ex, ey + 1); ctx.lineTo(ex + Math.sin(ang) * 12, ey + 1 + Math.cos(ang) * 12); ctx.stroke();
+      ctx.strokeStyle = peau; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(ex + Math.sin(ang) * 11, ey + 1 + Math.cos(ang) * 11); ctx.lineTo(mx, my); ctx.stroke();
+      ctx.fillStyle = peau; ctx.beginPath(); ctx.arc(mx, my, 3.3, 0, 7); ctx.fill();
+    });
+    // Tête
+    const cx = face * 1, cy = hanche.y - 38;
+    if (p.coiffure === "chignon") { ctx.fillStyle = p.cheveux; ctx.beginPath(); ctx.arc(cx - face * 8, cy - 8, 5.2, 0, 7); ctx.fill(); }     // chignon
+    if (p.coiffure === "bandeau") { ctx.fillStyle = p.cheveux; ctx.beginPath(); ctx.arc(cx - face * 8, cy + 1, 4, 0, 7); ctx.fill(); }
+    ctx.fillStyle = peau; ctx.strokeStyle = contour; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(cx, cy, 10, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = p.cheveux; ctx.beginPath(); ctx.arc(cx, cy, 10.4, Math.PI * 1.02, Math.PI * 1.98); ctx.closePath(); ctx.fill();                // cheveux du dessus
+    if (p.coiffure === "bandeau") { ctx.fillStyle = "#e0584f"; ctx.fillRect(cx - 10, cy - 5, 20, 3); }
+    if (p.calot) { ctx.fillStyle = "#fff"; ctx.strokeStyle = contour; ctx.lineWidth = 1; ctx.fillRect(cx - 6, cy - 14, 12, 6); ctx.strokeRect(cx - 6, cy - 14, 12, 6); ctx.fillStyle = "#d33a3a"; ctx.fillRect(cx - 1, cy - 13, 2, 4); ctx.fillRect(cx - 2, cy - 12, 4, 2); }
+    ctx.fillStyle = "#1f2937"; const ouvert = a.mine ? 0.6 : 1.5;                                                                                 // yeux (plissés si touché)
+    ctx.beginPath(); ctx.ellipse(cx + face * 3.4 - 3, cy + 1, 1.3, ouvert, 0, 0, 7); ctx.ellipse(cx + face * 3.4 + 3, cy + 1, 1.3, ouvert, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#7a3b2e"; ctx.lineWidth = 1.2; ctx.beginPath();
+    if (a.mine) ctx.arc(cx + face * 3.4, cy + 8, 2.6, Math.PI * 1.1, Math.PI * 1.9); else ctx.arc(cx + face * 3.4, cy + 4.2, 3.2, 0.15 * Math.PI, 0.85 * Math.PI);   // bouche : grimace ou sourire
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function decorD(ctx, t) {
+    ctx.fillStyle = "rgba(120,185,235,.13)"; ctx.fillRect(0, 0, W, SOLD);                                                                         // ciel
+    ctx.fillStyle = "rgba(255,206,84,.9)"; ctx.beginPath(); ctx.arc(570, 46, 20, 0, 7); ctx.fill();                                               // soleil
+    ctx.strokeStyle = "rgba(255,206,84,.55)"; ctx.lineWidth = 3;
+    for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 + t * 0.15; ctx.beginPath(); ctx.moveTo(570 + Math.cos(a) * 26, 46 + Math.sin(a) * 26); ctx.lineTo(570 + Math.cos(a) * 34, 46 + Math.sin(a) * 34); ctx.stroke(); }
+    ctx.fillStyle = "rgba(255,255,255,.55)";
+    [[80, 50, 1], [300, 34, 0.8], [440, 72, 1.1]].forEach(([x0, y0, k], i) => {
+      const x = ((x0 + t * (8 + i * 3)) % (W + 160)) - 80;
+      [[x, y0, 34, 12], [x + 20 * k, y0 - 8 * k, 22, 11], [x - 20 * k, y0 - 5 * k, 20, 9]].forEach(([ex, ey, rx, ry]) => { ctx.beginPath(); ctx.ellipse(ex, ey, rx * k, ry * k, 0, 0, 7); ctx.fill(); });
+    });
+    ctx.fillStyle = "rgba(70,160,100,.22)"; ctx.fillRect(0, SOLD, W, HD - SOLD);                                                                   // pelouse
+    ctx.strokeStyle = "rgba(70,160,100,.55)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, SOLD); ctx.lineTo(W, SOLD); ctx.stroke();
+    ctx.strokeStyle = "rgba(70,160,100,.4)"; ctx.lineWidth = 1.5;
+    for (let x = 14; x < W; x += 46) { ctx.beginPath(); ctx.moveTo(x, SOLD + 12); ctx.lineTo(x - 3, SOLD + 5); ctx.moveTo(x, SOLD + 12); ctx.lineTo(x + 3, SOLD + 5); ctx.stroke(); }
+  }
+
+  const dejeuner = {
+    nom: "dejeuner", titre: "🥪 Pause déjeuner", desc: "Attrapez fruits et sandwichs, évitez les dossiers qui tombent du ciel.", h: HD, unite: " pts", fin: "Fin de la pause : le service vous rappelle 📟",
+    aide: "← → (ou Q / D, ou A / D) : se déplacer. À la souris ou au doigt : glissez pour être suivi·e. Fruits et sandwichs rapportent des points (le temps qui passe aussi), les dossiers font perdre une vie : trois vies.",
+    persos: PERSOS, lirePerso,
+    init() {
+      return { t: 0, x: W / 2, vx: 0, face: 1, phase: 0, allure: 0, gauche: false, droite: false, cible: null, vies: VIES_D, inv: 0, joie: 0, mal: 0, pts: 0, score: 0,
+        items: [], part: [], textes: [], prochain: 0.8, dernierDossierX: -999, perso: lirePerso(), rec: record("dejeuner"), mort: false };
+    },
+    demo(s) {
+      s.x = 250; s.vx = 120; s.allure = 1; s.phase = 1.2; s.t = 6; s.pts = 40; s.score = 46;
+      s.items = [{ type: "dossier", x: 120, y: 90, v: 0, rot: 0.3, vr: 0 }, { type: "fruit", e: "🍎", x: 330, y: 70, v: 0, rot: 0, vr: 0 }, { type: "sandwich", e: "🥪", x: 440, y: 150, v: 0, rot: 0, vr: 0 }, { type: "fruit", e: "🍌", x: 250, y: 30, v: 0, rot: 0, vr: 0 }];
+    },
+    action() { /* la partie démarre au toucher ou à une flèche */ },
+    bas() { /* inutilisé */ },
+    demarreAvec(k) { return ["ArrowLeft", "ArrowRight", "q", "Q", "a", "A", "d", "D"].includes(k); },
+    touche(s, k) {
+      if (["ArrowLeft", "q", "Q", "a", "A"].includes(k)) { s.gauche = true; s.cible = null; }
+      else if (["ArrowRight", "d", "D"].includes(k)) { s.droite = true; s.cible = null; }
+    },
+    relache(s, k) {
+      if (["ArrowLeft", "q", "Q", "a", "A"].includes(k)) s.gauche = false;
+      else if (["ArrowRight", "d", "D"].includes(k)) s.droite = false;
+    },
+    bouge(s, x) { s.cible = borne(x, 22, W - 22); },
+    clic(s, x) { s.cible = borne(x, 22, W - 22); },
+    step(s, dt) {
+      s.t += dt;
+      const d = Math.min(1, s.t / 100);
+      // Déplacement : touches (vitesse fixe) ou suivi du pointeur (accéléré, amorti)
+      const dir = (s.droite ? 1 : 0) - (s.gauche ? 1 : 0);
+      let vise = 0;
+      if (dir) vise = dir * 340;
+      else if (s.cible !== null) { const dx = s.cible - s.x; vise = Math.abs(dx) < 4 ? 0 : Math.sign(dx) * Math.min(480, Math.abs(dx) * 9); }
+      s.vx += (vise - s.vx) * Math.min(1, dt * 14);
+      s.x = borne(s.x + s.vx * dt, 22, W - 22);
+      if (Math.abs(s.vx) > 10) s.face = Math.sign(s.vx);
+      s.allure += (Math.min(1, Math.abs(s.vx) / 180) - s.allure) * Math.min(1, dt * 12);
+      s.phase += (3 + Math.abs(s.vx) * 0.032) * dt * (s.allure > 0.05 ? 1 : 0.2);
+      s.inv = Math.max(0, s.inv - dt); s.joie = Math.max(0, s.joie - dt); s.mal = Math.max(0, s.mal - dt);
+      // Apparition des objets : de plus en plus nombreux, rapides et souvent des dossiers
+      s.prochain -= dt;
+      if (s.prochain <= 0) {
+        s.prochain = alea(0.55, 1.0) - 0.45 * d + 0.1;
+        const r = Math.random(), pd = 0.28 + 0.2 * d;
+        let type = "fruit";
+        if (r < pd) type = "dossier"; else if (r < pd + 0.1) type = "sandwich"; else if (r < pd + 0.1 + 0.025 && s.vies < VIES_D) type = "coeur";
+        let x = alea(28, W - 28);
+        if (type === "dossier" && Math.abs(x - s.dernierDossierX) < 70) x = borne(x + (x > s.dernierDossierX ? 90 : -90), 28, W - 28);
+        if (type === "dossier") s.dernierDossierX = x;
+        s.items.push({ type, e: type === "sandwich" ? "🥪" : type === "coeur" ? "💖" : FRUITS_D[Math.floor(Math.random() * FRUITS_D.length)], x, y: -24, v: 120 + 150 * d + alea(0, 55), rot: alea(-0.4, 0.4), vr: alea(-1.2, 1.2) });
+      }
+      const boite = { x: s.x - 12, y: SOLD - 66, w: 24, h: 66 };
+      s.items.forEach(it => { it.y += it.v * dt; it.rot += it.vr * dt; });
+      s.items = s.items.filter(it => {
+        const tx = it.type === "dossier" ? { x: it.x - 15, y: it.y - 15, w: 30, h: 26 } : { x: it.x - 12, y: it.y - 12, w: 24, h: 24 };
+        if (chevauche(boite, tx, 2)) {
+          if (it.type === "dossier") {
+            if (s.inv <= 0) {
+              s.vies--; s.inv = 1.4; s.mal = 0.6;
+              for (let i = 0; i < 9; i++) s.part.push({ x: it.x, y: it.y, vx: alea(-120, 120), vy: alea(-160, -30), vie: 0.9, r: alea(3, 6), rot: alea(0, 6) });
+              s.textes.push({ x: s.x, y: SOLD - 80, txt: "Aïe ! 📁", coul: "#d33a3a", vie: 1.1 });
+              if (s.vies <= 0) s.mort = true;
+            } else return true;   // invulnérable un instant : le dossier passe à travers
+          } else {
+            const gain = it.type === "sandwich" ? 15 : it.type === "coeur" ? 0 : 5;
+            if (it.type === "coeur") s.vies = Math.min(VIES_D, s.vies + 1);
+            s.pts += gain; s.joie = 0.35;
+            s.textes.push({ x: it.x, y: it.y - 14, txt: it.type === "coeur" ? "+1 vie" : "+" + gain, coul: it.type === "coeur" ? "#d6336c" : "#2f9e5b", vie: 0.9 });
+          }
+          return false;
+        }
+        if (it.y > SOLD - 6) {   // tombé par terre : feuilles qui s'éparpillent pour un dossier, rien de plus
+          if (it.type === "dossier") for (let i = 0; i < 4; i++) s.part.push({ x: it.x, y: SOLD - 6, vx: alea(-70, 70), vy: alea(-90, -30), vie: 0.7, r: alea(3, 5), rot: alea(0, 6) });
+          return false;
+        }
+        return true;
+      });
+      s.part.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 420 * dt; p.vie -= dt; p.rot += 6 * dt; });
+      s.part = s.part.filter(p => p.vie > 0 && p.y < HD);
+      s.textes.forEach(t => { t.y -= 34 * dt; t.vie -= dt; });
+      s.textes = s.textes.filter(t => t.vie > 0);
+      s.score = Math.floor(s.t) + s.pts;
+    },
+    draw(ctx, s, c) {
+      decorD(ctx, s.t);
+      s.items.forEach(it => {
+        if (it.type === "dossier") dossier(ctx, it.x, it.y, it.rot);
+        else emoji(ctx, it.e, it.x - (it.type === "sandwich" ? 15 : 12), it.y + (it.type === "sandwich" ? 12 : 10), it.type === "sandwich" ? 30 : 24);
+      });
+      s.part.forEach(p => { ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, p.vie * 1.5)); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#8a93a3"; ctx.lineWidth = 0.8; ctx.fillRect(-p.r, -p.r * 0.7, p.r * 2, p.r * 1.4); ctx.strokeRect(-p.r, -p.r * 0.7, p.r * 2, p.r * 1.4); ctx.restore(); });
+      if (!(s.inv > 0 && Math.floor(s.inv * 12) % 2 === 0)) {
+        personnage(ctx, s.x, SOLD, PERSOS[s.perso] || PERSOS[0], { phase: s.phase, allure: s.allure, face: s.face, bras: s.joie > 0 ? 1 : s.mal > 0 ? 0.85 : 0, penche: borne(s.vx / 2400, -0.2, 0.2), mine: s.mal > 0 });
+      }
+      ctx.font = "bold 14px system-ui,sans-serif"; ctx.textAlign = "center";
+      s.textes.forEach(t => { ctx.globalAlpha = Math.min(1, t.vie * 2); ctx.fillStyle = t.coul; ctx.fillText(t.txt, t.x, t.y); ctx.globalAlpha = 1; });
+      ctx.textAlign = "left";
+      for (let i = 0; i < VIES_D; i++) emoji(ctx, i < s.vies ? "❤️" : "🖤", 10 + i * 24, 26, 20);
+      ctx.fillStyle = c.texte; ctx.font = "bold 16px system-ui,sans-serif"; ctx.textAlign = "right"; ctx.fillText(s.score + " pts", W - 12, 24);
+      ctx.font = "13px system-ui,sans-serif"; ctx.fillStyle = c.doux; ctx.fillText("Record : " + Math.max(s.rec, s.score), W - 12, 42); ctx.textAlign = "left";
+    }
+  };
+
+  const JEUX = { course, seringue, urgences, couloir, dejeuner };
 
   // Avatar de la course (choix mémorisé dans le navigateur).
   const AVATARS = [{ e: "👩‍⚕️", nom: "Femme" }, { e: "👨‍⚕️", nom: "Homme" }, { e: "🧑‍⚕️", nom: "Neutre" }];
@@ -659,6 +855,19 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
       });
       zone.insertBefore(bar, zone.firstChild);
     }
+    if (jeu.persos) {
+      const bar = doc.createElement("div"); bar.className = "jeuperso"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px";
+      const cur = jeu.lirePerso();
+      bar.innerHTML = '<span class="meta">Personnage :</span>' + jeu.persos.map((p, i) => '<button type="button" class="btn sm sec" data-perso="' + i + '" aria-pressed="' + (i === cur) + '"' + (i === cur ? ' style="outline:2px solid var(--pri)"' : "") + '>' + p.nom + '</button>').join("");
+      bar.addEventListener("click", e => {
+        const b = e.target.closest("[data-perso]"); if (!b || !actif) return;
+        try { localStorage.setItem("lydia_jeu_perso", b.dataset.perso); } catch (x) { /* ignoré */ }
+        actif.s.perso = +b.dataset.perso;
+        bar.querySelectorAll("[data-perso]").forEach(o => { const on = o === b; o.setAttribute("aria-pressed", String(on)); o.style.outline = on ? "2px solid var(--pri)" : ""; });
+        try { cv.focus({ preventScroll: true }); } catch (x) { /* ignoré */ }
+      });
+      zone.insertBefore(bar, zone.firstChild);
+    }
     if (jeu.niveaux) {
       const bar = doc.createElement("div"); bar.className = "jeuniveau"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px";
       const cur = jeu.niveau();
@@ -679,11 +888,12 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     });
     const touche = e => {
       if (!actif) return;
-      if (jeu.touche && actif.etat === "jeu" && e.key !== " ") { jeu.touche(actif.s, e.key); return; }
+      if (jeu.demarreAvec && actif.etat === "pret" && jeu.demarreAvec(e.key)) { e.preventDefault(); appuyer(); }
+      if (jeu.touche && actif.etat === "jeu" && e.key !== " ") { if (e.key.indexOf("Arrow") === 0) e.preventDefault(); jeu.touche(actif.s, e.key); return; }
       if (e.key === " " || e.key === "ArrowUp") { e.preventDefault(); if (!e.repeat) appuyer(); }
       else if (e.key === "ArrowDown") { e.preventDefault(); jeu.bas(actif.s, true); }
     };
-    const relache = e => { if (e.key === " " && actif && actif.etat === "fini" && e.target && e.target.tagName === "BUTTON") e.preventDefault(); if (actif && e.key === "ArrowDown") jeu.bas(actif.s, false); };
+    const relache = e => { if (jeu.relache && actif) jeu.relache(actif.s, e.key); if (e.key === " " && actif && actif.etat === "fini" && e.target && e.target.tagName === "BUTTON") e.preventDefault(); if (actif && e.key === "ArrowDown") jeu.bas(actif.s, false); };
     const doigt = e => {
       e.preventDefault();
       const r = cv.getBoundingClientRect();
