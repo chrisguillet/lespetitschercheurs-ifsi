@@ -168,17 +168,17 @@ final class Outils
     /** Meilleurs scores de la personne aux mini-jeux. @param array<string,mixed> $req @return array<string,mixed> */
     public static function jeuxScores(Contexte $c, array $req): array
     {
-        return ['ok' => true, 'scores' => pcjeux::pourclient($c)];
+        return ['ok' => true, 'scores' => \Lpc\Jeux::pourClient($c)];
     }
 
-    /** enregistre un score s'il bat le meilleur. @param array<string,mixed> $req @return array<string,mixed> */
-    public static function jeuscore(contexte $c, array $req): array
+    /** Enregistre un score s'il bat le meilleur. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function jeuScore(Contexte $c, array $req): array
     {
-        pcjeux::enregistrer($c, $req['data'] ?? null);
-        return ['ok' => true, 'scores' => pcjeux::pourclient($c)];
+        \Lpc\Jeux::enregistrer($c, $req['data'] ?? null);
+        return ['ok' => true, 'scores' => \Lpc\Jeux::pourClient($c)];
     }
 
-    /** fixe une règle d'activation du chat : portée general, promo ou groupe ; valeur actif, inactif ou herite. @param array<string,mixed> $req @return array<string,mixed> */
+    /** Fixe une règle d'activation du chat : portée general, promo ou groupe ; valeur actif, inactif ou herite. @param array<string,mixed> $req @return array<string,mixed> */
     public static function chatRegleSet(Contexte $c, array $req): array
     {
         $d = \Lpc\Valide::donnees($req);
