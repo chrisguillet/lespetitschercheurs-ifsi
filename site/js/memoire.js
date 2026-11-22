@@ -5,7 +5,27 @@
 "use strict";
 /* ---------- Mémoire ---------- */
 
-const MEM = { gid: "", data: null, chargement: false, msg: "", repli: new Set() };
+const MEM = { gid: "", data: null, chargement: false, msg: "", repli: new Set(), plein: false };
+
+// Aperçu agrandi : panneau plein écran (style injecté une seule fois, les couleurs suivent le thème du système).
+function memStyleApercu() {
+  if (document.getElementById("memStyleApercu")) return;
+  const s = document.createElement("style");
+  s.id = "memStyleApercu";
+  s.textContent = ".memapercu-plein{position:fixed;inset:0;z-index:1000;overflow:auto;margin:0;border-radius:0;padding:16px;background:Canvas;color:CanvasText}"
+    + ".memapercu-plein .memfeuille{zoom:1 !important;margin:0 auto}";
+  document.head.appendChild(s);
+}
+// Bascule l'aperçu entre taille normale et plein écran.
+function memBasculerApercu(force) {
+  MEM.plein = typeof force === "boolean" ? force : !MEM.plein;
+  memStyleApercu();
+  const carte = document.querySelector(".memapercu");
+  if (carte) carte.classList.toggle("memapercu-plein", MEM.plein);
+  const bouton = document.querySelector("[data-mem-plein]");
+  if (bouton) { bouton.textContent = MEM.plein ? "✕ Réduire" : "⤢ Agrandir"; bouton.setAttribute("aria-expanded", MEM.plein ? "true" : "false"); }
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && MEM.plein) memBasculerApercu(false); });
 const MEM_TYPES = { titre1: "Titre de chapitre", titre2: "Sous-titre", paragraphe: "Paragraphe", citation: "Citation", reference: "Référence APA" };
 // Marges de la maquette, en cm : gauche (reliure), droite, haut, bas.
 const MEM_MARGES = { g: 3, d: 2.5, h: 2.5, b: 3 };
@@ -111,7 +131,7 @@ function memDessiner() {
     </div>
     <div class="memcote">
       <div class="card"><h3 style="font-size:14px;margin:0 0 8px">Contrôle des normes</h3><div id="mem_controle">${memControleHtml()}</div></div>
-      <div class="card"><h3 style="font-size:14px;margin:0 0 8px">Aperçu</h3><div class="memfeuille" id="mem_apercu">${memApercuHtml()}</div></div>
+      <div class="card memapercu${MEM.plein ? " memapercu-plein" : ""}"><div class="tools" style="justify-content:space-between"><h3 style="font-size:14px;margin:0">Aperçu</h3><button type="button" class="btn sm sec" data-mem-plein aria-expanded="${MEM.plein ? "true" : "false"}">${MEM.plein ? "✕ Réduire" : "⤢ Agrandir"}</button></div><div class="memfeuille" id="mem_apercu">${memApercuHtml()}</div></div>
     </div></div>`;
 }
 
@@ -284,6 +304,7 @@ $("memoirebox")?.addEventListener("mousedown", e => {
 $("memoirebox")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.hasAttribute("data-mem-note")) return memInsererNote();
+  if (b.hasAttribute("data-mem-plein")) return memBasculerApercu();
   if (b.hasAttribute("data-mem-repli")) {
     const id = b.dataset.memRepli;
     if (MEM.repli.has(id)) MEM.repli.delete(id); else MEM.repli.add(id);
