@@ -13,9 +13,9 @@ namespace Lpc;
  */
 final class Lectures
 {
-    public const OBJECTIFS = ['titre', 'parution', 'auteur', 'qualite', 'nation', 'type', 'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
+    public const OBJECTIFS = ['titre', 'parution', 'auteurs', 'auteur', 'qualite', 'nation', 'type', 'source', 'volume', 'numero', 'pages', 'doi', 'lien'];
     public const ANALYSES = ['statut', 'mots', 'kw', 'concepts', 'objet', 'opinion', 'controverse', 'libre', 'priorite'];
-    public const CHAMPS = ['statut', 'titre', 'parution', 'auteur', 'qualite', 'nation', 'type', 'mots', 'kw', 'concepts', 'objet', 'opinion',
+    public const CHAMPS = ['statut', 'titre', 'parution', 'auteurs', 'auteur', 'qualite', 'nation', 'type', 'mots', 'kw', 'concepts', 'objet', 'opinion',
         'controverse', 'libre', 'source', 'volume', 'numero', 'pages', 'doi', 'lien', 'priorite'];
     public const STATUTS = ['Terminée', 'En cours', 'À lire'];
     public const PRIORITES = ['haute', 'normale', 'basse'];
@@ -30,7 +30,7 @@ final class Lectures
     public const HISTORIQUE_MAX = 30;
 
     /** Largeur des colonnes courtes de la base : au-delà, la valeur serait refusée par le mode strict. */
-    private const LARGEURS = ['titre' => 500, 'parution' => 20, 'qualite' => 80, 'nation' => 80, 'type' => 80, 'source' => 500,
+    private const LARGEURS = ['titre' => 500, 'parution' => 20, 'qualite' => 300, 'nation' => 300, 'type' => 80, 'source' => 500,
         'volume' => 40, 'numero' => 40, 'pages' => 40, 'doi' => 190];
     private const ACCENTS = ['à' => 'a', 'á' => 'a', 'â' => 'a', 'ä' => 'a', 'ã' => 'a', 'å' => 'a', 'ç' => 'c', 'è' => 'e', 'é' => 'e',
         'ê' => 'e', 'ë' => 'e', 'ì' => 'i', 'í' => 'i', 'î' => 'i', 'ï' => 'i', 'ñ' => 'n', 'ò' => 'o', 'ó' => 'o', 'ô' => 'o', 'ö' => 'o',
@@ -48,6 +48,7 @@ final class Lectures
         if (!is_array($data)) {
             throw new Erreur('invalid', 'Données manquantes');
         }
+        $data = self::fusionnerAuteurs($data);
         $d = [];
         foreach (self::CHAMPS as $c) {
             $v = array_key_exists($c, $data) && is_scalar($data[$c]) ? trim((string) $data[$c]) : '';
@@ -81,6 +82,14 @@ final class Lectures
         if ($manquants !== []) {
             throw new Erreur('invalid', 'À compléter : ' . implode(', ', $manquants));
         }
+        // Pour une lecture terminée, chaque auteur a sa nationalité et sa qualité.
+        if ($statut === 'Terminée') {
+            foreach (self::listeAuteurs((string) ($d['auteurs'] ?? '')) as $a) {
+                if ($a['nom'] === '' || $a['nation'] === '' || $a['qualite'] === '') {
+                    throw new Erreur('invalid', 'À compléter pour chaque auteur : nom, nationalité et qualité');
+                }
+            }
+        }
         $type = (string) ($d['type'] ?? '');
         if ($type !== '' && !in_array($type, self::TYPES, true)) {
             throw new Erreur('invalid', 'Type d’article invalide');
@@ -94,6 +103,79 @@ final class Lectures
         if ($lien !== '' && preg_match('#^https?://[^\s<>"\']+$#i', $lien) !== 1) {
             throw new Erreur('invalid', 'Lien invalide : il doit commencer par http:// ou https://');
         }
+    }
+
+    /**
+     * Auteurs d'une lecture : chacun avec ses nationalités et ses métiers (texte libre, séparés par des virgules).
+     * Les champs auteur, nation et qualite de l'article en sont dérivés. Sans clé « auteurs » ni « auteur » dans la saisie,
+     * la saisie est laissée telle quelle (une mise à jour partielle ne vide pas les auteurs).
+     *
+     * @param array<string,mixed> $data
+     * @return array<string,mixed>
+     */
+    public static function fusionnerAuteurs(array $data): array
+    {
+        if (!array_key_exists('auteurs', $data) && !array_key_exists('auteur', $data)) {
+            return $data;
+        }
+        if (is_array($data['auteurs'] ?? null)) {
+            $liste = self::auteursNettoyes($data['auteurs']);
+        } else {
+            $nom = is_scalar($data['auteur'] ?? null) ? trim((string) $data['auteur']) : '';
+            $liste = $nom === '' ? [] : [['nom' => $nom, 'nation' => trim((string) ($data['nation'] ?? '')), 'qualite' => trim((string) ($data['qualite'] ?? ''))]];
+        }
+        $data['auteurs'] = $liste === [] ? '' : (string) json_encode($liste, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $data['auteur'] = implode('; ', array_column($liste, 'nom'));
+        $data['nation'] = self::valeursUniques(array_column($liste, 'nation'));
+        $data['qualite'] = self::valeursUniques(array_column($liste, 'qualite'));
+        return $data;
+    }
+
+    /** @return list<array{nom:string,nation:string,qualite:string}> */
+    public static function listeAuteurs(string $json): array
+    {
+        $l = json_decode($json !== '' ? $json : '[]', true);
+        return is_array($l) ? array_values(array_filter(array_map(static fn ($a): array => [
+            'nom' => trim((string) ($a['nom'] ?? '')), 'nation' => trim((string) ($a['nation'] ?? '')), 'qualite' => trim((string) ($a['qualite'] ?? '')),
+        ], array_filter($l, 'is_array')), static fn (array $a): bool => $a['nom'] !== '' || $a['nation'] !== '' || $a['qualite'] !== '')) : [];
+    }
+
+    /** @param array<mixed> $liste @return list<array{nom:string,nation:string,qualite:string}> */
+    private static function auteursNettoyes(array $liste): array
+    {
+        $out = [];
+        foreach (array_slice(array_values($liste), 0, 30) as $a) {
+            if (!is_array($a)) {
+                continue;
+            }
+            $ligne = [];
+            foreach (['nom' => 300, 'nation' => 300, 'qualite' => 300] as $k => $max) {
+                $v = is_scalar($a[$k] ?? null) ? trim((string) $a[$k]) : '';
+                if (mb_strlen($v) > $max) {
+                    throw new Erreur('invalid', 'Champ trop long pour un auteur (' . $max . ' caractères maximum)');
+                }
+                $ligne[$k] = $v;
+            }
+            if ($ligne['nom'] !== '' || $ligne['nation'] !== '' || $ligne['qualite'] !== '') {
+                $out[] = $ligne;
+            }
+        }
+        return $out;
+    }
+
+    /** « Française, belge » + « Française » -> « Française, belge » : chaque valeur une fois, dans l'ordre. */
+    private static function valeursUniques(array $valeurs): string
+    {
+        $vues = [];
+        foreach ($valeurs as $v) {
+            foreach (explode(',', (string) $v) as $morceau) {
+                $m = trim($morceau);
+                if ($m !== '' && !in_array(mb_strtolower($m), array_map('mb_strtolower', $vues), true)) {
+                    $vues[] = $m;
+                }
+            }
+        }
+        return implode(', ', $vues);
     }
 
     public static function porteeDe(string $statut): string

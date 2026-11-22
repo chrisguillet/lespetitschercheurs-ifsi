@@ -412,7 +412,11 @@ final class Importation
                 $v = ['cree_par' => $this->email($l['cree_par']), 'groupe_id' => $groupe, 'ajoute' => $this->dt($l['ajoute']) ?? Temps::maintenant(),
                     'modifie_le' => $this->dt($l['modifie_le']), 'modifie_par' => $this->parNom($l['modifie_par'])];
                 foreach (Lectures::OBJECTIFS as $k) {
-                    $v[$k] = $this->court(trim($l[$k]), $k === 'lien' || $k === 'auteur' ? 100000 : $this->largeur($k));
+                    $v[$k] = $this->court(trim((string) ($l[$k] ?? '')), in_array($k, ['lien', 'auteur', 'auteurs'], true) ? 100000 : $this->largeur($k));
+                }
+                // Anciennes lignes : sans liste d'auteurs, on la reconstruit à partir de l'auteur, de la nation et de la qualité.
+                if ($v['auteurs'] === '' && $v['auteur'] !== '') {
+                    $v['auteurs'] = Lectures::fusionnerAuteurs(['auteur' => $v['auteur'], 'nation' => $v['nation'], 'qualite' => $v['qualite']])['auteurs'];
                 }
                 $this->ecrire('articles', $id, $v, $existe);
                 return [$id, !$existe];
@@ -966,7 +970,7 @@ final class Importation
 
     private function largeur(string $champ): int
     {
-        return ['titre' => 500, 'parution' => 20, 'qualite' => 80, 'nation' => 80, 'type' => 80, 'source' => 500, 'volume' => 40, 'numero' => 40, 'pages' => 40, 'doi' => 190][$champ] ?? 500;
+        return ['titre' => 500, 'parution' => 20, 'qualite' => 300, 'nation' => 300, 'type' => 80, 'source' => 500, 'volume' => 40, 'numero' => 40, 'pages' => 40, 'doi' => 190][$champ] ?? 500;
     }
 
     private function listeJson(string $v): string

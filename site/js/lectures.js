@@ -24,11 +24,58 @@ function field(id, label, val, opts = {}) {
   return `<div><label for="${id}">${label}${req}</label><input id="${id}" type="${opts.type || "text"}" maxlength="500" value="${esc(val)}" ${opts.dis || ""} ${opts.ph ? `placeholder="${opts.ph}"` : ""}></div>`;
 }
 
+// ---------- Auteurs de la lecture : chacun avec ses nationalités et ses métiers (la lecture et les autres auteurs ne les partagent pas) ----------
+let auteursForm = [];   // liste en cours de saisie : [{nom, nation, qualite}]
+
+// Auteurs d'une lecture ; sans liste enregistrée, les auteurs du champ auteur (anciennes lectures).
+function auteursDe(i) {
+  let l = [];
+  try { l = JSON.parse((i && i.auteurs) || "[]") || []; } catch (e) { l = []; }
+  if (Array.isArray(l) && l.length) return l.map(a => ({ nom: String(a.nom || ""), nation: String(a.nation || ""), qualite: String(a.qualite || "") }));
+  return i && i.auteur ? LydiaApa.listeAuteurs(i.auteur).map(nom => ({ nom, nation: String(i.nation || ""), qualite: String(i.qualite || "") })) : [];
+}
+// Lignes renseignées (les lignes vides ne sont pas envoyées).
+const auteursPropres = () => auteursForm.map(a => ({ nom: (a.nom || "").trim(), nation: (a.nation || "").trim(), qualite: (a.qualite || "").trim() }))
+  .filter(a => a.nom || a.nation || a.qualite);
+// Champs dérivés (auteur, nation, qualite de la lecture), calculés comme côté serveur.
+function auteursDerives(liste) {
+  const uniques = cle => { const vues = []; liste.forEach(a => String(a[cle] || "").split(",").map(s => s.trim()).filter(Boolean).forEach(m => { if (!vues.some(x => x.toLowerCase() === m.toLowerCase())) vues.push(m); })); return vues.join(", "); };
+  return { auteur: liste.map(a => a.nom).filter(Boolean).join("; "), nation: uniques("nation"), qualite: uniques("qualite") };
+}
+function auteursFormHtml(dis) {
+  const lignes = auteursForm.map((a, k) => `<div class="grid" style="grid-template-columns:2fr 1.2fr 1.5fr auto;gap:8px;align-items:end;margin-bottom:6px">
+      <div><label for="af_nom_${k}">Auteur ${k + 1}</label><input id="af_nom_${k}" data-ak="${k}" data-af="nom" maxlength="300" value="${esc(a.nom)}" placeholder="Nom, Prénom" ${dis}></div>
+      <div><label for="af_nation_${k}">Nationalité(s)</label><input id="af_nation_${k}" data-ak="${k}" data-af="nation" maxlength="300" value="${esc(a.nation)}" placeholder="française, belge" ${dis}></div>
+      <div><label for="af_qualite_${k}">Métier(s)</label><input id="af_qualite_${k}" data-ak="${k}" data-af="qualite" maxlength="300" value="${esc(a.qualite)}" placeholder="IDE, cadre de santé" ${dis}></div>
+      ${dis ? "" : `<button type="button" class="btn sm sec del" data-afdel="${k}" aria-label="Retirer cet auteur">✕</button>`}</div>`).join("");
+  return `<div class="meta" style="margin-bottom:4px">Auteur(s) <span class="req" style="color:#d33">*</span> · nationalités et métiers propres à chaque auteur (séparés par des virgules)</div>`
+    + (lignes || '<div class="meta">Aucun auteur pour l’instant.</div>')
+    + (dis ? "" : `<button type="button" class="btn sm sec" id="afadd">＋ Ajouter un auteur</button>`);
+}
+function rafraichirAuteurs() {
+  const bloc = $("auteursbloc");
+  if (bloc) bloc.innerHTML = auteursFormHtml(bloc.querySelector("[disabled]") ? "disabled" : "");
+}
+// Saisie et boutons de la liste des auteurs (délégation : la liste est redessinée à l'ajout ou à la suppression).
+document.addEventListener("input", e => {
+  const t = e.target;
+  if (t.dataset && t.dataset.af && t.dataset.ak !== undefined && auteursForm[Number(t.dataset.ak)]) {
+    auteursForm[Number(t.dataset.ak)][t.dataset.af] = t.value;
+    if (typeof majApercu === "function") majApercu();
+  }
+});
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("button"); if (!b) return;
+  if (b.id === "afadd") { auteursForm.push({ nom: "", nation: "", qualite: "" }); rafraichirAuteurs(); }
+  else if (b.dataset.afdel !== undefined) { auteursForm.splice(Number(b.dataset.afdel), 1); rafraichirAuteurs(); }
+});
+
 function renderForm() {
   if (!canWrite()) return;
   const d = editing ? itemsAll.find(i => i.id === editing) || {} : {};
   const art = artCible || modeArticle ? itemsAll.find(i => i.article_id === (artCible || modeArticle)) : null;
   const base = editing ? d : art || {};
+  auteursForm = auteursDe(base);
   const gc = groupeCourant();
   // La partie commune de l'article est figée dans une fiche (ajout ou modification) ; seuls les champs encore vides restent saisissables.
   // Pour la corriger : bouton « Corriger l’article » (correction directe ou proposition soumise à la promo).
@@ -59,9 +106,7 @@ function renderForm() {
    <div class="grid">
     ${field("f_titre", "Titre de l’article", base.titre, { dis: objDesact("titre"), req: 1 })}
     ${field("f_parution", "Date de parution", fmtD(base.parution), { dis: objDesact("parution"), req: 1, ph: "2021, mars 2021 ou 04/03/2021" })}
-    ${field("f_auteur", "Auteur(s)", base.auteur, { dis: objDesact("auteur"), req: 1, ph: "Nom, Prénom ; Nom, Prénom" })}
-    ${field("f_qualite", "Qualité de l’auteur", base.qualite, { dis: objDesact("qualite"), req: 1, ph: "chercheur, IDE, cadre de santé… (séparer par une virgule s’il y en a plusieurs)" })}
-    ${field("f_nation", "Nationalité", base.nation, { dis: objDesact("nation"), req: 1 })}
+    <div style="grid-column:1/-1" id="auteursbloc">${auteursFormHtml(objDesact("auteurs"))}</div>
     ${field("f_type", "Type d’article", base.type, { dis: objDesact("type"), req: 1, sel: TYPES })}
    </div>
    <div id="dup" style="display:none;margin-top:10px;color:#b45309;font-weight:600"></div></details>
@@ -170,11 +215,11 @@ const CHAMPS_FORM = ["statut", "titre", "parution", "auteur", "qualite", "nation
   "pages", "doi", "lien", "mots", "kw", "concepts", "objet", "opinion", "controverse", "libre", "priorite"];
 let formBase = "", brouillonTimer = null;
 
-const snapshot = () => Object.fromEntries(CHAMPS_FORM.map(k => [k, $("f_" + k) ? $("f_" + k).value : ""]));
+const snapshot = () => ({ ...Object.fromEntries(CHAMPS_FORM.map(k => [k, $("f_" + k) ? $("f_" + k).value : ""])), ...auteursDerives(auteursPropres()), auteurs: auteursPropres() });
 
 function lireForm() {
   const v = snapshot();
-  Object.keys(v).forEach(k => { v[k] = v[k].trim(); });
+  Object.keys(v).forEach(k => { if (typeof v[k] === "string") v[k] = v[k].trim(); });
   // « www.exemple.fr/page » collé sans le début : on ajoute https://
   if (v.lien && !/^[a-z][a-z0-9+.-]*:/i.test(v.lien) && /^[^\s/]+\.[^\s/]{2,}(\/\S*)?$/.test(v.lien)) v.lien = "https://" + v.lien;
   const norm = LydiaApa.normaliserDate(v.parution);
@@ -234,6 +279,7 @@ function restaurerBrouillon() {
   try { b = JSON.parse(localStorage.getItem(cleBrouillon()) || "null"); } catch (e) { b = null; }
   if (!b || !b.v || Date.now() - b.t > 30 * 864e5) return;
   CHAMPS_FORM.forEach(k => { if ($("f_" + k) && !$("f_" + k).disabled && b.v[k] !== undefined) $("f_" + k).value = b.v[k]; });
+  if (Array.isArray(b.v.auteurs) && b.v.auteurs.length) { auteursForm = b.v.auteurs.map(a => ({ nom: String(a.nom || ""), nation: String(a.nation || ""), qualite: String(a.qualite || "") })); rafraichirAuteurs(); }
   const note = $("draftnote");
   note.innerHTML = `📝 Brouillon non enregistré restauré (${esc(fmtDT(new Date(b.t).toISOString()))}). <button type="button" class="btn sm sec" id="draftreset">Repartir de zéro</button>`;
   note.style.display = "block";
@@ -258,7 +304,9 @@ function basculerAnalyse(articleId) {
   majApercu(); majDoublon();
 }
 
-const OBJ = ["titre", "parution", "auteur", "qualite", "nation", "type", "source", "volume", "numero", "pages", "doi", "lien"];
+const OBJ = ["titre", "parution", "auteurs", "type", "source", "volume", "numero", "pages", "doi", "lien"];
+// Auteurs de la lecture d'origine, pour savoir si la partie commune a changé.
+const auteursChangent = (orig, data) => JSON.stringify(auteursDe(orig || {}).map(a => [a.nom, a.nation, a.qualite])) !== JSON.stringify((data.auteurs || []).map(a => [a.nom, a.nation, a.qualite]));
 
 async function save() {
   clearTimeout(brouillonTimer);
@@ -269,10 +317,14 @@ async function save() {
     : data.statut !== "Terminée" ? ["titre"] : FIN);
   const miss = need.filter(k => !data[k]);
   if (miss.length) { $("ferr").textContent = "À compléter : " + miss.map(k => LAB[k]).join(", "); return; }
+  if (data.statut === "Terminée" && data.auteurs.some(a => !a.nom || !a.nation || !a.qualite)) {
+    $("ferr").textContent = "À compléter pour chaque auteur : nom, nationalité et métier"; return;
+  }
   $("save").disabled = true;
   try {
     const artId = modeArticle || (orig && orig.article_id);
-    const objChange = !!artId && OBJ.some(k => String(((orig || itemsAll.find(i => i.article_id === artId)) || {})[k] || "") !== data[k]);
+    const origArt = orig || itemsAll.find(i => i.article_id === artId) || {};
+    const objChange = !!artId && (auteursChangent(origArt, data) || OBJ.some(k => k !== "auteurs" && String(origArt[k] || "") !== data[k]));
     const jointe = !editing && !modeArticle ? fichierAttente : null, avant = new Set(itemsAll.map(i => i.id));
     const res = await enCours("Enregistrement…", () => modeArticle
       ? api("article_update", { article_id: modeArticle, data: Object.fromEntries(OBJ.map(k => [k, data[k]])) })
@@ -388,7 +440,13 @@ async function prerempliDoi() {
   try {
     const r = await api("doi_lookup", { doi: saisie });
     const remplis = [], gardes = [];
+    // Les auteurs trouvés remplissent la liste, seulement si elle est vide (rien n'est écrasé).
+    if (r.champs && r.champs.auteur && !auteursPropres().length && !$("auteursbloc")?.querySelector("[disabled]")) {
+      auteursForm = LydiaApa.listeAuteurs(String(r.champs.auteur)).map(nom => ({ nom, nation: "", qualite: "" }));
+      rafraichirAuteurs(); remplis.push("auteur");
+    }
     Object.entries(r.champs || {}).forEach(([k, v]) => {
+      if (k === "auteur") return;
       const el = $(CHAMPS_DOI[k]); if (!el || el.disabled) return;
       if (String(el.value || "").trim() && el.value !== v) { gardes.push(k); return; }   // ce qui est déjà saisi n'est jamais écrasé
       el.value = v; remplis.push(k);
@@ -399,7 +457,7 @@ async function prerempliDoi() {
     msg.textContent = remplis.length
       ? `✅ ${remplis.length} champ${remplis.length > 1 ? "s" : ""} prérempli${remplis.length > 1 ? "s" : ""} (source : Crossref). Vérifiez-les, puis complétez la qualité de l’auteur et la nationalité.${gardes.length ? ` ${gardes.length} champ${gardes.length > 1 ? "s" : ""} déjà saisi${gardes.length > 1 ? "s" : ""} conservé${gardes.length > 1 ? "s" : ""}.` : ""}`
       : "Rien à remplir : les champs concernés sont déjà saisis.";
-    const suite = $("f_qualite"); if (suite && !suite.value) suite.focus();
+    const suite = document.querySelector('[data-af="qualite"]'); if (suite && !suite.value) suite.focus();
   } catch (e) {
     if (e.code === "unauthorized") return sessionError(e);
     msg.textContent = e.message || "Préremplissage impossible"; msg.classList.add("err");
