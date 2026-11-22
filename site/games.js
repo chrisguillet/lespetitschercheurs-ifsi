@@ -19,6 +19,70 @@
   };
   // Les emojis suivent la transparence de la couleur de remplissage courante : on la fixe, sinon ils clignotent selon le dernier élément dessiné.
 const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.fillStyle = "#000"; ctx.font = taille + "px serif"; ctx.textBaseline = "alphabetic"; ctx.fillText(e, x, y); ctx.restore(); };
+  // Personnes : patients, médecins, familles de toutes couleurs de peau, femmes, hommes et neutres, tirés au hasard.
+  const TEINTES = ["\u{1F3FB}", "\u{1F3FC}", "\u{1F3FD}", "\u{1F3FE}", "\u{1F3FF}"];
+  const auHasard = l => l[Math.floor(Math.random() * l.length)];
+  // Teinte de peau insérée après le premier caractère (elle s'applique aussi aux emojis composés : 👩‍🦰 → 👩🏾‍🦰).
+  const teinte = (e, t) => { const c = [...e]; return c[0] + (t || auHasard(TEINTES)) + c.slice(1).join(""); };
+  const PATIENTS = ["👵", "👩", "👧", "👩‍🦰", "👩‍🦱", "👱‍♀️", "👴", "👨", "👦", "👨‍🦳", "👨‍🦱", "🧔", "🧑", "🧓", "🧒", "🧑‍🦱"];
+  const PATIENTS_ADULTES = PATIENTS.filter(e => !["👧", "👦", "🧒"].includes(e));
+  const patientAuHasard = adultes => teinte(auHasard(adultes ? PATIENTS_ADULTES : PATIENTS));
+  // Visiteurs (obstacle de la course) : deux personnes, chacune avec sa couleur de peau.
+  const visiteursAuHasard = () => auHasard([
+    () => teinte("👫"), () => teinte("👭"), () => teinte("👬"),
+    () => "🧑" + auHasard(TEINTES) + "‍🤝‍🧑" + auHasard(TEINTES)
+  ])();
+  const PEAUX = ["#f5d6c0", "#e8b896", "#c98e62", "#9a6440", "#5c3b26"], CHEVEUX = ["#2b2118", "#6b4a32", "#a8743f", "#d8c08a", "#8a8a8a", "#111"];
+
+  // Le personnage joué : un bonhomme bâton, sans sexe ni couleur de peau, en blouse blanche et coiffe d'infirmier·ère.
+  // o : h (taille des pieds au haut de la coiffe), ph (phase de marche), allure (0..1), air, face (1 / -1), bras (0..1 levés),
+  // penche (radians), mine (grimace), accroupi, trait (couleur des traits, selon le thème).
+  function soignant(ctx, x, sol, o) {
+    // Couleurs fixes, lisibles sur fond clair comme sombre : membres gris-bleu, contours de la blouse et de la tête plus foncés.
+    const u = (o.h || 56) / 58, trait = "#6f7f96", contour = "#34404f", face = o.face || 1, marche = o.allure || 0, ph = o.ph || 0;
+    ctx.save();
+    ctx.translate(x, sol); ctx.rotate(o.penche || 0);
+    if (o.accroupi) ctx.scale(1.08, 0.58);
+    ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = trait; ctx.lineWidth = Math.max(2, 2.6 * u);
+    const rebond = o.air ? 0 : -Math.abs(Math.sin(ph)) * 2 * marche * u;
+    const hanche = -22 * u + rebond, epaule = -38 * u + rebond, cou = -41 * u + rebond, tete = -47.5 * u + rebond, r = 6.5 * u;
+    // Jambes : balancier en marche, repliées en l'air.
+    [0, Math.PI].forEach(dep => {
+      const ang = o.air ? (dep ? -0.5 : 0.7) : Math.sin(ph + dep) * 0.7 * marche;
+      const genou = { x: Math.sin(ang) * 11 * u, y: hanche + Math.cos(ang) * 11 * u };
+      const pliage = o.air ? 0.9 : Math.max(0, -Math.sin(ph + dep)) * 0.6 * marche;
+      ctx.beginPath(); ctx.moveTo(0, hanche); ctx.lineTo(genou.x, genou.y);
+      ctx.lineTo(genou.x + Math.sin(ang - pliage) * 11 * u, Math.min(0, genou.y + Math.cos(ang - pliage) * 11 * u)); ctx.stroke();
+    });
+    // Blouse blanche : trapèze des épaules aux cuisses, boutons et poche.
+    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = contour; ctx.lineWidth = Math.max(1.2, 1.5 * u);
+    ctx.beginPath(); ctx.moveTo(-5 * u, cou + 1 * u); ctx.lineTo(5 * u, cou + 1 * u); ctx.lineTo(9 * u, hanche + 6 * u); ctx.lineTo(-9 * u, hanche + 6 * u); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, cou + 3 * u); ctx.lineTo(0, hanche + 6 * u); ctx.stroke();
+    ctx.fillStyle = "#d33a3a"; ctx.fillRect(face * 3.2 * u - 1.6 * u, cou + 7 * u, 3.2 * u, 1.1 * u); ctx.fillRect(face * 3.2 * u - 0.55 * u, cou + 6 * u, 1.1 * u, 3.2 * u);   // croix sur la poche
+    // Bras : balancier opposé aux jambes, levés pour attraper, sauter ou au choc.
+    ctx.strokeStyle = trait; ctx.lineWidth = Math.max(2, 2.6 * u);
+    [[1, Math.PI], [-1, 0]].forEach(([cote, dep]) => {
+      const repos = cote * 0.25 + Math.sin(ph + dep) * 0.8 * marche;
+      const ang = repos + (cote * 2.6 - repos) * (o.bras || 0);
+      const coude = { x: cote * 4 * u + Math.sin(ang) * 9 * u, y: epaule + Math.cos(ang) * 9 * u };
+      ctx.beginPath(); ctx.moveTo(cote * 4 * u, epaule); ctx.lineTo(coude.x, coude.y); ctx.lineTo(coude.x + Math.sin(ang * 0.8) * 9 * u, coude.y + Math.cos(ang * 0.8) * 9 * u); ctx.stroke();
+    });
+    // Tête : cercle blanc, yeux et bouche simples.
+    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = contour; ctx.lineWidth = Math.max(1.4, 1.8 * u);
+    ctx.beginPath(); ctx.arc(face * 0.5 * u, tete, r, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = contour; const ouvert = o.mine ? 0.5 : 1.2;
+    ctx.beginPath(); ctx.ellipse(face * 2.6 * u - 2.2 * u, tete - 0.5 * u, 0.9 * u, ouvert * u, 0, 0, 7); ctx.ellipse(face * 2.6 * u + 2.2 * u, tete - 0.5 * u, 0.9 * u, ouvert * u, 0, 0, 7); ctx.fill();
+    ctx.lineWidth = Math.max(1, 1.2 * u); ctx.beginPath();
+    if (o.mine) ctx.arc(face * 2.6 * u, tete + 4.5 * u, 2 * u, Math.PI * 1.15, Math.PI * 1.85); else ctx.arc(face * 2.6 * u, tete + 1.6 * u, 2.4 * u, 0.2 * Math.PI, 0.8 * Math.PI);
+    ctx.stroke();
+    // Coiffe d'infirmier·ère : bandeau et sommet arrondi, croix rouge.
+    const cy = tete - r * 0.72;
+    ctx.fillStyle = "#ffffff"; ctx.lineWidth = Math.max(1.1, 1.4 * u);
+    ctx.beginPath(); ctx.moveTo(-7.5 * u, cy + 1.5 * u); ctx.lineTo(-6 * u, cy - 5 * u); ctx.quadraticCurveTo(0, cy - 8.5 * u, 6 * u, cy - 5 * u); ctx.lineTo(7.5 * u, cy + 1.5 * u); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#d33a3a"; ctx.fillRect(-2.2 * u, cy - 3.6 * u, 4.4 * u, 1.4 * u); ctx.fillRect(-0.7 * u, cy - 5.1 * u, 1.4 * u, 4.4 * u);
+    ctx.restore();
+  }
+
   const couleurs = () => {
     const cs = root.getComputedStyle ? root.getComputedStyle(root.document.documentElement) : null;
     const v = (n, d) => (cs && cs.getPropertyValue(n).trim()) || d;
@@ -30,7 +94,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   const OBSTACLES = [
     { e: "chariot", w: 44, h: 40, haut: false, nom: "chariot de soins" },
     { e: "sang", w: 46, h: 14, haut: false, nom: "flaque de sang" },
-    { e: "👪", w: 44, h: 44, haut: false, nom: "famille" },
+    { e: "visiteurs", w: 44, h: 44, haut: false, nom: "famille" },
     { e: "enseigne", w: 50, h: SOL - 28, haut: true, nom: "enseigne suspendue" }
   ];
   // Chariot de soins dessiné à la main : plateau métallique, tiroirs, croix rouge, poignée et roulettes.
@@ -116,7 +180,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
       s.prochain -= s.vitesse * dt;
       if (s.prochain <= 0) {
         const t = OBSTACLES[Math.floor(Math.random() * OBSTACLES.length)];
-        s.obs.push({ x: W + 20, y: t.haut ? 0 : SOL - t.h, w: t.w, h: t.h, e: t.e, haut: t.haut });
+        s.obs.push({ x: W + 20, y: t.haut ? 0 : SOL - t.h, w: t.w, h: t.h, e: t.e === "visiteurs" ? visiteursAuHasard() : t.e, haut: t.haut });
         s.prochain = alea(260, 480) + s.vitesse * 0.25;
       }
       const moi = this.boite(s);
@@ -132,8 +196,8 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
         else if (o.haut) enseigne(ctx, o.x, o.h, o.w);
         else emoji(ctx, o.e, o.x, o.y + o.h, o.h + 4);
       });
-      const h = this.hauteur(s);
-      emoji(ctx, avatar, 50, s.y, h + 4);
+      const air = s.y < SOL;
+      soignant(ctx, 71, s.y, { h: 52, ph: s.dist / 22, allure: 1, air, face: 1, bras: air ? 0.5 : 0, penche: 0.12, accroupi: s.bas && !air, trait: c.texte });
       ctx.fillStyle = c.texte; ctx.font = "bold 16px system-ui,sans-serif"; ctx.textAlign = "right";
       ctx.fillText(s.score + " m", W - 12, 24); ctx.textAlign = "left";
     }
@@ -281,7 +345,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     { m: "Hémorragie (accident de route)", g: 3, bloc: true, s: [["pansement", "Compression de la plaie"], ["transfusion", "Transfusion de culots globulaires"], ["bloc", "Chirurgie d'hémostase au bloc"], ["perfusion", "Perfusion de relais"]] },
     { m: "Douleur abdominale aiguë", g: 3, bloc: true, s: [["perfusion", "À jeun + perfusion"], ["antalgique", "Antalgique IV"], ["bloc", "Appendicectomie au bloc"], ["constantes", "Surveillance post-opératoire"]] }
   ];
-  const VISAGES = ["👵", "👴", "👩", "👨", "🧒", "👧", "🧑", "👩‍🦰", "👨‍🦳"];
+  // Visages des patients : voir PATIENTS (couleurs de peau et sexes variés).
   // Plus de lits = plus d'arrivées (plus vite) et des patients qui se dégradent un peu plus vite : le service doit rester plus difficile à gérer.
   const NIVEAUX = { 3: { debut: 8, mini: 4.8, usure: 1, depart: 1 }, 6: { debut: 6, mini: 3.6, usure: 1.05, depart: 2 }, 9: { debut: 4.6, mini: 3, usure: 1.1, depart: 2 } };
   const DUREE_BLOC = 7, PATIENCE = 40;
@@ -296,7 +360,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     const usure = NIVEAUX[s.lits].usure;
     const gros = Math.random() < Math.min(0.45, 0.12 + s.t / 400);
     const choix = PATHOS.filter(p => !!p.bloc === gros), p = choix[Math.floor(Math.random() * choix.length)];
-    return { motif: p.m, g: p.g, etapes: p.s.map(e => ({ k: e[0], t: e[1] })), i: 0, vie: 100, taux: (1 + 0.9 * p.g) * usure, visage: VISAGES[Math.floor(Math.random() * VISAGES.length)], vu: false, etat: "attente", patience: PATIENCE, reste: 0 };
+    return { motif: p.m, g: p.g, etapes: p.s.map(e => ({ k: e[0], t: e[1] })), i: 0, vie: 100, taux: (1 + 0.9 * p.g) * usure, visage: patientAuHasard(), vu: false, etat: "attente", patience: PATIENCE, reste: 0 };
   }
   const libre = s => { for (let i = 0; i < s.lits; i++) if (!s.lit[i]) return i; return -1; };
   function perdre(s, txt, x, y) {
@@ -457,7 +521,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   const taille = z => 118 * echelle(z);
   const boite = e => { const t = taille(e.z), x = abscisse(e.lx, e.z); return { x: x - t * 0.36, y: pied(e.z) - t * 0.95, w: t * 0.72, h: t * 0.95 }; };
   const BTN_DOSSIER = { x: 8, y: HC - 36, w: 150, h: 30 }, BTN_SECU = { x: 166, y: HC - 36, w: 150, h: 30 };
-  const VISAGES_CO = ["🧓", "👵", "🧑‍🦱", "👨‍🦳", "🧔", "👩‍🦰"];
+  // Patients, médecins et agités du couloir : couleurs de peau et sexes variés (voir PATIENTS).
   const CD_TIR = 0.28, CD_SECU = 3, CD_DOSSIER = 0.5;
 
   const texteC = (s, txt, x, y, coul) => s.textes.push({ x, y, txt, vie: 1.1, coul: coul || "#d33a3a" });
@@ -471,11 +535,11 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   function nouveauPatientC(s, porte, cote) {
     const lc = cote === undefined ? (Math.random() < 0.5 ? -1 : 1) : cote;
     const z = porte === undefined ? PORTES[Math.floor(Math.random() * PORTES.length)] : porte;
-    const e = { k: "p", etat: "sort", z, lx: lc * 1.0, cote: lc, cible: alea(-0.45, 0.45), visage: VISAGES_CO[Math.floor(Math.random() * VISAGES_CO.length)], t: 0 };
+    const e = { k: "p", etat: "sort", z, lx: lc * 1.0, cote: lc, cible: alea(-0.45, 0.45), visage: patientAuHasard(true), t: 0 };
     s.ents.push(e); return e;
   }
-  const nouveauMedecin = s => { const e = { k: "d", etat: "vient", z: 0.08, lx: alea(-0.25, 0.25), t: 0 }; s.ents.push(e); return e; };
-  const nouvelAgite = s => { const e = { k: "a", etat: "fonce", z: 0.08, lx: alea(-0.35, 0.35), t: 0 }; s.ents.push(e); return e; };
+  const nouveauMedecin = s => { const e = { k: "d", etat: "vient", visage: teinte(auHasard(["🧑‍⚕️", "👩‍⚕️", "👨‍⚕️"])), z: 0.08, lx: alea(-0.25, 0.25), t: 0 }; s.ents.push(e); return e; };
+  const nouvelAgite = s => { const e = { k: "a", etat: "fonce", visage: teinte(auHasard(["🏃", "🏃‍♀️", "🏃‍♂️"])), z: 0.08, lx: alea(-0.35, 0.35), t: 0 }; s.ents.push(e); return e; };
 
   function tirer(s, x, y) {
     if (s.cdTir > 0) return;
@@ -567,7 +631,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
         ctx.save();
         if (e.etat === "retour") ctx.globalAlpha = Math.max(0.2, 1 - e.t / 0.8);
         if (e.etat === "plaque") { ctx.translate(x, y); ctx.rotate(Math.min(1.4, e.t * 3)); ctx.translate(-x, -y); }
-        const ic = e.k === "p" ? (e.etat === "retour" ? "😴" : e.visage) : e.k === "d" ? (e.servi ? "🧑‍⚕️" : "🧑‍⚕️") : (e.etat === "plaque" ? "🛡️" : "🏃");
+        const ic = e.k === "p" ? (e.etat === "retour" ? "😴" : e.visage) : e.k === "d" ? e.visage : (e.etat === "plaque" ? "🛡️" : e.visage);
         emoji(ctx, ic, x - t * 0.52, y - t * 0.1, t * 0.95);
         ctx.restore();
         if (e.k === "d" && !e.servi && e.z >= 0.4) { ctx.fillStyle = "#2f7de1"; ctx.font = "bold " + Math.max(10, t * 0.2) + "px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.fillText("📋 ?", x, y - t * 1.02); ctx.textAlign = "left"; }
@@ -598,12 +662,6 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   /* ---------- 5. Pause déjeuner ---------- */
   // Sur le toit de l'hôpital, l'infirmier·ère en pause se déplace, saute et rattrape fruits et sandwichs, en évitant les dossiers qui tombent et les brancards lancés à pleine vitesse.
   const HD = 300, SOLD = HD - 30, TOITD = HD - 70, VIES_D = 3, GD = 1700, SAUT_D = 610;
-  const PERSOS = [
-    { nom: "Infirmière", e: "👩‍⚕️", cheveux: "#6b3f2a", coiffure: "chignon", calot: true },
-    { nom: "Infirmier", e: "👨‍⚕️", cheveux: "#2b2b33", coiffure: "court", calot: false },
-    { nom: "Neutre", e: "🧑‍⚕️", cheveux: "#c9a24b", coiffure: "bandeau", calot: false }
-  ];
-  const lirePerso = () => { try { const v = +localStorage.getItem("lydia_jeu_perso"); return PERSOS[v] ? v : 0; } catch (e) { return 0; } };
   const FRUITS_D = ["🍎", "🍌", "🍊", "🍇", "🍓", "🍐", "🍒", "🥕"];
   const borne = (v, a, b) => Math.max(a, Math.min(b, v));
   const GAUCHE_D = ["ArrowLeft", "q", "Q", "a", "A"], DROITE_D = ["ArrowRight", "d", "D"], SAUT_TOUCHES = ["ArrowUp", "z", "Z", "w", "W"];
@@ -622,7 +680,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   }
 
   // Brancard à roulettes : cadre métallique, matelas, patient endormi sous une couverture, potence à perfusion. dir = sens de la marche (1 : vers la droite).
-  function brancard(ctx, x, sol, dir) {
+  function brancard(ctx, x, sol, dir, peau, cheveux) {
     ctx.save(); ctx.translate(x, sol); ctx.scale(dir, 1);
     ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(0, 1, 52, 4, 0, 0, 7); ctx.fill();
     ctx.strokeStyle = "#7d8a9c"; ctx.lineWidth = 3; ctx.lineCap = "round";
@@ -631,64 +689,13 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     ctx.fillStyle = "#eef2f7"; ctx.strokeStyle = "#7d8a9c"; ctx.lineWidth = 1.5; bord(ctx, -46, -27, 92, 9, 4); ctx.fill(); ctx.stroke();                          // matelas
     ctx.fillStyle = "#4aa3d8"; bord(ctx, -26, -37, 70, 11, 5); ctx.fill();                                                                                         // couverture (le patient dessous)
     ctx.fillStyle = "#ffffff"; bord(ctx, -44, -36, 17, 9, 4); ctx.fill(); ctx.strokeStyle = "#cfd8e3"; ctx.lineWidth = 1; ctx.stroke();                            // oreiller
-    ctx.fillStyle = "#f1c7a0"; ctx.beginPath(); ctx.arc(-35, -37, 6, 0, 7); ctx.fill();                                                                           // tête
-    ctx.fillStyle = "#6b4a32"; ctx.beginPath(); ctx.arc(-35, -39, 6, Math.PI, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = peau || PEAUX[1]; ctx.beginPath(); ctx.arc(-35, -37, 6, 0, 7); ctx.fill();                                                                           // tête
+    ctx.fillStyle = cheveux || CHEVEUX[1]; ctx.beginPath(); ctx.arc(-35, -39, 6, Math.PI, 2 * Math.PI); ctx.fill();
     ctx.strokeStyle = "#7d8a9c"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(44, -20); ctx.lineTo(44, -62); ctx.lineTo(36, -62); ctx.stroke();                   // potence
     ctx.fillStyle = "rgba(200,235,250,.95)"; ctx.strokeStyle = "#6aa6c4"; ctx.lineWidth = 1; bord(ctx, 31, -60, 10, 14, 3); ctx.fill(); ctx.stroke();            // poche de perfusion
     ctx.restore();
   }
 
-  // Le personnage, dessiné membre par membre : jambes et bras qui balancent quand il marche, corps légèrement penché, bras en l'air quand il attrape, saute ou est touché.
-  function personnage(ctx, x, sol, p, a) {
-    const marche = a.allure, ph = a.phase, face = a.face;
-    const rebond = -Math.abs(Math.sin(ph)) * 2.6 * marche * (a.air ? 0 : 1);
-    const peau = "#f1c7a0", tunique = "#2fa6b8", pantalon = "#1f6f86", contour = "rgba(20,30,45,.55)";
-    ctx.save();
-    ctx.translate(x, sol); ctx.rotate(a.penche);                                          // pivot aux pieds : le corps penche vers la direction
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-    const hanche = { x: 0, y: -26 + rebond };
-    // Jambes
-    [[1, 0], [-1, Math.PI]].forEach(([sens, dephasage], k) => {
-      const ang = Math.sin(ph + dephasage) * 0.75 * marche;
-      const fx = hanche.x + Math.sin(ang) * 25, fy = hanche.y + Math.cos(ang) * 25 - (ang * sens > 0.3 ? 2 : 0);
-      ctx.strokeStyle = k ? "#17566a" : pantalon; ctx.lineWidth = 7.5; ctx.beginPath(); ctx.moveTo(hanche.x + (k ? -3 : 3), hanche.y); ctx.lineTo(fx, Math.min(fy, a.air ? 0 : -2)); ctx.stroke();
-      ctx.fillStyle = "#f4f7fb"; ctx.strokeStyle = contour; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.ellipse(fx + face * 3, Math.min(fy, a.air ? 0 : -2) + 1.5, 7, 3.6, 0, 0, 7); ctx.fill(); ctx.stroke();   // chaussure
-    });
-    // Tronc (blouse), col en V, badge et stéthoscope
-    ctx.fillStyle = tunique; ctx.strokeStyle = contour; ctx.lineWidth = 1.4;
-    bord(ctx, -11, hanche.y - 26, 22, 30, 7); ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-5, hanche.y - 26); ctx.lineTo(0, hanche.y - 18); ctx.lineTo(5, hanche.y - 26); ctx.stroke();
-    ctx.fillStyle = "#fff"; ctx.fillRect(face * 4 - 2, hanche.y - 14, 5, 4);                  // badge
-    ctx.strokeStyle = "#3b4658"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, hanche.y - 26, 7, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();   // stéthoscope
-    ctx.fillStyle = "#3b4658"; ctx.beginPath(); ctx.arc(-4 * face, hanche.y - 17, 2, 0, 7); ctx.fill();
-    // Bras : balancier opposé aux jambes, levés à l'attrape / au saut / au choc
-    const epaule = { y: hanche.y - 22 };
-    [[1, Math.PI], [-1, 0]].forEach(([cote, dephasage]) => {
-      const balan = Math.sin(ph + dephasage) * 0.8 * marche;
-      const repos = cote * (0.16 + balan);
-      const haut = cote * 2.5;
-      const ang = repos + (haut - repos) * a.bras;
-      const ex = cote * 11, ey = epaule.y, mx = ex + Math.sin(ang) * 21, my = ey + Math.cos(ang) * 21;
-      ctx.strokeStyle = tunique; ctx.lineWidth = 6.5; ctx.beginPath(); ctx.moveTo(ex, ey + 1); ctx.lineTo(ex + Math.sin(ang) * 12, ey + 1 + Math.cos(ang) * 12); ctx.stroke();
-      ctx.strokeStyle = peau; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(ex + Math.sin(ang) * 11, ey + 1 + Math.cos(ang) * 11); ctx.lineTo(mx, my); ctx.stroke();
-      ctx.fillStyle = peau; ctx.beginPath(); ctx.arc(mx, my, 3.3, 0, 7); ctx.fill();
-    });
-    // Tête
-    const cx = face * 1, cy = hanche.y - 38;
-    if (p.coiffure === "chignon") { ctx.fillStyle = p.cheveux; ctx.beginPath(); ctx.arc(cx - face * 8, cy - 8, 5.2, 0, 7); ctx.fill(); }     // chignon
-    if (p.coiffure === "bandeau") { ctx.fillStyle = p.cheveux; ctx.beginPath(); ctx.arc(cx - face * 8, cy + 1, 4, 0, 7); ctx.fill(); }
-    ctx.fillStyle = peau; ctx.strokeStyle = contour; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(cx, cy, 10, 0, 7); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = p.cheveux; ctx.beginPath(); ctx.arc(cx, cy, 10.4, Math.PI * 1.02, Math.PI * 1.98); ctx.closePath(); ctx.fill();                // cheveux du dessus
-    if (p.coiffure === "bandeau") { ctx.fillStyle = "#e0584f"; ctx.fillRect(cx - 10, cy - 5, 20, 3); }
-    if (p.calot) { ctx.fillStyle = "#fff"; ctx.strokeStyle = contour; ctx.lineWidth = 1; ctx.fillRect(cx - 6, cy - 14, 12, 6); ctx.strokeRect(cx - 6, cy - 14, 12, 6); ctx.fillStyle = "#d33a3a"; ctx.fillRect(cx - 1, cy - 13, 2, 4); ctx.fillRect(cx - 2, cy - 12, 4, 2); }
-    ctx.fillStyle = "#1f2937"; const ouvert = a.mine ? 0.6 : 1.5;                                                                                 // yeux (plissés si touché)
-    ctx.beginPath(); ctx.ellipse(cx + face * 3.4 - 3, cy + 1, 1.3, ouvert, 0, 0, 7); ctx.ellipse(cx + face * 3.4 + 3, cy + 1, 1.3, ouvert, 0, 0, 7); ctx.fill();
-    ctx.strokeStyle = "#7a3b2e"; ctx.lineWidth = 1.2; ctx.beginPath();
-    if (a.mine) ctx.arc(cx + face * 3.4, cy + 8, 2.6, Math.PI * 1.1, Math.PI * 1.9); else ctx.arc(cx + face * 3.4, cy + 4.2, 3.2, 0.15 * Math.PI, 0.85 * Math.PI);   // bouche : grimace ou sourire
-    ctx.stroke();
-    ctx.restore();
-  }
 
   // Décor : le toit-terrasse d'un hôpital en fin de matinée : horizon d'immeubles, héliport peint au sol, croix rouge sur son mât, locaux techniques, rambarde.
   const IMMEUBLES_D = [[0, 52, 40], [38, 78, 34], [70, 46, 44], [112, 90, 30], [140, 60, 42], [180, 40, 50], [228, 84, 34], [260, 58, 40], [300, 96, 28], [326, 50, 46], [370, 72, 36], [404, 44, 44], [446, 88, 32], [476, 56, 42], [516, 70, 38], [552, 48, 46], [596, 82, 44]];
@@ -742,15 +749,14 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   const dejeuner = {
     nom: "dejeuner", titre: "🥪 Pause déjeuner", desc: "Sur le toit de l’hôpital : attrapez fruits et sandwichs, évitez dossiers et brancards.", h: HD, unite: " pts", fin: "Fin de la pause : le service vous rappelle 📟",
     aide: "← → (ou Q / D, A / D) : se déplacer · Espace, ↑ ou Z / W : sauter (par-dessus les brancards, ou pour rattraper en hauteur). À la souris ou au doigt : glissez pour être suivi·e, touchez le haut de l’écran pour sauter. Fruits et sandwichs rapportent des points (le temps qui passe aussi), dossiers et brancards font perdre une vie : trois vies. Ne comptez pas sur les bords…",
-    persos: PERSOS, lirePerso,
     init() {
       return { t: 0, x: W / 2, vx: 0, face: 1, phase: 0, allure: 0, h: 0, vh: 0, gauche: false, droite: false, cible: null, vies: VIES_D, inv: 0, joie: 0, mal: 0, pts: 0, score: 0,
-        items: [], part: [], textes: [], prochain: 0.8, dernierDossierX: -999, brancard: null, prochainBrancard: 11, perso: lirePerso(), rec: record("dejeuner"), mort: false };
+        items: [], part: [], textes: [], prochain: 0.8, dernierDossierX: -999, brancard: null, prochainBrancard: 11, rec: record("dejeuner"), mort: false };
     },
     demo(s) {
       s.x = 250; s.vx = 120; s.allure = 1; s.phase = 1.2; s.t = 6; s.pts = 40; s.score = 46;
       s.items = [{ type: "dossier", x: 120, y: 90, v: 0, rot: 0.3, vr: 0 }, { type: "fruit", e: "🍎", x: 330, y: 70, v: 0, rot: 0, vr: 0 }, { type: "sandwich", e: "🥪", x: 440, y: 150, v: 0, rot: 0, vr: 0 }, { type: "fruit", e: "🍌", x: 250, y: 30, v: 0, rot: 0, vr: 0 }];
-      s.brancard = { x: 540, dir: -1, v: 0, alerte: 0, franchi: false };
+      s.brancard = { x: 540, dir: -1, v: 0, alerte: 0, franchi: false, peau: PEAUX[2], cheveux: CHEVEUX[0] };
     },
     action(s) { if (s.h <= 0.5) { s.vh = SAUT_D; } },
     bas() { /* inutilisé */ },
@@ -808,7 +814,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
       s.prochainBrancard -= dt;
       if (!s.brancard && s.prochainBrancard <= 0) {
         const sens = Math.random() < 0.5 ? 1 : -1;
-        s.brancard = { x: sens > 0 ? -60 : W + 60, dir: sens, v: 0, alerte: 1.0, franchi: false };
+        s.brancard = { x: sens > 0 ? -60 : W + 60, dir: sens, v: 0, alerte: 1.0, franchi: false, peau: auHasard(PEAUX), cheveux: auHasard(CHEVEUX) };
         s.prochainBrancard = alea(6, 10) - 3 * Math.min(1, d);
       }
       const b = s.brancard;
@@ -870,12 +876,12 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
         if (it.type === "dossier") dessinDossier(ctx, it.x, it.y, it.rot);
         else emoji(ctx, it.e, it.x - (it.type === "sandwich" ? 15 : 12), it.y + (it.type === "sandwich" ? 12 : 10), it.type === "sandwich" ? 30 : 24);
       });
-      if (b && b.alerte <= 0) brancard(ctx, b.x, SOLD, b.dir);
+      if (b && b.alerte <= 0) brancard(ctx, b.x, SOLD, b.dir, b.peau, b.cheveux);
       s.part.forEach(p => { ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, p.vie * 1.5)); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#8a93a3"; ctx.lineWidth = 0.8; ctx.fillRect(-p.r, -p.r * 0.7, p.r * 2, p.r * 1.4); ctx.strokeRect(-p.r, -p.r * 0.7, p.r * 2, p.r * 1.4); ctx.restore(); });
       if (!(s.inv > 0 && Math.floor(s.inv * 12) % 2 === 0)) {
         const air = s.h > 2;
         ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(s.x, SOLD, 17 - Math.min(8, s.h / 12), 4, 0, 0, 7); ctx.fill();   // ombre restée au sol quand on saute
-        personnage(ctx, s.x, SOLD - s.h, PERSOS[s.perso] || PERSOS[0], { phase: air ? 1.4 : s.phase, allure: air ? 1 : s.allure, air, face: s.face, bras: s.joie > 0 ? 1 : s.mal > 0 ? 0.85 : air ? 0.55 : 0, penche: borne(s.vx / 2400, -0.2, 0.2), mine: s.mal > 0 });
+        soignant(ctx, s.x, SOLD - s.h, { h: 72, ph: s.phase, allure: air ? 0 : s.allure, air, face: s.face, bras: s.joie > 0 ? 1 : s.mal > 0 ? 0.85 : air ? 0.55 : 0, penche: borne(s.vx / 2400, -0.2, 0.2), mine: s.mal > 0, trait: c.texte });
       }
       ctx.font = "bold 14px system-ui,sans-serif"; ctx.textAlign = "center";
       s.textes.forEach(t => { ctx.globalAlpha = Math.min(1, t.vie * 2); ctx.fillStyle = t.coul; ctx.fillText(t.txt, t.x, t.y); ctx.globalAlpha = 1; });
@@ -888,10 +894,6 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
 
   const JEUX = { course, seringue, urgences, couloir, dejeuner };
 
-  // Avatar de la course (choix mémorisé dans le navigateur).
-  const AVATARS = [{ e: "👩‍⚕️", nom: "Femme" }, { e: "👨‍⚕️", nom: "Homme" }, { e: "🧑‍⚕️", nom: "Neutre" }];
-  const lireAvatar = () => { try { const v = localStorage.getItem("lydia_jeu_avatar"); return AVATARS.some(a => a.e === v) ? v : AVATARS[0].e; } catch (e) { return AVATARS[0].e; } };
-  let avatar = lireAvatar();
 
   /* ---------- Fenêtre et boucle ---------- */
   let actif = null;   // { jeu, s, etat: "pret" | "jeu" | "fini", raf, t0, cv, ctx, nettoyer }
@@ -938,31 +940,6 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     zone.innerHTML = '<div style="position:relative;max-width:' + W + 'px"><canvas width="' + W + '" height="' + (jeu.h || H) + '" style="display:block;width:100%;border:1px solid var(--bd);border-radius:10px;touch-action:none;background:var(--card)" tabindex="0" aria-label="' + jeu.titre + '"></canvas><div class="jeurejouer" style="display:none;position:absolute;left:50%;top:68%;transform:translateX(-50%)"><button type="button" class="btn">↻ Rejouer</button></div></div><div class="meta" style="margin-top:6px"></div>';
     const cv = zone.querySelector("canvas"); zone.querySelector(".meta").textContent = jeu.aide;
     const rej = zone.querySelector(".jeurejouer");
-    if (nom === "course") {
-      avatar = lireAvatar();
-      const bar = doc.createElement("div"); bar.className = "jeuavatar"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
-      bar.innerHTML = AVATARS.map(a => '<button type="button" class="btn sm sec" data-avatar="' + a.e + '" aria-label="' + a.nom + '" aria-pressed="' + (a.e === avatar) + '" title="' + a.nom + '" style="font-size:20px;line-height:1;' + (a.e === avatar ? "outline:2px solid var(--pri)" : "") + '">' + a.e + "</button>").join("");
-      bar.addEventListener("click", e => {
-        const b = e.target.closest("[data-avatar]"); if (!b) return;
-        avatar = b.dataset.avatar; try { localStorage.setItem("lydia_jeu_avatar", avatar); } catch (x) { /* ignoré */ }
-        bar.querySelectorAll("[data-avatar]").forEach(o => { const on = o === b; o.setAttribute("aria-pressed", String(on)); o.style.outline = on ? "2px solid var(--pri)" : ""; });
-        try { cv.focus({ preventScroll: true }); } catch (x) { /* ignoré */ }
-      });
-      zone.insertBefore(bar, zone.firstChild);
-    }
-    if (jeu.persos) {
-      const bar = doc.createElement("div"); bar.className = "jeuperso"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:0";
-      const cur = jeu.lirePerso();
-      bar.innerHTML = jeu.persos.map((p, i) => '<button type="button" class="btn sm sec" data-perso="' + i + '" aria-label="' + p.nom + '" aria-pressed="' + (i === cur) + '" title="' + p.nom + '" style="font-size:20px;line-height:1;' + (i === cur ? "outline:2px solid var(--pri)" : "") + '">' + p.e + "</button>").join("");
-      bar.addEventListener("click", e => {
-        const b = e.target.closest("[data-perso]"); if (!b || !actif) return;
-        try { localStorage.setItem("lydia_jeu_perso", b.dataset.perso); } catch (x) { /* ignoré */ }
-        actif.s.perso = +b.dataset.perso;
-        bar.querySelectorAll("[data-perso]").forEach(o => { const on = o === b; o.setAttribute("aria-pressed", String(on)); o.style.outline = on ? "2px solid var(--pri)" : ""; });
-        try { cv.focus({ preventScroll: true }); } catch (x) { /* ignoré */ }
-      });
-      zone.insertBefore(bar, zone.firstChild);
-    }
     if (jeu.niveaux) {
       const bar = doc.createElement("div"); bar.className = "jeuniveau"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px";
       const cur = jeu.niveau();
@@ -1029,7 +1006,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   root.LydiaJeux = {
     liste: Object.keys(JEUX).map(k => ({ id: k, nom: JEUX[k].nom, titre: JEUX[k].titre, desc: JEUX[k].desc || "", admin: !!JEUX[k].admin })),
     miniature,
-    ouvrir, fermer, enCours: () => !!actif, record, avatar: () => avatar, surFin: null,
+    ouvrir, fermer, enCours: () => !!actif, record, surFin: null,
     // Records enregistrés sur le serveur : on garde le meilleur entre eux et ceux de ce navigateur (la clé locale de « urgences » comprend le niveau).
     synchroniser: scores => { (scores || []).forEach(x => record(x.jeu === "urgences" ? x.jeu + x.niveau : x.jeu, x.score)); },
     _test: { JEUX, SOINS, chevauche, appuyer, etat: () => actif && actif.etat, finir: () => { actif.etat = "fini"; actif.rej.style.display = "block"; } }
