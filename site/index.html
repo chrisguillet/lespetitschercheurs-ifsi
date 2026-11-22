@@ -112,7 +112,8 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
           <button class="btn sm" id="addterme" type="button">＋ Ajouter un terme</button></div>
         <div class="meta" style="margin-top:4px">Les définitions importantes de votre mémoire, avec la référence qui les donne. Visible et modifiable par les membres du groupe.</div>
         <div id="gloform"></div>
-        <div class="tools hidden" style="margin-top:8px"><input id="gloq" type="search" placeholder="Rechercher un mot, une définition, une référence…" aria-label="Rechercher dans le glossaire" style="max-width:420px"></div>
+        <div class="tools" style="margin-top:8px;flex-wrap:wrap"><input id="gloq" type="search" placeholder="Rechercher un mot, une définition, une référence…" aria-label="Rechercher dans le glossaire" style="max-width:420px;flex:1 1 260px"><select id="glotri" aria-label="Trier le glossaire" style="width:auto">
+          <option value="mot">Trier : mot (A → Z)</option><option value="mot-desc">Trier : mot (Z → A)</option><option value="recent">Trier : ajouté le plus récemment</option><option value="ancien">Trier : ajouté le plus anciennement</option><option value="ref">Trier : référence (A → Z)</option></select></div>
         <div id="glolist"></div>
       </div>
     </section>

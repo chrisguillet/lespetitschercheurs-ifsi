@@ -14,15 +14,24 @@ function renderGlossaire() {
   $("addterme").classList.toggle("hidden", !ecrit);
   const tous = termesAll.filter(t => t.groupe_id === g.id);
   const q = gloCle($("gloq").value);
+  const tri = $("glotri") ? $("glotri").value : "mot";
+  const alpha = (a, b) => gloCle(a).localeCompare(gloCle(b), "fr");
+  const comparer = {
+    "mot": (a, b) => alpha(a.mot, b.mot),
+    "mot-desc": (a, b) => alpha(b.mot, a.mot),
+    "recent": (a, b) => String(b.cree_le).localeCompare(String(a.cree_le)),
+    "ancien": (a, b) => String(a.cree_le).localeCompare(String(b.cree_le)),
+    "ref": (a, b) => (!a.reference) - (!b.reference) || alpha(a.reference, b.reference) || alpha(a.mot, b.mot),   // sans référence à la fin
+  }[tri] || ((a, b) => alpha(a.mot, b.mot));
   const l = tous.filter(t => !q || gloCle(t.mot).includes(q) || gloCle(t.definition).includes(q) || gloCle(t.reference).includes(q))
-    .sort((a, b) => gloCle(a.mot).localeCompare(gloCle(b.mot), "fr"));
-  $("gloq").parentElement.classList.toggle("hidden", tous.length < 6);   // la recherche n'a d'intérêt qu'à partir de quelques termes
+    .sort(comparer);
+  const alphabetique = tri === "mot" || tri === "mot-desc";   // intertitres par lettre seulement pour le tri alphabétique
   if (!tous.length) { box.innerHTML = `<div class="empty">Aucun terme pour l’instant.${ecrit ? " Ajoutez les définitions importantes de votre mémoire, avec la référence qui les donne." : ""}</div>`; return; }
   if (!l.length) { box.innerHTML = `<div class="empty">Aucun terme ne correspond à la recherche.</div>`; return; }
   let html = `<div class="meta" style="margin:8px 0">Groupe <b>${esc(g.nom)}</b> · ${tous.length} terme${tous.length > 1 ? "s" : ""}${q ? ` · ${l.length} affiché${l.length > 1 ? "s" : ""}` : ""}</div>`, lettre = "";
   l.forEach(t => {
     const ini = (gloCle(t.mot)[0] || "#").toUpperCase();
-    if (ini !== lettre) { lettre = ini; html += `<h3 class="gloini">${esc(/[A-Z]/.test(ini) ? ini : "#")}</h3>`; }
+    if (alphabetique && ini !== lettre) { lettre = ini; html += `<h3 class="gloini">${esc(/[A-Z]/.test(ini) ? ini : "#")}</h3>`; }
     html += `<article class="terme"><div class="tools" style="justify-content:space-between"><b class="termemot">${esc(t.mot)}</b>
       ${t.modifiable ? `<div><button type="button" class="btn sm sec" data-ted="${esc(t.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-tdel="${esc(t.id)}">Supprimer</button></div>` : ""}</div>
       <div style="white-space:pre-wrap">${esc(t.definition)}</div>
@@ -71,6 +80,7 @@ async function supprimerTerme(id) {
 
 $("addterme").onclick = () => { fermerTermeForm(); ouvrirTermeForm(); };
 $("gloq").addEventListener("input", renderGlossaire);
+$("glotri")?.addEventListener("change", renderGlossaire);
 $("glossaire").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.ted) { fermerTermeForm(); ouvrirTermeForm(b.dataset.ted); }
