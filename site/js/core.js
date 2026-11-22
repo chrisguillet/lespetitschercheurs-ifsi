@@ -220,7 +220,7 @@ let dernierEtat = null;
 function applyData(j) {
   if (j.partiel) j = Object.assign({}, dernierEtat, j);
   dernierEtat = j;
-  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.rattachements, j.fichiers, j.reunions, j.jalons, j.termes, j.lectures, j.commentaires, j.lus, j.enAttente]);
+  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.rattachements, j.fichiers, j.reunions, j.jalons, j.termes, j.lectures, j.commentaires, j.lus, j.enAttente, j.suggestions]);
   const change = sig !== dataSig;
   dataSig = sig;
   applyDataBrut(j);
@@ -237,6 +237,8 @@ function applyDataBrut(j) {
   fichiers = j.fichiers || [];
   itemsAll = j.lectures;
   props = j.propositions || [];
+  sugEtat = j.suggestions || { liste: [], peut: [], groupes: [], alertes: 0 };
+  if (typeof majPastilleSuggestions === "function") majPastilleSuggestions();
   reunionsAll = j.reunions || [];
   jalonsAll = j.jalons || [];
   termesAll = j.termes || [];
@@ -294,7 +296,7 @@ function renderData() {
 // Onglets selon la personne : « Mes lectures » réservé aux étudiants, « Suivi de projet » à qui a un groupe,
 // « Administration » à l'administrateur et aux étudiants qui ont un groupe (un formateur ne l'a jamais).
 function majOnglets() {
-  const vis = { mine: canWrite(), dash: !!me && (me.role === "formateur" || isSuper()), suivi: !!groupeCourant(), glossaire: !!groupeCourant(), admin: canAdmin() && (isSuper() || adminDelegue() || !!groupeCourant()) };
+  const vis = { mine: canWrite(), dash: !!me && (me.role === "formateur" || isSuper()), suivi: !!groupeCourant(), glossaire: !!groupeCourant(), admin: canAdmin() && (isSuper() || adminDelegue() || !!groupeCourant()), sug: typeof sugVisible === "function" && sugVisible() };
   Object.keys(vis).forEach(t => document.querySelector(`.tab[data-t="${t}"]`).classList.toggle("hidden", !vis[t]));
   if (vis[tab] === false) setTab("all");
   majSections();

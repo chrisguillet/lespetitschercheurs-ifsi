@@ -59,6 +59,7 @@ final class Donnees
             'lectures' => static fn (): array => Lectures::lister($c),
             'commentaires' => static fn (): array => Commentaires::lister($c),
             'lus' => static fn (): array => Commentaires::lus($c),
+            'suggestions' => static fn (): array => Suggestions::pourClient($c),
             'enAttente' => static fn (): int => self::enAttente($c),
         ];
     }
@@ -163,7 +164,7 @@ final class Donnees
                 (($a['role'] === 'etudiant' ? 0 : 1) <=> ($b['role'] === 'etudiant' ? 0 : 1))
                 ?: strcmp(mb_strtolower($a['prenom']), mb_strtolower($b['prenom'])));
             $out[] = ['id' => $id, 'nom' => (string) $g['nom'], 'etablissement' => (string) $g['etablissement'],
-                'promo' => (string) $g['promo'], 'membres' => $liste,
+                'promo' => (string) $g['promo'], 'promo_id' => (string) $g['promo_id'], 'membres' => $liste,
                 'chat' => ChatRegles::groupeActif($regles, (string) $id, (string) $g['promo_id']), 'chat_promo' => ChatRegles::promoActif($regles, (string) $g['promo_id'])];
         }
         usort($out, static fn (array $a, array $b): int =>

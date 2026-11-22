@@ -40,7 +40,7 @@ final class Routeur
         'nom_demande', 'nom_demandes', 'nom_decision',
         'invitation_create', 'invitation_list', 'invitation_revoke',
         'attribution_add', 'attribution_remove', 'feedback_status', 'doi_lookup', 'doublons_list', 'article_merge', 'doublons_ignore', 'chat_regles', 'chat_regle_set',
-        'jeux_scores', 'jeu_score',
+        'jeux_scores', 'jeu_score', 'suggestion_save', 'suggestion_delete', 'suggestion_vues',
     ];
 
     /** @var array<string,callable(Contexte,array<string,mixed>):array<string,mixed>> */
@@ -64,6 +64,9 @@ final class Routeur
             'chat_regle_set' => [Outils::class, 'chatRegleSet'],
             'jeux_scores' => [Outils::class, 'jeuxScores'],
             'jeu_score' => [Outils::class, 'jeuScore'],
+            'suggestion_save' => [Outils::class, 'suggestionSave'],
+            'suggestion_delete' => [Outils::class, 'suggestionDelete'],
+            'suggestion_vues' => [Outils::class, 'suggestionVues'],
             'article_merge' => [Outils::class, 'articleMerge'],
             'doublons_ignore' => [Outils::class, 'doublonsIgnore'],
             'etab_create' => [Structure::class, 'etabCreate'],

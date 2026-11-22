@@ -34,6 +34,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
       <button class="tab" data-t="home" role="tab" aria-selected="false">🏠 Accueil</button>
       <button class="tab" data-t="mine" role="tab" aria-selected="false">✍️ Mes lectures</button>
       <button class="tab on" data-t="all" role="tab" aria-selected="true">📊 Tableau commun</button>
+      <button class="tab hidden" data-t="sug" role="tab" aria-selected="false">💡 Propositions <span id="sugcount" class="count hidden"></span></button>
       <button class="tab" data-t="cmts" role="tab" aria-selected="false">💬 Commentaires <span id="cmtcount" class="count hidden"></span></button>
       <button class="tab" data-t="biblio" role="tab" aria-selected="false">📖 Bibliographie</button>
       <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
@@ -118,6 +119,10 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
 
     <section id="synth" class="hidden">
       <div id="synthbox"></div>
+    </section>
+
+    <section id="sug" class="hidden">
+      <div id="sugbox"></div>
     </section>
 
     <section id="admin" class="hidden">
@@ -268,7 +273,7 @@ window.addEventListener("load", function () {
 </script>
 <script>
 /* Scripts classiques chargés dans l'ordre : ils partagent tous la même portée globale (voir js/*.js). */
-document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "monde", "synthese", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "retro", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
+document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "monde", "synthese", "suggestions", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "retro", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
 </script>
 </body>
 </html>

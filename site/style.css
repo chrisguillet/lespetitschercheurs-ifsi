@@ -913,3 +913,14 @@ header h1{font-size:24px}
 header #sub select{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.38);border-radius:10px;padding:5px 28px 5px 10px;font:inherit;font-size:13px;width:auto;max-width:100%;cursor:pointer;backdrop-filter:blur(4px)}
 header #sub select:hover{background:rgba(255,255,255,.26);border-color:#fff}
 header #sub select option{color:#18203a;background:#fff}
+
+/* Propositions de lecture */
+.sugliste{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-top:12px}
+.cardc.sug{border-left-color:var(--pri)}
+.sugliens{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}
+.sugnote{white-space:pre-wrap;font-size:14px;border-left:3px solid var(--bd);padding-left:10px}
+.sugform{margin-top:12px}
+.sugtags{border:1px solid var(--bd);border-radius:10px;padding:8px 12px;margin:10px 0}
+.sugtags legend{font-size:13px;padding:0 6px}
+.sugtags .chk{display:inline-flex;align-items:center;gap:6px;margin:3px 12px 3px 0;font-weight:400}
+.sugtags .chk input{width:auto}

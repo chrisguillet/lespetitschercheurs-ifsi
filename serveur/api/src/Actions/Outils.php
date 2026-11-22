@@ -178,6 +178,27 @@ final class Outils
         return ['ok' => true, 'scores' => \Lpc\Jeux::pourClient($c)];
     }
 
+    /** Propose (ou modifie) une lecture à une promo : formateurs et administrateurs. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function suggestionSave(Contexte $c, array $req): array
+    {
+        \Lpc\Suggestions::enregistrer($c, $req['id'] ?? null, $req['data'] ?? null);
+        return ['ok' => true] + Donnees::choisies($c, ['suggestions']);
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function suggestionDelete(Contexte $c, array $req): array
+    {
+        \Lpc\Suggestions::supprimer($c, $req['id'] ?? null);
+        return ['ok' => true] + Donnees::choisies($c, ['suggestions']);
+    }
+
+    /** La personne a ouvert ces suggestions (l'alerte s'efface pour elle). @param array<string,mixed> $req @return array<string,mixed> */
+    public static function suggestionVues(Contexte $c, array $req): array
+    {
+        \Lpc\Suggestions::marquerVues($c, $req['ids'] ?? null);
+        return ['ok' => true] + Donnees::choisies($c, ['suggestions']);
+    }
+
     /** Fixe une règle d'activation du chat : portée general, promo ou groupe ; valeur actif, inactif ou herite. @param array<string,mixed> $req @return array<string,mixed> */
     public static function chatRegleSet(Contexte $c, array $req): array
     {
@@ -211,7 +232,9 @@ final class Outils
     /** Préremplissage d'une fiche par DOI (Crossref, interrogé depuis le serveur). @param array<string,mixed> $req @return array<string,mixed> */
     public static function doiLookup(Contexte $c, array $req): array
     {
-        Lectures::exigerEtudiant($c);
+        if (\Lpc\Suggestions::promosOuProposer($c) === []) {   // étudiantes pour leurs fiches, formateurs et administrateurs pour leurs suggestions
+            Lectures::exigerEtudiant($c);
+        }
         return ['ok' => true, 'champs' => \Lpc\Doi::chercher(is_scalar($req['doi'] ?? null) ? (string) $req['doi'] : ''), 'source' => 'Crossref'];
     }
 

@@ -93,6 +93,7 @@ final class Purge
                     'DELETE FROM commentaires WHERE auteur_id = ?',
                     'DELETE FROM historique WHERE proprietaire = ?',
                     'DELETE FROM propositions WHERE propose_par = ?',
+                    'DELETE FROM suggestions WHERE propose_par = ?',
                     'DELETE FROM votes WHERE propose_par = ?',
                     'DELETE FROM votes WHERE cible_id = ?',
                 ]);

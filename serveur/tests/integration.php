@@ -1161,6 +1161,45 @@ $sc('jeux@ci.test', ['jeu' => 'couloir', 'score' => 3]);
 appel($admin, 'admin_erase', ['email' => 'jeux@ci.test', 'contributions' => 'anonymiser']);
 verifie('effacement : les scores de jeux disparaissent avec le compte', (int) valeur($pdo, 'SELECT COUNT(*) FROM scores_jeux WHERE utilisateur_id = ?', [$js]) === 0);
 
+// ---------- Suggestions de lecture : un formateur propose un article à la promo, des groupes tagués sont alertés ----------
+$beta = $gid('Beta');
+$sg = static fn (string $email, string $action, array $req): array => appel($email, $action, $req);
+$liste = static fn (string $email): array => appel($email, 'init')['suggestions'] ?? [];
+$data = ['promo_id' => $pv, 'titre' => 'Prendre soin à l’hôpital', 'auteur' => 'Dupont', 'parution' => '2021', 'type' => 'Article scientifique', 'doi' => '10.1000/xyz', 'lien' => 'https://exemple.org/a', 'note' => 'À lire avant la réunion', 'groupes' => [$alpha]];
+verifie('suggestion : une étudiante ne peut pas proposer', $err($sg('a1@ci.test', 'suggestion_save', ['data' => $data])) === 'forbidden');
+verifie('suggestion : titre obligatoire', $err($sg('forma@ci.test', 'suggestion_save', ['data' => array_merge($data, ['titre' => '  '])])) === 'invalid');
+verifie('suggestion : lien contrôlé', $err($sg('forma@ci.test', 'suggestion_save', ['data' => array_merge($data, ['lien' => 'javascript:alert(1)'])])) === 'invalid');
+verifie('suggestion : groupe inconnu refusé', $err($sg('forma@ci.test', 'suggestion_save', ['data' => array_merge($data, ['groupes' => ['inconnu']])])) === 'invalid');
+$r = $sg('forma@ci.test', 'suggestion_save', ['data' => $data]);
+$sug = $r['suggestions'] ?? [];
+$idS = (string) ($sug['liste'][0]['id'] ?? '');
+verifie('suggestion : créée par le formateur, qui voit ses tags', ($r['ok'] ?? false) === true && count($sug['liste'] ?? []) === 1 && ($sug['liste'][0]['modifiable'] ?? false) === true && ($sug['liste'][0]['groupes'] ?? []) === [$alpha] && in_array($pv, $sug['peut'] ?? [], true));
+$l1 = $liste('a1@ci.test');
+verifie('suggestion : visible de toute la promo, avec alerte pour le groupe tagué', count($l1['liste'] ?? []) === 1 && ($l1['liste'][0]['nouveau'] ?? false) === true && ($l1['liste'][0]['alerte'] ?? false) === true && ($l1['alertes'] ?? 0) === 1);
+verifie('suggestion : le tag reste invisible des étudiantes', ($l1['liste'][0]['groupes'] ?? ['x']) === [] && ($l1['liste'][0]['modifiable'] ?? true) === false && ($l1['peut'] ?? ['x']) === []);
+$l4 = $liste('a4@ci.test');
+verifie('suggestion : un autre groupe la voit sans alerte', count($l4['liste'] ?? []) === 1 && ($l4['liste'][0]['nouveau'] ?? false) === true && ($l4['liste'][0]['alerte'] ?? true) === false && ($l4['alertes'] ?? 9) === 0);
+verifie('suggestion : hors promo, personne ne la voit', count($liste('simple@ci.test')['liste'] ?? []) === 0);
+$r = $sg('a1@ci.test', 'suggestion_vues', ['ids' => [$idS, 'inconnue']]);
+verifie('suggestion : ouverte, l’alerte s’efface', ($r['suggestions']['alertes'] ?? 9) === 0 && ($r['suggestions']['liste'][0]['nouveau'] ?? true) === false);
+verifie('suggestion : l’alerte des autres reste', ($liste('a2@ci.test')['alertes'] ?? 0) === 1);
+verifie('suggestion : un autre formateur ne la modifie pas', $err($sg('formb@ci.test', 'suggestion_save', ['id' => $idS, 'data' => $data])) === 'forbidden'
+    && $err($sg('formb@ci.test', 'suggestion_delete', ['id' => $idS])) === 'forbidden');
+$r = $sg('forma@ci.test', 'suggestion_save', ['id' => $idS, 'data' => array_merge($data, ['titre' => 'Titre corrigé', 'groupes' => [$alpha, $beta]])]);
+verifie('suggestion : l’auteur la corrige et change les tags', ($r['suggestions']['liste'][0]['titre'] ?? '') === 'Titre corrigé' && count($r['suggestions']['liste'][0]['groupes'] ?? []) === 2);
+verifie('suggestion : le groupe nouvellement tagué est alerté', ($liste('a4@ci.test')['alertes'] ?? 0) === 1);
+verifie('suggestion : un administrateur de la promo peut la corriger', ($sg('ap@ci.test', 'suggestion_save', ['id' => $idS, 'data' => array_merge($data, ['titre' => 'Corrigé par l’admin'])])['ok'] ?? false) === true);
+verifie('suggestion : préremplissage par DOI permis aux formateurs', ($sg('forma@ci.test', 'doi_lookup', ['doi' => 'pas-un-doi'])['error'] ?? '') !== 'forbidden');
+$r = $sg('ap@ci.test', 'suggestion_delete', ['id' => $idS]);
+verifie('suggestion : supprimée', ($r['ok'] ?? false) === true && count($r['suggestions']['liste'] ?? []) === 0);
+foreach ([['formc@ci.test', 'anonymiser'], ['formb@ci.test', 'supprimer']] as [$mail, $mode]) {
+    $sg($mail, 'suggestion_save', ['data' => ['promo_id' => $pv, 'titre' => 'De ' . $mail]]);
+    appel($admin, 'admin_erase', ['email' => $mail, 'contributions' => $mode]);
+}
+verifie('effacement : la suggestion reste détachée (anonymisation) ou disparaît (suppression)', (int) valeur($pdo, "SELECT COUNT(*) FROM suggestions WHERE titre = 'De formc@ci.test' AND propose_par IS NULL") === 1
+    && (int) valeur($pdo, "SELECT COUNT(*) FROM suggestions WHERE titre = 'De formb@ci.test'") === 0);
+$pdo->prepare("DELETE FROM suggestions")->execute();
+
 // ---------- Lot D : chat ----------
 $salon =static fn (string $type): array => ['groupe_id' => $alpha, 'type' => $type];
 $r = appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => "Bonjour\r\n\r\n\r\n\r\nà tous"]);

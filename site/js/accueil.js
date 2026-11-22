@@ -49,7 +49,10 @@ function renderHome() {
   const nouv = itemsAll.filter(i => !i.mine && mes.has(i.groupe_id) && i.statut !== "À lire" && joursDepuis(i.ajoute) !== null && joursDepuis(i.ajoute) < 7).sort((a, b) => String(b.ajoute).localeCompare(a.ajoute));
   const nouvHtml = nouv.length ? `<ul class="hlist">${nouv.slice(0, 5).map(i => `<li><span class="av sm" style="--c:${esc(i.couleur)}">${initiales(i.etudiant)}</span> <b>${esc(i.etudiant)}</b> · ${esc(i.titre)} ${nomGroupe(i.groupe_id) ? `<span class="hgrp">${esc(nomGroupe(i.groupe_id))}</span> ` : ""}<span class="meta">${esc(stInfo(i.statut).lib.toLowerCase())}</span></li>`).join("")}</ul>` : "";
   const attente = isSuper() && pendingCount ? `<div>${pendingCount} demande${pendingCount > 1 ? "s" : ""} d’accès en attente.</div>` : "";
+  const sugAlertes = (typeof sugEtat !== "undefined" ? sugEtat.liste : []).filter(s => s.alerte);
+  const sugHtml = sugAlertes.length ? `<ul class="hlist">${sugAlertes.slice(0, 3).map(s => `<li><b>${esc(s.titre)}</b> <span class="meta">proposé par ${esc(s.par)}</span></li>`).join("")}</ul>` : "";
   const blocs = [
+    bloc("💡 Proposé pour votre groupe", sugHtml, aller("sug", "Voir les propositions")),
     bloc("⏰ Rétroplanning", jalHtml, aller("suivi", "Ouvrir le suivi de projet")),
     bloc("🗳 À voter", voteHtml, voteGroupe ? `<button type="button" class="btn sm sec" data-gv="${esc(voteGroupe.id)}">Ouvrir les votes</button>` : ""),
     bloc("💬 Derniers commentaires", comHtml, aller("cmts", "Tous les commentaires")),
