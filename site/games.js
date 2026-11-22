@@ -596,8 +596,8 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   };
 
   /* ---------- 5. Pause déjeuner ---------- */
-  // L'infirmier·ère, en pause, se déplace sous les objets qui tombent : fruits et sandwichs donnent des points, les dossiers font perdre une vie.
-  const HD = 300, SOLD = HD - 34, VIES_D = 3;
+  // Sur le toit de l'hôpital, l'infirmier·ère en pause se déplace, saute et rattrape fruits et sandwichs, en évitant les dossiers qui tombent et les brancards lancés à pleine vitesse.
+  const HD = 300, SOLD = HD - 30, TOITD = HD - 70, VIES_D = 3, GD = 1700, SAUT_D = 610;
   const PERSOS = [
     { nom: "Infirmière", cheveux: "#6b3f2a", coiffure: "chignon", calot: true },
     { nom: "Infirmier", cheveux: "#2b2b33", coiffure: "court", calot: false },
@@ -606,6 +606,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   const lirePerso = () => { try { const v = +localStorage.getItem("lydia_jeu_perso"); return PERSOS[v] ? v : 0; } catch (e) { return 0; } };
   const FRUITS_D = ["🍎", "🍌", "🍊", "🍇", "🍓", "🍐", "🍒", "🥕"];
   const borne = (v, a, b) => Math.max(a, Math.min(b, v));
+  const GAUCHE_D = ["ArrowLeft", "q", "Q", "a", "A"], DROITE_D = ["ArrowRight", "d", "D"], SAUT_TOUCHES = ["ArrowUp", "z", "Z", "w", "W"];
 
   // Dossier patient : chemise cartonnée avec onglet, feuilles qui dépassent et bandeau rouge.
   function dossier(ctx, x, y, rot) {
@@ -620,23 +621,39 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     ctx.restore();
   }
 
-  // Le personnage, dessiné membre par membre : jambes et bras qui balancent quand il marche, corps légèrement penché, bras en l'air quand il attrape ou est touché.
+  // Brancard à roulettes : cadre métallique, matelas, patient endormi sous une couverture, potence à perfusion. dir = sens de la marche (1 : vers la droite).
+  function brancard(ctx, x, sol, dir) {
+    ctx.save(); ctx.translate(x, sol); ctx.scale(dir, 1);
+    ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(0, 1, 52, 4, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#7d8a9c"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(-40, -20); ctx.lineTo(-40, -8); ctx.moveTo(40, -20); ctx.lineTo(40, -8); ctx.moveTo(-40, -8); ctx.lineTo(40, -8); ctx.stroke();         // piétement
+    ctx.fillStyle = "#2b3340"; [-34, 34].forEach(r => { ctx.beginPath(); ctx.arc(r, -4, 4, 0, 7); ctx.fill(); });                                                 // roulettes
+    ctx.fillStyle = "#eef2f7"; ctx.strokeStyle = "#7d8a9c"; ctx.lineWidth = 1.5; bord(ctx, -46, -27, 92, 9, 4); ctx.fill(); ctx.stroke();                          // matelas
+    ctx.fillStyle = "#4aa3d8"; bord(ctx, -26, -37, 70, 11, 5); ctx.fill();                                                                                         // couverture (le patient dessous)
+    ctx.fillStyle = "#ffffff"; bord(ctx, -44, -36, 17, 9, 4); ctx.fill(); ctx.strokeStyle = "#cfd8e3"; ctx.lineWidth = 1; ctx.stroke();                            // oreiller
+    ctx.fillStyle = "#f1c7a0"; ctx.beginPath(); ctx.arc(-35, -37, 6, 0, 7); ctx.fill();                                                                           // tête
+    ctx.fillStyle = "#6b4a32"; ctx.beginPath(); ctx.arc(-35, -39, 6, Math.PI, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = "#7d8a9c"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(44, -20); ctx.lineTo(44, -62); ctx.lineTo(36, -62); ctx.stroke();                   // potence
+    ctx.fillStyle = "rgba(200,235,250,.95)"; ctx.strokeStyle = "#6aa6c4"; ctx.lineWidth = 1; bord(ctx, 31, -60, 10, 14, 3); ctx.fill(); ctx.stroke();            // poche de perfusion
+    ctx.restore();
+  }
+
+  // Le personnage, dessiné membre par membre : jambes et bras qui balancent quand il marche, corps légèrement penché, bras en l'air quand il attrape, saute ou est touché.
   function personnage(ctx, x, sol, p, a) {
     const marche = a.allure, ph = a.phase, face = a.face;
-    const rebond = -Math.abs(Math.sin(ph)) * 2.6 * marche;
+    const rebond = -Math.abs(Math.sin(ph)) * 2.6 * marche * (a.air ? 0 : 1);
     const peau = "#f1c7a0", tunique = "#2fa6b8", pantalon = "#1f6f86", contour = "rgba(20,30,45,.55)";
     ctx.save();
     ctx.translate(x, sol); ctx.rotate(a.penche);                                          // pivot aux pieds : le corps penche vers la direction
-    ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(0, 0, 17, 4, 0, 0, 7); ctx.fill();   // ombre au sol
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     const hanche = { x: 0, y: -26 + rebond };
     // Jambes
     [[1, 0], [-1, Math.PI]].forEach(([sens, dephasage], k) => {
       const ang = Math.sin(ph + dephasage) * 0.75 * marche;
       const fx = hanche.x + Math.sin(ang) * 25, fy = hanche.y + Math.cos(ang) * 25 - (ang * sens > 0.3 ? 2 : 0);
-      ctx.strokeStyle = k ? "#17566a" : pantalon; ctx.lineWidth = 7.5; ctx.beginPath(); ctx.moveTo(hanche.x + (k ? -3 : 3), hanche.y); ctx.lineTo(fx, Math.min(fy, -2)); ctx.stroke();
+      ctx.strokeStyle = k ? "#17566a" : pantalon; ctx.lineWidth = 7.5; ctx.beginPath(); ctx.moveTo(hanche.x + (k ? -3 : 3), hanche.y); ctx.lineTo(fx, Math.min(fy, a.air ? 0 : -2)); ctx.stroke();
       ctx.fillStyle = "#f4f7fb"; ctx.strokeStyle = contour; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.ellipse(fx + face * 3, Math.min(fy, -2) + 1.5, 7, 3.6, 0, 0, 7); ctx.fill(); ctx.stroke();   // chaussure
+      ctx.beginPath(); ctx.ellipse(fx + face * 3, Math.min(fy, a.air ? 0 : -2) + 1.5, 7, 3.6, 0, 0, 7); ctx.fill(); ctx.stroke();   // chaussure
     });
     // Tronc (blouse), col en V, badge et stéthoscope
     ctx.fillStyle = tunique; ctx.strokeStyle = contour; ctx.lineWidth = 1.4;
@@ -645,7 +662,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     ctx.fillStyle = "#fff"; ctx.fillRect(face * 4 - 2, hanche.y - 14, 5, 4);                  // badge
     ctx.strokeStyle = "#3b4658"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, hanche.y - 26, 7, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();   // stéthoscope
     ctx.fillStyle = "#3b4658"; ctx.beginPath(); ctx.arc(-4 * face, hanche.y - 17, 2, 0, 7); ctx.fill();
-    // Bras : balancier opposé aux jambes, levés à l'attrape / au choc
+    // Bras : balancier opposé aux jambes, levés à l'attrape / au saut / au choc
     const epaule = { y: hanche.y - 22 };
     [[1, Math.PI], [-1, 0]].forEach(([cote, dephasage]) => {
       const balan = Math.sin(ph + dephasage) * 0.8 * marche;
@@ -673,85 +690,151 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     ctx.restore();
   }
 
+  // Décor : le toit-terrasse d'un hôpital en fin de matinée : horizon d'immeubles, héliport peint au sol, croix rouge sur son mât, locaux techniques, rambarde.
+  const IMMEUBLES_D = [[0, 52, 40], [38, 78, 34], [70, 46, 44], [112, 90, 30], [140, 60, 42], [180, 40, 50], [228, 84, 34], [260, 58, 40], [300, 96, 28], [326, 50, 46], [370, 72, 36], [404, 44, 44], [446, 88, 32], [476, 56, 42], [516, 70, 38], [552, 48, 46], [596, 82, 44]];
   function decorD(ctx, t) {
-    ctx.fillStyle = "rgba(120,185,235,.13)"; ctx.fillRect(0, 0, W, SOLD);                                                                         // ciel
-    ctx.fillStyle = "rgba(255,206,84,.9)"; ctx.beginPath(); ctx.arc(570, 46, 20, 0, 7); ctx.fill();                                               // soleil
+    // ciel, soleil, nuages
+    ctx.fillStyle = "rgba(120,185,235,.14)"; ctx.fillRect(0, 0, W, TOITD);
+    ctx.fillStyle = "rgba(255,206,84,.9)"; ctx.beginPath(); ctx.arc(570, 44, 19, 0, 7); ctx.fill();
     ctx.strokeStyle = "rgba(255,206,84,.55)"; ctx.lineWidth = 3;
-    for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 + t * 0.15; ctx.beginPath(); ctx.moveTo(570 + Math.cos(a) * 26, 46 + Math.sin(a) * 26); ctx.lineTo(570 + Math.cos(a) * 34, 46 + Math.sin(a) * 34); ctx.stroke(); }
-    ctx.fillStyle = "rgba(255,255,255,.55)";
-    [[80, 50, 1], [300, 34, 0.8], [440, 72, 1.1]].forEach(([x0, y0, k], i) => {
+    for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 + t * 0.15; ctx.beginPath(); ctx.moveTo(570 + Math.cos(a) * 25, 44 + Math.sin(a) * 25); ctx.lineTo(570 + Math.cos(a) * 33, 44 + Math.sin(a) * 33); ctx.stroke(); }
+    ctx.fillStyle = "rgba(255,255,255,.5)";
+    [[80, 46, 1], [300, 30, 0.8], [440, 66, 1.1]].forEach(([x0, y0, k], i) => {
       const x = ((x0 + t * (8 + i * 3)) % (W + 160)) - 80;
       [[x, y0, 34, 12], [x + 20 * k, y0 - 8 * k, 22, 11], [x - 20 * k, y0 - 5 * k, 20, 9]].forEach(([ex, ey, rx, ry]) => { ctx.beginPath(); ctx.ellipse(ex, ey, rx * k, ry * k, 0, 0, 7); ctx.fill(); });
     });
-    ctx.fillStyle = "rgba(70,160,100,.22)"; ctx.fillRect(0, SOLD, W, HD - SOLD);                                                                   // pelouse
-    ctx.strokeStyle = "rgba(70,160,100,.55)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, SOLD); ctx.lineTo(W, SOLD); ctx.stroke();
-    ctx.strokeStyle = "rgba(70,160,100,.4)"; ctx.lineWidth = 1.5;
-    for (let x = 14; x < W; x += 46) { ctx.beginPath(); ctx.moveTo(x, SOLD + 12); ctx.lineTo(x - 3, SOLD + 5); ctx.moveTo(x, SOLD + 12); ctx.lineTo(x + 3, SOLD + 5); ctx.stroke(); }
+    // horizon : immeubles lointains avec fenêtres
+    IMMEUBLES_D.forEach(([x, h, w], i) => {
+      ctx.fillStyle = i % 2 ? "rgba(112,128,152,.38)" : "rgba(96,112,140,.42)"; ctx.fillRect(x, TOITD - 14 - h, w, h + 2);
+      ctx.fillStyle = "rgba(255,255,255,.22)";
+      for (let yy = TOITD - 14 - h + 7; yy < TOITD - 22; yy += 11) for (let xx = x + 5; xx < x + w - 6; xx += 9) ctx.fillRect(xx, yy, 4, 5);
+    });
+    // mât avec grande croix rouge (à gauche), antenne relais (à droite)
+    ctx.strokeStyle = "rgba(125,138,156,.9)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(52, TOITD); ctx.lineTo(52, TOITD - 78); ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.strokeStyle = "rgba(125,138,156,.9)"; ctx.lineWidth = 2; bord(ctx, 28, TOITD - 118, 48, 44, 5); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#d33a3a"; ctx.fillRect(48, TOITD - 112, 8, 32); ctx.fillRect(36, TOITD - 100, 32, 8);
+    ctx.strokeStyle = "rgba(125,138,156,.9)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(600, TOITD); ctx.lineTo(600, TOITD - 70); ctx.moveTo(590, TOITD - 52); ctx.lineTo(610, TOITD - 52); ctx.moveTo(593, TOITD - 36); ctx.lineTo(607, TOITD - 36); ctx.stroke();
+    ctx.fillStyle = Math.floor(t * 1.6) % 2 ? "#ff5a4f" : "rgba(255,90,79,.35)"; ctx.beginPath(); ctx.arc(600, TOITD - 72, 3, 0, 7); ctx.fill();
+    // muret du toit avec rambarde
+    ctx.fillStyle = "rgba(172,182,198,.95)"; ctx.fillRect(0, TOITD - 12, W, 12);
+    ctx.fillStyle = "rgba(205,213,226,.95)"; ctx.fillRect(0, TOITD - 14, W, 3);
+    ctx.strokeStyle = "rgba(120,132,150,.8)"; ctx.lineWidth = 1.5;
+    for (let x = 6; x < W; x += 30) { ctx.beginPath(); ctx.moveTo(x, TOITD - 14); ctx.lineTo(x, TOITD - 34); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(0, TOITD - 34); ctx.lineTo(W, TOITD - 34); ctx.moveTo(0, TOITD - 24); ctx.lineTo(W, TOITD - 24); ctx.stroke();
+    // locaux techniques : cage d'escalier avec sa porte, centrale de ventilation, château d'eau
+    ctx.fillStyle = "rgba(196,204,218,.95)"; ctx.strokeStyle = "rgba(120,132,150,.9)"; ctx.lineWidth = 1.5; ctx.fillRect(112, TOITD - 40, 62, 44); ctx.strokeRect(112, TOITD - 40, 62, 44);
+    ctx.fillStyle = "rgba(95,120,160,.85)"; ctx.fillRect(134, TOITD - 24, 20, 28); ctx.strokeRect(134, TOITD - 24, 20, 28);
+    ctx.fillStyle = "#3aa76d"; ctx.fillRect(141, TOITD - 36, 6, 2); ctx.fillRect(143, TOITD - 38, 2, 6);
+    ctx.fillStyle = "rgba(190,198,212,.95)"; ctx.fillRect(470, TOITD - 26, 50, 28); ctx.strokeRect(470, TOITD - 26, 50, 28);
+    ctx.strokeStyle = "rgba(110,122,140,.9)"; ctx.beginPath(); ctx.arc(486, TOITD - 12, 8, 0, 7); ctx.arc(506, TOITD - 12, 8, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(480, TOITD - 12); ctx.lineTo(492, TOITD - 12); ctx.moveTo(486, TOITD - 18); ctx.lineTo(486, TOITD - 6); ctx.stroke();
+    // sol de la terrasse : béton avec joints, héliport peint (en perspective), bande de sécurité jaune au bord
+    ctx.fillStyle = "rgba(130,140,156,.38)"; ctx.fillRect(0, TOITD, W, HD - TOITD);
+    ctx.strokeStyle = "rgba(100,112,130,.28)"; ctx.lineWidth = 1;
+    for (let x = -20; x < W + 40; x += 64) { ctx.beginPath(); ctx.moveTo(x + 20, TOITD); ctx.lineTo(x - 14, HD); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(0, TOITD + 22); ctx.lineTo(W, TOITD + 22); ctx.moveTo(0, TOITD + 46); ctx.lineTo(W, TOITD + 46); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(W / 2, TOITD + 34, 130, 22, 0, 0, 7); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.6)";
+    ctx.fillRect(W / 2 - 40, TOITD + 22, 9, 24); ctx.fillRect(W / 2 + 31, TOITD + 22, 9, 24); ctx.fillRect(W / 2 - 40, TOITD + 31, 80, 6);          // grand H
+    ctx.fillStyle = "rgba(240,190,40,.75)"; for (let x = 0; x < W; x += 24) { ctx.beginPath(); ctx.moveTo(x, HD - 6); ctx.lineTo(x + 12, HD - 6); ctx.lineTo(x + 6, HD); ctx.lineTo(x - 6, HD); ctx.fill(); }
   }
 
   const dejeuner = {
-    nom: "dejeuner", titre: "🥪 Pause déjeuner", desc: "Attrapez fruits et sandwichs, évitez les dossiers qui tombent du ciel.", h: HD, unite: " pts", fin: "Fin de la pause : le service vous rappelle 📟",
-    aide: "← → (ou Q / D, ou A / D) : se déplacer. À la souris ou au doigt : glissez pour être suivi·e. Fruits et sandwichs rapportent des points (le temps qui passe aussi), les dossiers font perdre une vie : trois vies.",
+    nom: "dejeuner", titre: "🥪 Pause déjeuner", desc: "Sur le toit de l’hôpital : attrapez fruits et sandwichs, évitez dossiers et brancards.", h: HD, unite: " pts", fin: "Fin de la pause : le service vous rappelle 📟",
+    aide: "← → (ou Q / D, A / D) : se déplacer · Espace, ↑ ou Z / W : sauter (par-dessus les brancards, ou pour rattraper en hauteur). À la souris ou au doigt : glissez pour être suivi·e, touchez le haut de l’écran pour sauter. Fruits et sandwichs rapportent des points (le temps qui passe aussi), dossiers et brancards font perdre une vie : trois vies. Ne comptez pas sur les bords…",
     persos: PERSOS, lirePerso,
     init() {
-      return { t: 0, x: W / 2, vx: 0, face: 1, phase: 0, allure: 0, gauche: false, droite: false, cible: null, vies: VIES_D, inv: 0, joie: 0, mal: 0, pts: 0, score: 0,
-        items: [], part: [], textes: [], prochain: 0.8, dernierDossierX: -999, perso: lirePerso(), rec: record("dejeuner"), mort: false };
+      return { t: 0, x: W / 2, vx: 0, face: 1, phase: 0, allure: 0, h: 0, vh: 0, gauche: false, droite: false, cible: null, vies: VIES_D, inv: 0, joie: 0, mal: 0, pts: 0, score: 0,
+        items: [], part: [], textes: [], prochain: 0.8, dernierDossierX: -999, brancard: null, prochainBrancard: 11, perso: lirePerso(), rec: record("dejeuner"), mort: false };
     },
     demo(s) {
       s.x = 250; s.vx = 120; s.allure = 1; s.phase = 1.2; s.t = 6; s.pts = 40; s.score = 46;
       s.items = [{ type: "dossier", x: 120, y: 90, v: 0, rot: 0.3, vr: 0 }, { type: "fruit", e: "🍎", x: 330, y: 70, v: 0, rot: 0, vr: 0 }, { type: "sandwich", e: "🥪", x: 440, y: 150, v: 0, rot: 0, vr: 0 }, { type: "fruit", e: "🍌", x: 250, y: 30, v: 0, rot: 0, vr: 0 }];
+      s.brancard = { x: 540, dir: -1, v: 0, alerte: 0, franchi: false };
     },
-    action() { /* la partie démarre au toucher ou à une flèche */ },
+    action(s) { if (s.h <= 0.5) { s.vh = SAUT_D; } },
     bas() { /* inutilisé */ },
-    demarreAvec(k) { return ["ArrowLeft", "ArrowRight", "q", "Q", "a", "A", "d", "D"].includes(k); },
+    demarreAvec(k) { return GAUCHE_D.includes(k) || DROITE_D.includes(k) || SAUT_TOUCHES.includes(k); },
     touche(s, k) {
-      if (["ArrowLeft", "q", "Q", "a", "A"].includes(k)) { s.gauche = true; s.cible = null; }
-      else if (["ArrowRight", "d", "D"].includes(k)) { s.droite = true; s.cible = null; }
+      if (GAUCHE_D.includes(k)) { s.gauche = true; s.cible = null; }
+      else if (DROITE_D.includes(k)) { s.droite = true; s.cible = null; }
+      else if (SAUT_TOUCHES.includes(k)) this.action(s);
     },
     relache(s, k) {
-      if (["ArrowLeft", "q", "Q", "a", "A"].includes(k)) s.gauche = false;
-      else if (["ArrowRight", "d", "D"].includes(k)) s.droite = false;
+      if (GAUCHE_D.includes(k)) s.gauche = false;
+      else if (DROITE_D.includes(k)) s.droite = false;
     },
-    bouge(s, x) { s.cible = borne(x, 22, W - 22); },
-    clic(s, x) { s.cible = borne(x, 22, W - 22); },
+    bouge(s, x) { s.cible = borne(x, 16, W - 16); },
+    clic(s, x, y) { s.cible = borne(x, 16, W - 16); if (y < HD * 0.4) this.action(s); },   // toucher le haut de l'écran : sauter
+    blesser(s, x, y, txt) {
+      if (s.inv > 0) return;
+      s.vies--; s.inv = 1.4; s.mal = 0.6;
+      for (let i = 0; i < 9; i++) s.part.push({ x, y, vx: alea(-120, 120), vy: alea(-160, -30), vie: 0.9, r: alea(3, 6), rot: alea(0, 6) });
+      s.textes.push({ x: s.x, y: SOLD - s.h - 84, txt, coul: "#d33a3a", vie: 1.1 });
+      if (s.vies <= 0) s.mort = true;
+    },
     step(s, dt) {
       s.t += dt;
-      const d = Math.min(1, s.t / 100);
+      const d = Math.min(1.7, s.t / 50);   // la difficulté monte vite et continue de monter bien après la première minute
       // Déplacement : touches (vitesse fixe) ou suivi du pointeur (accéléré, amorti)
       const dir = (s.droite ? 1 : 0) - (s.gauche ? 1 : 0);
       let vise = 0;
-      if (dir) vise = dir * 340;
-      else if (s.cible !== null) { const dx = s.cible - s.x; vise = Math.abs(dx) < 4 ? 0 : Math.sign(dx) * Math.min(480, Math.abs(dx) * 9); }
+      if (dir) vise = dir * 350;
+      else if (s.cible !== null) { const dx = s.cible - s.x; vise = Math.abs(dx) < 4 ? 0 : Math.sign(dx) * Math.min(490, Math.abs(dx) * 9); }
       s.vx += (vise - s.vx) * Math.min(1, dt * 14);
-      s.x = borne(s.x + s.vx * dt, 22, W - 22);
+      s.x = borne(s.x + s.vx * dt, 16, W - 16);
       if (Math.abs(s.vx) > 10) s.face = Math.sign(s.vx);
+      // Saut : montée puis retombée
+      if (s.h > 0 || s.vh > 0) { s.vh -= GD * dt; s.h += s.vh * dt; if (s.h <= 0) { s.h = 0; s.vh = 0; } }
       s.allure += (Math.min(1, Math.abs(s.vx) / 180) - s.allure) * Math.min(1, dt * 12);
-      s.phase += (3 + Math.abs(s.vx) * 0.032) * dt * (s.allure > 0.05 ? 1 : 0.2);
+      if (s.h <= 0) s.phase += (3 + Math.abs(s.vx) * 0.032) * dt * (s.allure > 0.05 ? 1 : 0.2);
       s.inv = Math.max(0, s.inv - dt); s.joie = Math.max(0, s.joie - dt); s.mal = Math.max(0, s.mal - dt);
       // Apparition des objets : de plus en plus nombreux, rapides et souvent des dossiers
       s.prochain -= dt;
       if (s.prochain <= 0) {
-        s.prochain = alea(0.55, 1.0) - 0.45 * d + 0.1;
-        const r = Math.random(), pd = 0.28 + 0.2 * d;
+        s.prochain = alea(0.45, 0.85) * (1 - 0.5 * Math.min(1, d)) + 0.1;
+        const r = Math.random(), pd = 0.28 + 0.2 * Math.min(1, d);
         let type = "fruit";
         if (r < pd) type = "dossier"; else if (r < pd + 0.1) type = "sandwich"; else if (r < pd + 0.1 + 0.025 && s.vies < VIES_D) type = "coeur";
-        let x = alea(28, W - 28);
-        if (type === "dossier" && Math.abs(x - s.dernierDossierX) < 70) x = borne(x + (x > s.dernierDossierX ? 90 : -90), 28, W - 28);
+        let x = alea(8, W - 8);
+        if (type === "dossier" && Math.abs(x - s.dernierDossierX) < 60) x = borne(x + (x > s.dernierDossierX ? 80 : -80), 8, W - 8);
         if (type === "dossier") s.dernierDossierX = x;
-        s.items.push({ type, e: type === "sandwich" ? "🥪" : type === "coeur" ? "💖" : FRUITS_D[Math.floor(Math.random() * FRUITS_D.length)], x, y: -24, v: 120 + 150 * d + alea(0, 55), rot: alea(-0.4, 0.4), vr: alea(-1.2, 1.2) });
+        const v = 130 + 260 * d + alea(0, 60);
+        s.items.push({ type, e: type === "sandwich" ? "🥪" : type === "coeur" ? "💖" : FRUITS_D[Math.floor(Math.random() * FRUITS_D.length)], x, y: -24, v, rot: alea(-0.4, 0.4), vr: alea(-1.2, 1.2) });
+        // Dossiers « guidés » : on ne peut pas rester planté au même endroit, ni coincé contre un bord
+        if (Math.random() < 0.08 + 0.22 * Math.min(1, d)) s.items.push({ type: "dossier", e: "", x: borne(s.x + alea(-28, 28), 8, W - 8), y: -24, v: v + 20, rot: alea(-0.4, 0.4), vr: alea(-1.2, 1.2) });
       }
-      const boite = { x: s.x - 12, y: SOLD - 66, w: 24, h: 66 };
+      // Brancard : alerte au bord d'où il vient, puis traversée de tout l'écran à ras du sol
+      s.prochainBrancard -= dt;
+      if (!s.brancard && s.prochainBrancard <= 0) {
+        const sens = Math.random() < 0.5 ? 1 : -1;
+        s.brancard = { x: sens > 0 ? -60 : W + 60, dir: sens, v: 0, alerte: 1.0, franchi: false };
+        s.prochainBrancard = alea(6, 10) - 3 * Math.min(1, d);
+      }
+      const b = s.brancard;
+      if (b) {
+        if (b.alerte > 0) { b.alerte -= dt; if (b.alerte <= 0) b.v = 290 + 110 * Math.min(1, d); }
+        else {
+          b.x += b.dir * b.v * dt;
+          const corps = { x: b.x - 46, y: SOLD - 38, w: 92, h: 38 };
+          const moi = { x: s.x - 10, y: SOLD - s.h - 62, w: 20, h: 62 };
+          if (chevauche(moi, corps, 3)) this.blesser(s, s.x, SOLD - s.h - 30, "Brancard ! 🛏️");
+          if (!b.franchi && (b.dir > 0 ? b.x > s.x : b.x < s.x)) {
+            b.franchi = true;
+            if (s.h > 14 && s.inv <= 0) { s.pts += 10; s.textes.push({ x: s.x, y: SOLD - s.h - 84, txt: "Bien sauté ! +10", coul: "#2f9e5b", vie: 1 }); }
+          }
+          if (b.x < -80 || b.x > W + 80) s.brancard = null;
+        }
+      }
+      // Objets qui tombent
+      const boite = { x: s.x - 12, y: SOLD - s.h - 66, w: 24, h: 66 };
       s.items.forEach(it => { it.y += it.v * dt; it.rot += it.vr * dt; });
       s.items = s.items.filter(it => {
         const tx = it.type === "dossier" ? { x: it.x - 15, y: it.y - 15, w: 30, h: 26 } : { x: it.x - 12, y: it.y - 12, w: 24, h: 24 };
         if (chevauche(boite, tx, 2)) {
           if (it.type === "dossier") {
-            if (s.inv <= 0) {
-              s.vies--; s.inv = 1.4; s.mal = 0.6;
-              for (let i = 0; i < 9; i++) s.part.push({ x: it.x, y: it.y, vx: alea(-120, 120), vy: alea(-160, -30), vie: 0.9, r: alea(3, 6), rot: alea(0, 6) });
-              s.textes.push({ x: s.x, y: SOLD - 80, txt: "Aïe ! 📁", coul: "#d33a3a", vie: 1.1 });
-              if (s.vies <= 0) s.mort = true;
-            } else return true;   // invulnérable un instant : le dossier passe à travers
+            if (s.inv > 0) return true;   // invulnérable un instant : le dossier passe à travers
+            this.blesser(s, it.x, it.y, "Aïe ! 📁");
           } else {
             const gain = it.type === "sandwich" ? 15 : it.type === "coeur" ? 0 : 5;
             if (it.type === "coeur") s.vies = Math.min(VIES_D, s.vies + 1);
@@ -774,13 +857,25 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     },
     draw(ctx, s, c) {
       decorD(ctx, s.t);
+      const b = s.brancard;
+      if (b && b.alerte > 0) {   // alerte : panneau clignotant sur le bord d'où le brancard va arriver
+        const gauche = b.dir > 0, x = gauche ? 8 : W - 8;
+        if (Math.floor(b.alerte * 8) % 2 === 0) {
+          ctx.fillStyle = "#f2b01e"; ctx.strokeStyle = "#8a5d00"; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(x + (gauche ? 0 : -44), SOLD - 70); ctx.lineTo(x + (gauche ? 44 : 0), SOLD - 70); ctx.lineTo(x + (gauche ? 44 : 0), SOLD - 36); ctx.lineTo(x + (gauche ? 0 : -44), SOLD - 36); ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = "#3a2a00"; ctx.font = "bold 22px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.fillText(gauche ? "🛏️▶" : "◀🛏️", x + (gauche ? 22 : -22), SOLD - 46); ctx.textAlign = "left";
+        }
+      }
       s.items.forEach(it => {
         if (it.type === "dossier") dossier(ctx, it.x, it.y, it.rot);
         else emoji(ctx, it.e, it.x - (it.type === "sandwich" ? 15 : 12), it.y + (it.type === "sandwich" ? 12 : 10), it.type === "sandwich" ? 30 : 24);
       });
+      if (b && b.alerte <= 0) brancard(ctx, b.x, SOLD, b.dir);
       s.part.forEach(p => { ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, p.vie * 1.5)); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#8a93a3"; ctx.lineWidth = 0.8; ctx.fillRect(-p.r, -p.r * 0.7, p.r * 2, p.r * 1.4); ctx.strokeRect(-p.r, -p.r * 0.7, p.r * 2, p.r * 1.4); ctx.restore(); });
       if (!(s.inv > 0 && Math.floor(s.inv * 12) % 2 === 0)) {
-        personnage(ctx, s.x, SOLD, PERSOS[s.perso] || PERSOS[0], { phase: s.phase, allure: s.allure, face: s.face, bras: s.joie > 0 ? 1 : s.mal > 0 ? 0.85 : 0, penche: borne(s.vx / 2400, -0.2, 0.2), mine: s.mal > 0 });
+        const air = s.h > 2;
+        ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(s.x, SOLD, 17 - Math.min(8, s.h / 12), 4, 0, 0, 7); ctx.fill();   // ombre restée au sol quand on saute
+        personnage(ctx, s.x, SOLD - s.h, PERSOS[s.perso] || PERSOS[0], { phase: air ? 1.4 : s.phase, allure: air ? 1 : s.allure, air, face: s.face, bras: s.joie > 0 ? 1 : s.mal > 0 ? 0.85 : air ? 0.55 : 0, penche: borne(s.vx / 2400, -0.2, 0.2), mine: s.mal > 0 });
       }
       ctx.font = "bold 14px system-ui,sans-serif"; ctx.textAlign = "center";
       s.textes.forEach(t => { ctx.globalAlpha = Math.min(1, t.vie * 2); ctx.fillStyle = t.coul; ctx.fillText(t.txt, t.x, t.y); ctx.globalAlpha = 1; });
