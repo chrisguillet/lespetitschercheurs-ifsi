@@ -64,6 +64,23 @@ function auteursDerives(liste) {
   const uniques = cle => { const vues = []; liste.forEach(a => String(a[cle] || "").split(",").map(s => s.trim()).filter(Boolean).forEach(m => { if (!vues.some(x => x.toLowerCase() === m.toLowerCase())) vues.push(m); })); return vues.join(", "); };
   return { auteur: liste.map(a => a.nom).filter(Boolean).join("; "), nation: uniques("nation"), qualite: uniques("qualite") };
 }
+// Fiches saisies avant la séparation par auteur : un seul champ métier et un seul champ nationalité pour tous les auteurs.
+// Repris tels quels, ils se retrouvent copiés sur chaque auteur : le formulaire le signale et propose de les répartir.
+let auteursCommuns = null;   // { qualite, nation, vide } ou null
+function auteursEnCommun(liste) {
+  const l = liste.filter(a => a.nom);
+  if (l.length < 2 || !l[0].qualite && !l[0].nation) return null;
+  const meme = l.every(a => a.qualite === l[0].qualite && a.nation === l[0].nation);
+  return meme ? { qualite: l[0].qualite, nation: l[0].nation, vide: false } : null;
+}
+function auteursAvisHtml(dis) {
+  const c = auteursCommuns; if (!c || dis) return "";
+  const infos = `<b>Métier(s) :</b> ${esc(c.qualite || "—")} · <b>Nationalité(s) :</b> ${esc(c.nation || "—")}`;
+  return c.vide
+    ? `<div class="note" style="margin:6px 0">À répartir entre les auteurs (informations de l’ancienne saisie) : ${infos}</div>`
+    : `<div class="note" style="margin:6px 0">⚠ Ces métiers et nationalités viennent de l’ancienne saisie, où ils étaient communs à tous les auteurs : ils sont recopiés sur chacun. ${infos}
+      <div style="margin-top:6px"><button type="button" class="btn sm" id="afvider">Vider pour les répartir moi-même</button> <button type="button" class="btn sm sec" id="afok">C’est juste, ils sont communs à tous</button></div></div>`;
+}
 function auteursFormHtml(dis) {
   const lignes = auteursForm.map((a, k) => `<div class="grid" style="grid-template-columns:2fr 1.2fr 1.5fr auto;gap:8px;align-items:end;margin-bottom:6px">
       <div><label for="af_nom_${k}">Auteur ${k + 1}</label><input id="af_nom_${k}" data-ak="${k}" data-af="nom" maxlength="300" value="${esc(a.nom)}" placeholder="Nom, Prénom" ${dis}></div>
@@ -71,7 +88,7 @@ function auteursFormHtml(dis) {
       <div><label for="af_qualite_${k}">Métier(s)</label><input id="af_qualite_${k}" data-ak="${k}" data-af="qualite" maxlength="300" value="${esc(a.qualite)}" placeholder="IDE, cadre de santé" ${dis}></div>
       ${dis ? "" : `<button type="button" class="btn sm sec del" data-afdel="${k}" aria-label="Retirer cet auteur">✕</button>`}</div>`).join("");
   return `<div class="meta" style="margin-bottom:4px">Auteur(s) <span class="req" style="color:#d33">*</span> · nationalités et métiers propres à chaque auteur (séparés par des virgules)</div>`
-    + (lignes || '<div class="meta">Aucun auteur pour l’instant.</div>')
+    + auteursAvisHtml(dis) + (lignes || '<div class="meta">Aucun auteur pour l’instant.</div>')
     + (dis ? "" : `<button type="button" class="btn sm sec" id="afadd">＋ Ajouter un auteur</button>`);
 }
 function rafraichirAuteurs() {
@@ -89,6 +106,13 @@ document.addEventListener("input", e => {
 document.addEventListener("click", e => {
   const b = e.target.closest && e.target.closest("button"); if (!b) return;
   if (b.id === "afadd") { auteursForm.push({ nom: "", nation: "", qualite: "" }); rafraichirAuteurs(); }
+  else if (b.id === "afvider" && auteursCommuns) {
+    auteursForm.forEach(a => { a.qualite = ""; a.nation = ""; });
+    auteursCommuns.vide = true; rafraichirAuteurs();
+    const p = document.querySelector('[data-af="qualite"]'); if (p) p.focus();
+    if (typeof majApercu === "function") majApercu();
+  }
+  else if (b.id === "afok") { auteursCommuns = null; rafraichirAuteurs(); }
   else if (b.dataset.afdel !== undefined) { auteursForm.splice(Number(b.dataset.afdel), 1); rafraichirAuteurs(); }
 });
 
@@ -98,6 +122,7 @@ function renderForm() {
   const art = artCible || modeArticle ? itemsAll.find(i => i.article_id === (artCible || modeArticle)) : null;
   const base = editing ? d : art || {};
   auteursForm = auteursDe(base);
+  auteursCommuns = auteursEnCommun(auteursForm);   // reprise de l'ancienne saisie (infos communes à tous) : signalée dans le formulaire
   const gc = groupeCourant();
   // La partie commune de l'article est figée dans une fiche (ajout ou modification) ; seuls les champs encore vides restent saisissables.
   // Pour la corriger : bouton « Corriger l’article » (correction directe ou proposition soumise à la promo).
