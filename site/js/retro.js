@@ -143,7 +143,7 @@ function ouvrirEntree(id, cleDefaut) {
       <div><label for="e_statut">Statut</label><select id="e_statut">${Object.keys(STATUT_JALON).map(k => `<option value="${k}" ${j.statut === k ? "selected" : ""}>${esc(STATUT_JALON[k])}</option>`).join("")}</select></div>
       <div><label for="e_alerte">Alerte dans l’outil</label><select id="e_alerte">${ale.map(a => `<option value="${esc(a[0])}" ${a[0] === al ? "selected" : ""}>${esc(a[1])}</option>`).join("")}</select></div>
       <div style="grid-column:1/-1"><label>Personnes concernées <span class="meta">(une pastille de leur couleur sur l’entrée)</span></label><div class="grow">${(groupeCourant() || {}).membres ? (groupeCourant().membres).map(m => `<label class="chk"><input type="checkbox" data-epers="${esc(m.pid)}" ${(j.personnes || []).some(p => p.pid === m.pid) ? "checked" : ""}> ${esc(m.prenom)}</label>`).join("") : ""}</div></div>
-      <div style="grid-column:1/-1"><label for="e_visio">Visio <span class="meta">(lien Google Meet ou autre, en https)</span></label><div class="grow"><input id="e_visio" type="url" maxlength="290" value="${esc(j.visio || "")}" placeholder="https://meet.google.com/…" style="flex:1;min-width:200px"><button type="button" class="btn sm sec" id="e_meet" title="Ouvre Google Meet dans un nouvel onglet : créez la réunion, puis collez ici son lien">🎥 Créer un Meet</button></div></div>
+      <div style="grid-column:1/-1"><label for="e_visio">Visio <span class="meta">(lien Google Meet ou autre, en https)</span></label><div class="grow"><input id="e_visio" type="url" maxlength="290" value="${esc(j.visio || "")}" placeholder="https://meet.google.com/…" style="flex:1;min-width:200px"><button type="button" class="btn sm sec" id="e_meet" title="Ouvre Google Meet dans un nouvel onglet : créez la réunion, puis collez ici son lien">🎥 Créer un Meet</button> <button type="button" class="btn sm" id="e_jitsi" title="Crée une salle Jitsi (sans compte pour les invités) et remplit le champ">⚡ Visio Jitsi (1 clic)</button></div></div>
       <div style="grid-column:1/-1"><label for="e_note">Note</label><input id="e_note" maxlength="500" value="${esc(j.note || "")}"></div></div>
     <div class="meta">L’alerte apparaît dans la cloche 🔔 des membres du groupe, tant que l’entrée n’est pas « Fait ». Chacun peut la reporter.</div>
     <div class="savebar"><div id="eerr" class="err" role="alert"></div><button class="btn" id="esave" type="button">Enregistrer</button> <button class="btn sec" id="ecancel" type="button">Annuler</button></div>`;
@@ -257,3 +257,11 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") document.que
 
 // « Créer un Meet » : ouvre Google Meet dans un nouvel onglet (la personne connectée à son compte Google y crée la réunion, puis colle le lien dans le champ).
 document.addEventListener("click", e => { if (e.target.closest && e.target.closest("#e_meet")) window.open("https://meet.google.com/new", "_blank", "noopener"); });
+
+// « Visio Jitsi (1 clic) » : crée une salle Jitsi au nom aléatoire et remplit le champ. Pas de compte, pas de clé : le lien suffit pour rejoindre.
+document.addEventListener("click", e => {
+  if (!(e.target.closest && e.target.closest("#e_jitsi"))) return;
+  const b = new Uint8Array(9); crypto.getRandomValues(b);
+  const nom = "lpc-" + Array.from(b, x => x.toString(36).padStart(2, "0")).join("");
+  $("e_visio").value = "https://meet.jit.si/" + nom;
+});
