@@ -28,10 +28,44 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   const teinteSuivante = sac(TEINTES);
   // Teinte de peau insérée après le premier caractère (elle s'applique aussi aux emojis composés : 👩‍🦰 → 👩🏾‍🦰).
   const teinte = (e, t) => { const c = [...e]; return c[0] + (t || teinteSuivante()) + c.slice(1).join(""); };
-  const PATIENTS = ["👵", "👩", "👧", "👩‍🦰", "👩‍🦱", "👱‍♀️", "👴", "👨", "👦", "👨‍🦳", "👨‍🦱", "🧔", "🧑", "🧓", "🧒", "🧑‍🦱"];
-  const PATIENTS_ADULTES = PATIENTS.filter(e => !["👧", "👦", "🧒"].includes(e));
-  const patientSuivant = sac(PATIENTS), adulteSuivant = sac(PATIENTS_ADULTES);
-  const patientAuHasard = adultes => teinte(adultes ? adulteSuivant() : patientSuivant());
+  // Patients des urgences : poules, coqs et poussins de plumages variés, tirés en sac (tous les profils passent avant de recommencer).
+  const PLUMAGES = [["#fff8ec", "blanche"], ["#f3d7a8", "crème"], ["#c66b2e", "rousse"], ["#3b3433", "noire"], ["#a3a8b0", "grise"]];
+  const COLLIERS = ["#e08a2a", "#b5541e", "#d9b24a", "#6b7a3a", "#e08a2a"];
+  const VOLAILLES = [
+    ...PLUMAGES.map(([p]) => ({ espece: "poule", plume: p })),
+    ...PLUMAGES.map(([p], i) => ({ espece: "coq", plume: p, collier: COLLIERS[i] })),
+    ...["#ffd84d", "#ffe680", "#f2c232"].map(p => ({ espece: "poussin", plume: p }))
+  ];
+  const patientAuHasard = sac(VOLAILLES);
+  // Portrait d'un patient à plumes, aux mêmes coordonnées qu'un emoji : x à gauche, y sur la ligne de base, t la taille.
+  function volaille(ctx, x, y, t, v) {
+    const cx = x + t * 0.5, cy = y - t * 0.36, r = t * (v.espece === "poussin" ? 0.4 : 0.36), k = t / 34;
+    const sombre = v.plume === "#3b3433", contour = sombre ? "#1d1817" : "rgba(110,70,30,.65)", rouge = "#e0362c", bec = "#f2a42b";
+    const rond = (x0, y0, rr) => { ctx.beginPath(); ctx.arc(x0, y0, rr, 0, Math.PI * 2); };
+    ctx.save(); ctx.globalAlpha = 1; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    if (v.espece === "coq") { ctx.fillStyle = v.collier; ctx.beginPath(); ctx.ellipse(cx - r * 0.1, cy + r * 0.75, r * 1.05, r * 0.6, 0, 0, Math.PI * 2); ctx.fill(); }   // collerette dorée du coq
+    // Crête : petite pour la poule, grande et dentelée pour le coq, houppette pour le poussin.
+    ctx.fillStyle = rouge;
+    if (v.espece === "poule") [[-0.35, -0.95, 0.24], [0, -1.08, 0.28], [0.32, -0.95, 0.22]].forEach(([dx, dy, rr]) => { rond(cx + dx * r, cy + dy * r, rr * r); ctx.fill(); });
+    if (v.espece === "coq") [[-0.6, -0.85, 0.26], [-0.3, -1.12, 0.3], [0.05, -1.25, 0.33], [0.4, -1.1, 0.29], [0.68, -0.82, 0.24]].forEach(([dx, dy, rr]) => { rond(cx + dx * r, cy + dy * r, rr * r); ctx.fill(); });
+    // Tête
+    ctx.fillStyle = v.plume; ctx.strokeStyle = contour; ctx.lineWidth = Math.max(1, 1.3 * k);
+    rond(cx, cy, r); ctx.fill(); ctx.stroke();
+    if (v.espece === "poussin") { ctx.strokeStyle = "#d9a520"; ctx.lineWidth = Math.max(1, 1.4 * k); ctx.beginPath(); [-0.25, 0, 0.25].forEach(d => { ctx.moveTo(cx + d * r * 0.6, cy - r * 0.95); ctx.lineTo(cx + d * r * 1.3, cy - r * 1.3); }); ctx.stroke(); }
+    // Bec, barbillons
+    ctx.fillStyle = bec; ctx.strokeStyle = "#c27a12"; ctx.lineWidth = Math.max(0.8, 1 * k);
+    const lb = v.espece === "poussin" ? 0.32 : 0.45;
+    ctx.beginPath(); ctx.moveTo(cx + r * 0.62, cy - r * 0.12); ctx.lineTo(cx + r * (0.62 + lb), cy + r * 0.08); ctx.lineTo(cx + r * 0.62, cy + r * 0.26); ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (v.espece !== "poussin") { ctx.fillStyle = rouge; ctx.beginPath(); ctx.ellipse(cx + r * 0.62, cy + r * 0.48, r * (v.espece === "coq" ? 0.18 : 0.13), r * (v.espece === "coq" ? 0.32 : 0.22), 0, 0, Math.PI * 2); ctx.fill(); }
+    // Œil (cerclé de blanc sur un plumage sombre), cils pour la poule, joue rosée
+    const ex = cx + r * 0.22, ey = cy - r * 0.18;
+    if (sombre) { ctx.fillStyle = "#f4efe8"; rond(ex, ey, r * 0.24); ctx.fill(); }
+    ctx.fillStyle = "#2a1709"; rond(ex, ey, r * (v.espece === "poussin" ? 0.15 : 0.13)); ctx.fill();
+    ctx.fillStyle = "#ffffff"; rond(ex + r * 0.05, ey - r * 0.05, r * 0.045); ctx.fill();
+    if (v.espece === "poule") { ctx.strokeStyle = sombre ? "#f4efe8" : "#2a1709"; ctx.lineWidth = Math.max(0.8, 0.9 * k); ctx.beginPath(); [-0.12, 0.05, 0.2].forEach(d => { ctx.moveTo(ex + d * r, ey - r * 0.15); ctx.lineTo(ex + d * r * 1.5, ey - r * 0.32); }); ctx.stroke(); }
+    if (!sombre) { ctx.fillStyle = "rgba(240,120,110,.35)"; ctx.beginPath(); ctx.ellipse(cx - r * 0.12, cy + r * 0.3, r * 0.2, r * 0.12, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
   // Visiteurs (obstacle de la course) : deux personnes, chacune avec sa couleur de peau.
   const visiteursAuHasard = () => auHasard([
     () => teinte("👫"), () => teinte("👭"), () => teinte("👬"),
@@ -494,7 +528,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
         if (!p) { txt("libre", r.x + r.w / 2, by + bh * 0.52, 12, c.doux, false, "center"); continue; }
         if (enBloc) { txt("au bloc 🏥", r.x + r.w / 2, by + bh * 0.52, 12, c.doux, false, "center"); continue; }
         ctx.fillStyle = "#fff"; ctx.strokeStyle = "#cfdbe8"; bord(ctx, bx + 14, by + bh * 0.2, 36, bh * 0.3, 8); ctx.fill(); ctx.stroke();   // oreiller
-        const tete = Math.min(34, Math.round(bh * 0.62)); emoji(ctx, p.visage, bx + 32 - tete * 0.55, by + bh * 0.5, tete);
+        const tete = Math.min(34, Math.round(bh * 0.62)); volaille(ctx, bx + 32 - tete * 0.55, by + bh * 0.5, tete, p.visage);
         ctx.globalAlpha = 0.9; ctx.fillStyle = p.vie > 66 ? "#8fd1ac" : p.vie > 33 ? "#f2cf7d" : "#ef9a9a"; bord(ctx, bx + 54, by + bh * 0.26, bw - 66, bh * 0.4, 7); ctx.fill(); ctx.globalAlpha = 1;   // couverture selon l'état
         emoji(ctx, humeur(p.vie), r.x + r.w - 24, r.y + 18, 17);
         if (p.vu) { const e = p.etapes[p.i]; emoji(ctx, SOINS_ICONE(e), r.x + r.w - 46, r.y + 18, 17); }
@@ -504,12 +538,12 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
       // bloc opératoire
       ctx.fillStyle = s.bloc ? "rgba(211,58,58,.12)" : c.fond; ctx.strokeStyle = s.bloc ? "#d33a3a" : c.trait; ctx.lineWidth = 2; bord(ctx, BLOC.x, BLOC.y, BLOC.w, BLOC.h, 8); ctx.fill(); ctx.stroke();
       txt("🏥 Bloc opératoire", BLOC.x + 8, BLOC.y + 18, 12, c.texte, true);
-      if (s.bloc) { emoji(ctx, s.bloc.visage, BLOC.x + 50, BLOC.y + 90, 44); barre(BLOC.x + 10, BLOC.y + 124, BLOC.w - 20, 1 - s.bloc.reste / DUREE_BLOC, "#2f7de1"); txt("opération en cours…", BLOC.x + BLOC.w / 2, BLOC.y + 116, 10.5, c.doux, false, "center"); }
+      if (s.bloc) { volaille(ctx, BLOC.x + 50, BLOC.y + 90, 44, s.bloc.visage); barre(BLOC.x + 10, BLOC.y + 124, BLOC.w - 20, 1 - s.bloc.reste / DUREE_BLOC, "#2f7de1"); txt("opération en cours…", BLOC.x + BLOC.w / 2, BLOC.y + 116, 10.5, c.doux, false, "center"); }
       else txt("libre", BLOC.x + BLOC.w / 2, BLOC.y + 86, 13, c.doux, false, "center");
       // salle d'attente
       ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; ctx.lineWidth = 2; bord(ctx, ATTENTE.x, ATTENTE.y, ATTENTE.w, ATTENTE.h, 8); ctx.fill(); ctx.stroke();
       txt("Salle d'attente", ATTENTE.x + 8, ATTENTE.y + 18, 12, c.texte, true);
-      s.attente.slice(0, 3).forEach((p, i) => { const y = ATTENTE.y + 30 + i * 41; emoji(ctx, p.visage, ATTENTE.x + 8, y + 26, 26); barre(ATTENTE.x + 44, y + 14, ATTENTE.w - 54, p.patience / PATIENCE, couleurVie(p.patience / PATIENCE * 100)); });
+      s.attente.slice(0, 3).forEach((p, i) => { const y = ATTENTE.y + 30 + i * 41; volaille(ctx, ATTENTE.x + 8, y + 26, 26, p.visage); barre(ATTENTE.x + 44, y + 14, ATTENTE.w - 54, p.patience / PATIENCE, couleurVie(p.patience / PATIENCE * 100)); });
       if (!s.attente.length) txt("personne", ATTENTE.x + ATTENTE.w / 2, ATTENTE.y + 80, 12, c.doux, false, "center");
       // fiche du patient sélectionné
       ctx.fillStyle = c.fond; ctx.strokeStyle = c.trait; ctx.lineWidth = 2; bord(ctx, 8, 354, 474, 40, 8); ctx.fill(); ctx.stroke();
@@ -543,155 +577,6 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   };
   const SOINS_ICONE = e => e.k === "bloc" ? "🏥" : SOINS[e.k].e;
 
-
-  /* ---------- 4. Le couloir ---------- */
-  // Vue en perspective d'un couloir : z va de 0 (fond) à 1 (devant nous), lx de -1 (mur gauche) à +1 (mur droit).
-  const HC = 300, HORIZON = 104, CX = W / 2, DEMI = 250, VIES_C = 5;
-  const PORTES = [0.3, 0.5, 0.7, 0.88];
-  const echelle = z => 0.07 + 0.93 * Math.pow(Math.max(0, Math.min(1, z)), 1.6);
-  const pied = z => HORIZON + (HC - HORIZON) * echelle(z);
-  const plafond = z => HORIZON - HORIZON * echelle(z);
-  const abscisse = (lx, z) => CX + lx * DEMI * echelle(z);
-  const taille = z => 118 * echelle(z);
-  const boite = e => { const t = taille(e.z), x = abscisse(e.lx, e.z); return { x: x - t * 0.36, y: pied(e.z) - t * 0.95, w: t * 0.72, h: t * 0.95 }; };
-  const BTN_DOSSIER = { x: 8, y: HC - 36, w: 150, h: 30 }, BTN_SECU = { x: 166, y: HC - 36, w: 150, h: 30 };
-  // Patients, médecins et agités du couloir : couleurs de peau et sexes variés (voir PATIENTS).
-  const CD_TIR = 0.28, CD_SECU = 3, CD_DOSSIER = 0.5;
-
-  const texteC = (s, txt, x, y, coul) => s.textes.push({ x, y, txt, vie: 1.1, coul: coul || "#d33a3a" });
-  function perdreC(s, pts, coeur, txt, x, y) {
-    s.score = Math.max(0, s.score - pts);
-    if (coeur) { s.vies--; s.secousse = 0.25; if (s.vies <= 0) s.mort = true; }
-    texteC(s, txt + (pts ? " −" + pts : ""), x, y);
-  }
-  function gagnerC(s, pts, txt, x, y) { s.score += pts; texteC(s, txt + " +" + pts, x, y, "#2f9e5b"); }
-
-  function nouveauPatientC(s, porte, cote) {
-    const lc = cote === undefined ? (Math.random() < 0.5 ? -1 : 1) : cote;
-    const z = porte === undefined ? PORTES[Math.floor(Math.random() * PORTES.length)] : porte;
-    const e = { k: "p", etat: "sort", z, lx: lc * 1.0, cote: lc, cible: alea(-0.45, 0.45), visage: patientAuHasard(true), t: 0 };
-    s.ents.push(e); return e;
-  }
-  const nouveauMedecin = s => { const e = { k: "d", etat: "vient", visage: teinte(auHasard(["🧑‍⚕️", "👩‍⚕️", "👨‍⚕️"])), z: 0.08, lx: alea(-0.25, 0.25), t: 0 }; s.ents.push(e); return e; };
-  const nouvelAgite = s => { const e = { k: "a", etat: "fonce", visage: teinte(auHasard(["🏃", "🏃‍♀️", "🏃‍♂️"])), z: 0.08, lx: alea(-0.35, 0.35), t: 0 }; s.ents.push(e); return e; };
-
-  function tirer(s, x, y) {
-    if (s.cdTir > 0) return;
-    s.cdTir = CD_TIR; s.tirs.push({ x, y, vie: 0.14 });
-    const cible = s.ents.filter(e => e.etat !== "retour" && e.etat !== "plaque" && chevauche({ x: x - 4, y: y - 4, w: 8, h: 8 }, boite(e))).sort((a, b) => b.z - a.z)[0];
-    if (!cible) return;
-    const b = boite(cible), cx = b.x + b.w / 2;
-    if (cible.k === "p") { cible.etat = "retour"; cible.t = 0; gagnerC(s, 10, "Retour en chambre 💤", cx, b.y); }
-    else if (cible.k === "d") { if (!cible.fache) { cible.fache = true; perdreC(s, 10, false, "Pas le médecin !", cx, b.y); } }
-    else texteC(s, "Trop agité : la sécu !", cx, b.y, "#e0a020");
-  }
-  function dossier(s) {
-    if (s.cdDossier > 0) return; s.cdDossier = CD_DOSSIER;
-    const d = s.ents.filter(e => e.k === "d" && !e.servi && e.z >= 0.4).sort((a, b) => b.z - a.z)[0];
-    if (!d) { texteC(s, "Pas de médecin à portée", CX, 130, "#e0a020"); return; }
-    d.servi = true; const b = boite(d); gagnerC(s, 15, "Dossier remis ✔", b.x + b.w / 2, b.y);
-  }
-  function secu(s) {
-    if (s.cdSecu > 0) return;
-    const cibles = s.ents.filter(e => e.k === "a" && e.etat === "fonce" && e.z >= 0.12);
-    if (!cibles.length) { s.cdSecu = 1; texteC(s, "Personne à plaquer", CX, 130, "#e0a020"); return; }
-    s.cdSecu = CD_SECU;
-    cibles.forEach(a => { a.etat = "plaque"; a.t = 0; const b = boite(a); gagnerC(s, 20, "Plaqué par la sécu 🛡️", b.x + b.w / 2, b.y); });
-  }
-
-  const couloir = {
-    nom: "couloir", titre: "🚪 Couloir", desc: "Renvoyez les patients en chambre, donnez les dossiers, appelez la sécu.", h: HC, unite: " pts", fin: "Service débordé 🚑", curseur: "crosshair",
-    aide: "Cliquez sur un patient qui sort de sa chambre pour lui envoyer un calmant et le renvoyer se coucher. Un médecin passe : bouton « Dossier » (touche D) quand il est assez près, sans lui tirer dessus. Un patient agité fonce sur vous : bouton « Sécu » (touche S) pour le faire plaquer. Chaque fugue ou agité qui vous touche coûte un cœur et des points.",
-    init() { return { t: 0, score: 0, vies: VIES_C, mort: false, ents: [], tirs: [], textes: [], cdTir: 0, cdSecu: 0, cdDossier: 0, secousse: 0, mx: CX, my: 150, prochainP: 0.6, prochainD: 20, prochainA: 32, rec: record("couloir") }; },
-    // Scène de démonstration pour la miniature du choix de jeu.
-    demo(s) { s.score = 30; nouveauPatientC(s, 0.6, 1).lx = 0.35; nouveauPatientC(s, 0.85, -1).lx = -0.45; nouveauMedecin(s).z = 0.5; s.ents.forEach(e => { e.t = 0; }); },
-    action() { /* se joue à la souris / au doigt */ },
-    bas() { /* inutilisé */ },
-    bouge(s, x, y) { s.mx = x; s.my = y; },
-    clic(s, x, y) {
-      s.mx = x; s.my = y;
-      if (chevauche({ x, y, w: 1, h: 1 }, BTN_DOSSIER)) return dossier(s);
-      if (chevauche({ x, y, w: 1, h: 1 }, BTN_SECU)) return secu(s);
-      tirer(s, x, y);
-    },
-    touche(s, key) { if (key === "d" || key === "D" || key === "2") dossier(s); else if (key === "s" || key === "S" || key === "3") secu(s); },
-    step(s, dt) {
-      s.t += dt; s.cdTir = Math.max(0, s.cdTir - dt); s.cdSecu = Math.max(0, s.cdSecu - dt); s.cdDossier = Math.max(0, s.cdDossier - dt); s.secousse = Math.max(0, s.secousse - dt);
-      // Apparitions : seulement des patients au début, puis des médecins, puis des patients agités ; le rythme monte avec le temps.
-      s.prochainP -= dt;
-      if (s.prochainP <= 0) { s.prochainP = Math.max(0.8, 2.3 - s.t * 0.02) * alea(0.8, 1.2); if (s.ents.filter(e => e.k === "p" && e.etat !== "retour").length < 8) nouveauPatientC(s); }
-      s.prochainD -= dt; if (s.prochainD <= 0) { s.prochainD = alea(12, 20); nouveauMedecin(s); }
-      s.prochainA -= dt; if (s.prochainA <= 0) { s.prochainA = Math.max(6, 14 - s.t * 0.06) * alea(0.8, 1.2); nouvelAgite(s); }
-      const vp = Math.min(0.2, 0.1 + s.t * 0.0006);
-      s.ents.forEach(e => {
-        e.t += dt;
-        if (e.k === "p") {
-          if (e.etat === "sort") { e.lx += Math.sign(e.cible - e.lx) * Math.min(Math.abs(e.cible - e.lx), 1.3 * dt); e.z -= vp * dt; if (e.z <= 0.06) { e.etat = "parti"; const b = boite(e); perdreC(s, 10, true, "Patient en fuite !", b.x + b.w / 2, b.y + 20); } }
-          else if (e.etat === "retour") { e.lx += e.cote * 2 * dt; if (e.t > 0.7) e.etat = "parti"; }
-        } else if (e.k === "d") {
-          e.z += 0.1 * dt;
-          if (e.z >= 1) { e.etat = "parti"; if (!e.servi) perdreC(s, 5, false, "Médecin sans dossier", CX, 150); }
-        } else {
-          if (e.etat === "fonce") { e.z += 0.4 * dt; if (e.z >= 1) { e.etat = "parti"; perdreC(s, 15, true, "Touché !", CX, 160); } }
-          else if (e.etat === "plaque" && e.t > 0.9) e.etat = "parti";
-        }
-      });
-      s.ents = s.ents.filter(e => e.etat !== "parti");
-      s.tirs.forEach(t => { t.vie -= dt; }); s.tirs = s.tirs.filter(t => t.vie > 0);
-      s.textes.forEach(t => { t.y -= 24 * dt; t.vie -= dt; }); s.textes = s.textes.filter(t => t.vie > 0);
-    },
-    draw(ctx, s, c) {
-      const poly = (pts, coul) => { ctx.fillStyle = coul; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); };
-      const txt = (t, x, y, tl, coul, gras, al) => { ctx.fillStyle = coul; ctx.font = (gras ? "bold " : "") + tl + "px system-ui,sans-serif"; ctx.textAlign = al || "left"; ctx.fillText(t, x, y); ctx.textAlign = "left"; };
-      ctx.save();
-      if (s.secousse > 0) ctx.translate(Math.sin(s.t * 80) * 4, 0);
-      // décor : plafond, sol, murs, porte du fond
-      const z0 = 0, s0 = echelle(z0);
-      poly([[0, 0], [W, 0], [CX + DEMI * s0, plafond(z0)], [CX - DEMI * s0, plafond(z0)]], "#dfe7ef");
-      poly([[0, HC], [W, HC], [CX + DEMI * s0, pied(z0)], [CX - DEMI * s0, pied(z0)]], "#c4ccd6");
-      poly([[0, 0], [CX - DEMI * s0, plafond(z0)], [CX - DEMI * s0, pied(z0)], [0, HC]], "#eef3f8");
-      poly([[W, 0], [CX + DEMI * s0, plafond(z0)], [CX + DEMI * s0, pied(z0)], [W, HC]], "#e4ecf4");
-      poly([[CX - DEMI * s0, plafond(z0)], [CX + DEMI * s0, plafond(z0)], [CX + DEMI * s0, pied(z0)], [CX - DEMI * s0, pied(z0)]], "#b9c6d4");
-      for (let k = 1; k < 14; k++) { const z = Math.pow(k / 14, 1.2); ctx.strokeStyle = "rgba(120,135,155,.35)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(CX - DEMI * echelle(z), pied(z)); ctx.lineTo(CX + DEMI * echelle(z), pied(z)); ctx.stroke(); }
-      PORTES.forEach(z => [-1, 1].forEach(cote => {
-        const z1 = z - 0.05, z2 = z + 0.05, h1 = (pied(z1) - plafond(z1)) * 0.62, h2 = (pied(z2) - plafond(z2)) * 0.62;
-        poly([[abscisse(cote, z1), pied(z1)], [abscisse(cote, z2), pied(z2)], [abscisse(cote, z2), pied(z2) - h2], [abscisse(cote, z1), pied(z1) - h1]], "#7d8fa6");
-      }));
-      txt("SORTIE", CX, HORIZON + 14, 9, "#e04b4b", true, "center");
-      // personnages, du plus loin au plus proche
-      s.ents.slice().sort((a, b) => a.z - b.z).forEach(e => {
-        const t = taille(e.z), x = abscisse(e.lx, e.z), y = pied(e.z);
-        ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(x, y, t * 0.3, t * 0.07, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.save();
-        if (e.etat === "retour") ctx.globalAlpha = Math.max(0.2, 1 - e.t / 0.8);
-        if (e.etat === "plaque") { ctx.translate(x, y); ctx.rotate(Math.min(1.4, e.t * 3)); ctx.translate(-x, -y); }
-        const ic = e.k === "p" ? (e.etat === "retour" ? "😴" : e.visage) : e.k === "d" ? e.visage : (e.etat === "plaque" ? "🛡️" : e.visage);
-        emoji(ctx, ic, x - t * 0.52, y - t * 0.1, t * 0.95);
-        ctx.restore();
-        if (e.k === "d" && !e.servi && e.z >= 0.4) { ctx.fillStyle = "#2f7de1"; ctx.font = "bold " + Math.max(10, t * 0.2) + "px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.fillText("📋 ?", x, y - t * 1.02); ctx.textAlign = "left"; }
-        if (e.k === "d" && e.servi) txt("✔", x, y - t * 1.02, Math.max(12, t * 0.25), "#2f9e5b", true, "center");
-        if (e.k === "a" && e.etat === "fonce") txt("❗", x, y - t * 1.02, Math.max(12, t * 0.3), "#d33a3a", true, "center");
-      });
-      s.tirs.forEach(t => { ctx.strokeStyle = "rgba(47,125,225," + Math.min(1, t.vie * 7) + ")"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(CX, HC - 40); ctx.lineTo(t.x, t.y); ctx.stroke(); emoji(ctx, "💉", t.x - 9, t.y + 7, 18); });
-      ctx.restore();
-      // viseur
-      ctx.strokeStyle = s.cdTir > 0 ? "rgba(224,160,32,.9)" : "rgba(211,58,58,.95)"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(s.mx, s.my, 11, 0, Math.PI * 2); ctx.moveTo(s.mx - 17, s.my); ctx.lineTo(s.mx - 5, s.my); ctx.moveTo(s.mx + 5, s.my); ctx.lineTo(s.mx + 17, s.my); ctx.moveTo(s.mx, s.my - 17); ctx.lineTo(s.mx, s.my - 5); ctx.moveTo(s.mx, s.my + 5); ctx.lineTo(s.mx, s.my + 17); ctx.stroke();
-      // bandeau, cœurs, boutons
-      txt("Score : " + s.score, 10, 22, 16, "#1f2937", true);
-      txt("Record : " + Math.max(s.rec, s.score), 150, 22, 12, "#52627a");
-      for (let i = 0; i < VIES_C; i++) emoji(ctx, i < s.vies ? "❤️" : "🖤", 480 + i * 30, 26, 20);
-      const bouton = (r, lib, cd, cdMax, actif) => {
-        ctx.fillStyle = cd > 0 ? "rgba(127,150,180,.55)" : actif; bord(ctx, r.x, r.y, r.w, r.h, 8); ctx.fill();
-        if (cd > 0) { ctx.fillStyle = "rgba(255,255,255,.35)"; bord(ctx, r.x, r.y, Math.max(6, r.w * (1 - cd / cdMax)), r.h, 8); ctx.fill(); }
-        txt(lib, r.x + r.w / 2, r.y + 20, 13, "#fff", true, "center");
-      };
-      bouton(BTN_DOSSIER, "📋 Dossier (D)", s.cdDossier, CD_DOSSIER, "#2f7de1");
-      bouton(BTN_SECU, "🛡️ Sécu (S)", s.cdSecu, CD_SECU, "#d33a3a");
-      ctx.textAlign = "center"; ctx.font = "bold 15px system-ui,sans-serif";
-      s.textes.forEach(t => { ctx.globalAlpha = Math.min(1, t.vie * 2); ctx.fillStyle = t.coul; ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.strokeText(t.txt, t.x, t.y); ctx.fillText(t.txt, t.x, t.y); }); ctx.globalAlpha = 1; ctx.textAlign = "left";
-    }
-  };
 
   /* ---------- 5. Pause déjeuner ---------- */
   // Sur le toit de l'hôpital, l'infirmier·ère en pause se déplace, saute et rattrape fruits et sandwichs, en évitant les dossiers qui tombent et les brancards lancés à pleine vitesse.
@@ -926,7 +811,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     }
   };
 
-  const JEUX = { course, seringue, urgences, couloir, dejeuner };
+  const JEUX = { course, seringue, urgences, dejeuner };
 
 
   /* ---------- Fenêtre et boucle ---------- */

@@ -1331,7 +1331,7 @@ $exp = appel('a1@ci.test', 'mes_donnees')['export'] ?? [];
 verifie('export : les scores de jeux y figurent', count($exp['scores_jeux'] ?? []) === 3);
 $js = creerUtilisateur($pdo, 'jeux@ci.test');
 Attributions::ajouter($pdo, $js, 'etudiant', null, $pv);
-$sc('jeux@ci.test', ['jeu' => 'couloir', 'score' => 3]);
+$sc('jeux@ci.test', ['jeu' => 'dejeuner', 'score' => 3]);
 appel($admin, 'admin_erase', ['email' => 'jeux@ci.test', 'contributions' => 'anonymiser']);
 verifie('effacement : les scores de jeux disparaissent avec le compte', (int) valeur($pdo, 'SELECT COUNT(*) FROM scores_jeux WHERE utilisateur_id = ?', [$js]) === 0);
 
