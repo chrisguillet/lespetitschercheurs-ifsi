@@ -16,7 +16,7 @@ final class Suivi
     private const TYPES = [
         'reunion' => ['table' => 'reunions', 'champs' => ['date', 'titre', 'participants', 'vu', 'attendu', 'suite']],
         'jalon' => ['table' => 'jalons', 'champs' => ['titre', 'type', 'echeance', 'heure', 'statut', 'note', 'visio', 'debut', 'alerte_jours']],
-        'terme' => ['table' => 'glossaire', 'champs' => ['mot', 'definition', 'reference']],
+        'terme' => ['table' => 'glossaire', 'champs' => ['mot', 'definition', 'reference', 'type', 'auteur', 'annee', 'titre_source', 'editeur', 'page', 'lien']],
     ];
     private const DATES = ['date', 'echeance', 'debut'];
     private const TITRE_MAX = 200;
@@ -61,6 +61,9 @@ final class Suivi
         if ($type === 'jalon') {
             $d['statut'] = $d['statut'] === '' ? 'a_faire' : $d['statut'];
             $d['type'] = $d['type'] === '' ? 'tache' : $d['type'];
+        }
+        if ($type === 'terme') {
+            $d['type'] = $d['type'] === '' ? 'definition' : $d['type'];
         }
         self::valider($type, $d);
         if ($type === 'terme') {
@@ -222,8 +225,17 @@ final class Suivi
             if ($d['definition'] === '') {
                 throw new Erreur('invalid', 'Indiquez la définition');
             }
-            if (mb_strlen($d['reference']) > 500) {
-                throw new Erreur('invalid', 'Référence trop longue (500 caractères maximum)');
+            if (!in_array($d['type'], ['definition', 'citation'], true)) {
+                throw new Erreur('invalid', 'Type d’entrée inconnu');
+            }
+            if ($d['type'] === 'citation' && $d['titre_source'] === '') {
+                throw new Erreur('invalid', 'Pour une citation, indiquez le titre de l’œuvre citée');
+            }
+            if ($d['lien'] !== '' && preg_match('#^https?://[^\s<>"\']{3,290}$#i', $d['lien']) !== 1) {
+                throw new Erreur('invalid', 'Le lien doit commencer par http:// ou https://');
+            }
+            if (mb_strlen($d['reference']) > Lectures::LONGUEUR_MAX) {
+                throw new Erreur('invalid', 'Référence trop longue (' . Lectures::LONGUEUR_MAX . ' caractères maximum)');
             }
         } else {
             if ($d['titre'] === '') {

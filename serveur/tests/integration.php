@@ -1197,7 +1197,14 @@ verifie('terme : modification de la définition', (appel('a2@ci.test', 'terme_sa
 verifie('terme : mot, définition et références bornés', $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => array_merge($terme, ['mot' => ''])])) === 'invalid'
     && $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => array_merge($terme, ['mot' => str_repeat('a', 121)])])) === 'invalid'
     && $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => array_merge($terme, ['mot' => 'Autre', 'definition' => ''])])) === 'invalid'
-    && $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => array_merge($terme, ['mot' => 'Autre', 'reference' => str_repeat('r', 501)])])) === 'invalid');
+    && $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => array_merge($terme, ['mot' => 'Autre', 'reference' => str_repeat('r', 2501)])])) === 'invalid');
+$cit = appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => ['mot' => 'Citation test', 'definition' => 'Un texte cité', 'type' => 'citation', 'auteur' => 'Paillard, Christine', 'annee' => '2025', 'titre_source' => 'Dictionnaire', 'editeur' => 'Setes', 'page' => '12', 'reference' => 'Paillard, C. (2025). Dictionnaire. Setes.']]);
+$citT = current(array_filter($cit['termes'] ?? [], static fn ($x) => ($x['mot'] ?? '') === 'Citation test')) ?: [];
+verifie('citation : enregistrée avec son type et ses champs APA', ($citT['type'] ?? '') === 'citation' && ($citT['titre_source'] ?? '') === 'Dictionnaire' && ($citT['page'] ?? '') === '12');
+verifie('citation : sans titre de l’œuvre, refusée', $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => ['mot' => 'Sans titre', 'definition' => 'x', 'type' => 'citation', 'auteur' => 'Dupont']])) === 'invalid');
+verifie('citation : type inconnu refusé', $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => ['mot' => 'Type', 'definition' => 'x', 'type' => 'poème']])) === 'invalid');
+verifie('citation : lien hors http(s) refusé', $err(appel('a1@ci.test', 'terme_save', ['groupe_id' => $alpha, 'data' => ['mot' => 'Lien', 'definition' => 'x', 'type' => 'citation', 'titre_source' => 'T', 'lien' => 'ftp://x']])) === 'invalid');
+appel('a1@ci.test', 'terme_delete', ['id' => (string) ($citT['id'] ?? '')]);
 verifie('terme supprimé', (appel('a1@ci.test', 'terme_delete', ['id' => $tid])['termes'] ?? null) === []);
 
 // ---------- Lot D : notes privées ----------
