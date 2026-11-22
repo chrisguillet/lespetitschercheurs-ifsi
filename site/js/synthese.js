@@ -50,9 +50,9 @@ function nuageMotsCles(listes, imprimable) {
   const COULEURS = ["#2f5fd0", "#7c3aed", "#0d9488", "#d97706", "#be185d", "#0369a1"];
   const mots = c.slice().sort((a, b) => a[0].localeCompare(b[0], "fr")).map(([mot, n], i) => {
     const t = max === min ? 0.5 : Math.sqrt((n - min) / (max - min));
-    return `<button type="button" class="nuagemot" data-nuage="${esc(mot)}" style="font-size:${(13 + t * 23).toFixed(1)}px;color:${COULEURS[(i * 7 + mot.length) % COULEURS.length]};opacity:${(0.6 + t * 0.4).toFixed(2)}" title="${n} fiche${n > 1 ? "s" : ""} : cliquer pour filtrer le tableau">${esc(mot)}</button>`;
+    return `<button type="button" class="nuagemot" data-nuage="${esc(mot)}" style="font-size:${(12 + t * 17).toFixed(1)}px;color:${COULEURS[(i * 7 + mot.length) % COULEURS.length]};opacity:${(0.6 + t * 0.4).toFixed(2)}" title="${n} fiche${n > 1 ? "s" : ""} : cliquer pour filtrer le tableau">${esc(mot)}</button>`;
   }).join(" ");
-  return `<div class="card nuage">${entete}<div class="meta">Plus c’est gros, plus c’est fréquent.</div><div class="nuagebox">${mots}</div></div>`;
+  return `<div class="card nuage">${entete}<div class="nuagebox">${mots}</div></div>`;
 }
 
 function carteNationalites(arts, imprimable) {
@@ -74,26 +74,7 @@ function carteNationalites(arts, imprimable) {
   const non = inconnues.size ? `<div class="meta" style="margin-top:6px">Non placées sur la carte : ${[...inconnues.entries()].map(([k, n]) => `${esc(k)} (${n})`).join(", ")}.</div>` : "";
   return `<div class="card carte">${entete}<div class="cartewrap">
     <svg viewBox="0 5 360 143" role="img" aria-label="Carte du monde : nationalité des auteurs des articles" class="carteSvg"><path d="${MONDE_TERRES}" class="terres"/>${bulles}</svg>
-    <div class="cartelegende"><div class="meta">Un point par pays, d’autant plus gros qu’il y a d’articles.</div>${legende}${non}</div></div></div>`;
-}
-
-// ----- Avancement : fiches terminées / en cours / à lire, par groupe (vue promo) ou par étudiant (vue groupe) -----
-const STAT_COULEURS = { "Terminée": "#16a34a", "En cours": "#d97706", "À lire": "#64748b" };
-function avancementHtml() {
-  const parGroupe = ctx.vue === "promo";
-  const unites = new Map();
-  items.forEach(i => {
-    const k = parGroupe ? (i.groupe || "Sans groupe") : i.etudiant;
-    const u = unites.get(k) || { "Terminée": 0, "En cours": 0, "À lire": 0, total: 0, couleur: i.couleur };
-    u[i.statut] = (u[i.statut] || 0) + 1; u.total++; unites.set(k, u);
-  });
-  if (!unites.size) return { html: "", lignes: [] };
-  const l = [...unites.entries()].sort((a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0], "fr"));
-  const max = l[0][1].total;
-  const html = `<div class="card avanc"><h3>Avancement ${parGroupe ? "par groupe" : "par étudiant"} <span class="meta">(fiches terminées, en cours, à lire)</span></h3>
-    ${l.map(([nom, u]) => `<div class="bar avrow"><span class="bl" title="${esc(nom)}">${esc(nom)}</span><div class="bt"><div class="avstack" style="width:${Math.round(u.total / max * 100)}%">${Object.keys(STAT_COULEURS).filter(s => u[s]).map(s => `<span style="flex:${u[s]};background:${STAT_COULEURS[s]}" title="${esc(s)} : ${u[s]}"></span>`).join("")}</div></div><span class="bn">${u.total}</span></div>`).join("")}
-    <div class="avleg">${Object.keys(STAT_COULEURS).map(s => `<span><i style="background:${STAT_COULEURS[s]}"></i>${esc(s)}</span>`).join("")}</div></div>`;
-  return { html, lignes: l.flatMap(([nom, u]) => Object.keys(STAT_COULEURS).map(s => ["Avancement", nom + " · " + s, u[s] || 0])) };
+    <div class="cartelegende">${legende}${non}</div></div></div>`;
 }
 
 // ----- Chronologie : fiches saisies par semaine (26 dernières semaines au plus) -----
@@ -143,11 +124,10 @@ function donneesSynthese(imprimable) {
   const kpi = (n, t) => `<div class="kpi"><b>${n}</b>${t}</div>`;
   const motsDe = i => (kwLang !== "en" ? motsListe(i.mots) : []).concat(kwLang !== "fr" ? motsListe(i.kw) : []);
   const listesMots = items.map(motsDe);
-  const av = avancementHtml(), ch = chronologieHtml(), pa = pairesMotsCles(listesMots);
+  const ch = chronologieHtml(), pa = pairesMotsCles(listesMots);
   const html = `<div class="kpis">${kpi(items.length, "lectures")}${kpi(items.filter(i => i.statut === "Terminée").length, "terminées")}${kpi(items.filter(i => i.statut === "En cours").length, "en cours")}${items.some(i => i.statut === "À lire") ? kpi(items.filter(i => i.statut === "À lire").length, "à lire") : ""}${kpi(comments.length, "commentaires")}</div>
-   ${nuageMotsCles(listesMots, imprimable)}
-   ${carteNationalites(arts, imprimable)}
-   ${av.html}${ch.html}${pa.html}
+   <div class="synth2">${nuageMotsCles(listesMots, imprimable)}${carteNationalites(arts, imprimable)}</div>
+   <div class="synth2">${ch.html}${pa.html}</div>
    <div class="synth">
    ${barres("Types d’articles", compter(arts.map(i => i.type), 8), "var(--pri)")}
    ${barres("Qualité des auteurs (plusieurs possibles par lecture)", compter(arts.flatMap(i => metiersListe(i.qualite)), 8), "var(--pri)")}
@@ -159,7 +139,7 @@ function donneesSynthese(imprimable) {
     .concat(compter(arts.map(i => i.nation), 60).map(([m, n]) => ["Nationalité des auteurs", m, n]))
     .concat(compter(arts.map(i => i.type), 20).map(([m, n]) => ["Types d’articles", m, n]))
     .concat(compter(arts.flatMap(i => metiersListe(i.qualite)), 20).map(([m, n]) => ["Qualité des auteurs", m, n]))
-    .concat(parAnnee.map(([m, n]) => ["Années de parution", m, n]), compter(arts.map(i => i.source), 20).map(([m, n]) => ["Revues et sources", m, n]), av.lignes, ch.lignes, pa.lignes);
+    .concat(parAnnee.map(([m, n]) => ["Années de parution", m, n]), compter(arts.map(i => i.source), 20).map(([m, n]) => ["Revues et sources", m, n]), ch.lignes, pa.lignes);
   return { html, lignes };
 }
 
