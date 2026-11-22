@@ -174,6 +174,17 @@ final class Suivi
             }
             $out[] = $o;
         }
+        if ($type === 'reunion') {
+            // Pièces jointes, tâches et liens de chaque compte rendu.
+            $pieces = SuiviPieces::pourReunions($pdo, $gids);
+            $details = SuiviTaches::pourReunions($pdo, $gids);
+            foreach ($out as &$o) {
+                $o['fichiers'] = $pieces[$o['id']] ?? [];
+                $o['taches'] = $details['taches'][$o['id']] ?? [];
+                $o['liens'] = $details['liens'][$o['id']] ?? [];
+            }
+            unset($o);
+        }
         return $out;
     }
 

@@ -212,6 +212,56 @@ final class Fichiers
         return $sortie !== '' && strlen($sortie) < strlen($octets) ? $sortie : $octets;
     }
 
+    /**
+     * Image réduite sous $max octets : d'abord les côtés (COTE_MAX), puis la qualité JPEG, puis une réduction progressive.
+     * Un PNG devient un JPEG sur fond blanc (il n'a plus de transparence). Renvoie null si l'image reste trop lourde ou si GD manque.
+     *
+     * @return array{contenu:string}|null
+     */
+    public static function compresser(string $octets, string $type, int $max): ?array
+    {
+        if (strlen($octets) <= $max) {
+            return ['contenu' => $octets];
+        }
+        if (!function_exists('imagecreatefromstring') || !function_exists('imagescale') || !function_exists('imagejpeg')) {
+            return null;
+        }
+        $src = @imagecreatefromstring($octets);
+        if ($src === false) {
+            return null;
+        }
+        $l = imagesx($src);
+        $h = imagesy($src);
+        $facteur = min(1.0, self::COTE_MAX / max($l, $h));
+        $im = imagescale($src, max(1, (int) round($l * $facteur)), max(1, (int) round($h * $facteur)));
+        if ($im === false) {
+            return null;
+        }
+        // Fond blanc : évite le noir sous les zones transparentes en passant en JPEG.
+        $fond = imagecreatetruecolor(imagesx($im), imagesy($im));
+        imagefill($fond, 0, 0, imagecolorallocate($fond, 255, 255, 255));
+        imagecopy($fond, $im, 0, 0, 0, 0, imagesx($im), imagesy($im));
+        $im = $fond;
+        while (true) {
+            foreach ([85, 75, 65, 55, 45, 35] as $qualite) {
+                ob_start();
+                imagejpeg($im, null, $qualite);
+                $sortie = (string) ob_get_clean();
+                if ($sortie !== '' && strlen($sortie) <= $max) {
+                    return ['contenu' => $sortie];
+                }
+            }
+            if (min(imagesx($im), imagesy($im)) <= 300) {
+                return null;
+            }
+            $petit = imagescale($im, (int) round(imagesx($im) * 0.8), (int) round(imagesy($im) * 0.8));
+            if ($petit === false) {
+                return null;
+            }
+            $im = $petit;
+        }
+    }
+
     // ---------- Interne ----------
 
     /** @return array<string,mixed> */
@@ -255,7 +305,7 @@ final class Fichiers
     }
 
     /** Chemin réel d'un fichier, seulement s'il est bien dans le dossier des fichiers. */
-    private static function cheminReel(Contexte $c, string $chemin): ?string
+    public static function cheminReel(Contexte $c, string $chemin): ?string
     {
         $racine = realpath($c->config->dossierPrive() . '/fichiers');
         if ($racine === false) {

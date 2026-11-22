@@ -141,7 +141,7 @@ function renderSuivi() {
   $("reunions").innerHTML = reu.length ? reu.map(x => `<article class="cardc reunion"><div class="tools" style="justify-content:space-between"><h3 style="margin:0">${esc(fmtD(x.date))}${x.titre ? " · " + esc(x.titre) : ""}</h3>
     <div><button type="button" class="btn sm sec" data-rcr="${esc(x.id)}" title="Aperçu avant impression ou enregistrement en PDF">📄 Aperçu / PDF</button>${x.modifiable ? ` <button type="button" class="btn sm sec" data-red="${esc(x.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-rdel="${esc(x.id)}">Supprimer</button>` : ""}</div></div>
     <div class="meta">${x.participants ? "Participants : " + esc(x.participants) + " · " : ""}saisi par ${esc(x.par)}${x.modifie_par ? ` · modifié par ${esc(x.modifie_par)}` : ""}</div>
-    ${sect("Ce qui a été vu", x.vu)}${sect("Ce qui est attendu", x.attendu)}${sect("Étapes pour la suite", x.suite)}</article>`).join("")
+    ${sect("Ce qui a été vu", x.vu)}${sect("Ce qui est attendu", x.attendu)}${reunionDetailHtml(x)}</article>`).join("")
     : `<div class="empty">Aucun compte rendu pour l’instant.</div>`;
 }
 
@@ -180,9 +180,10 @@ function ouvrirSuiviForm(type, id) {
       <div><label for="r_participants">Participants</label><input id="r_participants" maxlength="500" value="${esc(x.participants)}"></div></div>
       <div class="grid"><div><label for="r_vu">Ce qui a été vu</label><textarea id="r_vu" maxlength="2500">${esc(x.vu)}</textarea></div>
       <div><label for="r_attendu">Ce qui est attendu</label><textarea id="r_attendu" maxlength="2500">${esc(x.attendu)}</textarea></div>
-      <div><label for="r_suite">Étapes pour la suite</label><textarea id="r_suite" maxlength="2500">${esc(x.suite)}</textarea></div></div>
+      </div>
+      <div class="meta">Les étapes pour la suite se gèrent sous le compte rendu, une par une, avec les personnes concernées et les liens.</div>
       <div class="savebar"><div id="rerr" class="err" role="alert"></div><button class="btn" id="rsave" type="button">Enregistrer le compte rendu</button> <button class="btn sec" id="rcancel" type="button">Annuler</button></div></div>`;
-    $("rsave").onclick = () => enregistrerSuivi("reunion", g.id, id, Object.fromEntries(["date", "titre", "participants", "vu", "attendu", "suite"].map(k => [k, $("r_" + k).value])), "rerr");
+    $("rsave").onclick = () => enregistrerSuivi("reunion", g.id, id, Object.assign(Object.fromEntries(["date", "titre", "participants", "vu", "attendu"].map(k => [k, $("r_" + k).value])), { suite: x.suite || "" }), "rerr");
     $("rcancel").onclick = () => fermerSuiviForm();
     $("r_vu").focus();
   }

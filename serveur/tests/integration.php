@@ -1085,7 +1085,60 @@ verifie('pied : par défaut, tiré de l\'établissement (pas de « GAVY »)', st
 verifie('pied : les auteurs saisis reviennent au client', ($enPied['memoire']['auteurs'] ?? '') === 'Dupont – Ana' && ($enPied['memoire']['etablissement'] ?? '') === 'IFSI Vannes');
 $enSurcharge = appel('a1@ci.test', 'memoire_entete', ['groupe_id' => $alpha, 'data' => ['titre' => 'Autonomie', 'ue' => 'UE 6.1', 'referent' => 'KH', 'auteurs' => 'Dupont – Ana', 'pied' => 'Mon pied de page', 'date_rendu' => '2027-01-15']]);
 $piedSurcharge = base64_decode((string) (appel('a1@ci.test', 'memoire_export', ['groupe_id' => $alpha, 'format' => 'odt'])['contenu'] ?? ''));
-verifie('pied : le texte saisi par le groupe remplace le pied par défaut', ($enSurcharge['memoire']['pied'] ?? '') === 'Mon pied de page' && str_contains($piedSurcharge, 'Mon pied de page') && !str_contains($piedSurcharge, 'IFSI Vannes'));
+// ---------- Comptes rendus : tâches, liens, pièces jointes ----------
+$crLe = static fn (array $res, string $id): array => current(array_filter($res['reunions'] ?? [], static fn ($r) => ($r['id'] ?? '') === $id)) ?: [];
+$crRes = appel('a1@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'data' => ['date' => '2027-02-01', 'titre' => 'CR de test', 'vu' => 'Point d’étape']]);
+$crId = '';
+foreach ($crRes['reunions'] ?? [] as $r) {
+    if (($r['titre'] ?? '') === 'CR de test') {
+        $crId = (string) $r['id'];
+    }
+}
+verifie('CR : compte rendu créé', $crId !== '');
+$pidA2 = (string) valeur($pdo, 'SELECT pid FROM utilisateurs WHERE email = ?', ['a2@ci.test']);
+$tRes = appel('a1@ci.test', 'tache_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'data' => ['texte' => 'Chercher deux articles', 'personnes' => [$pidA2]]]);
+$cr1 = $crLe($tRes, $crId);
+verifie('tâches : tâche créée, confiée à une personne du groupe', count($cr1['taches'] ?? []) === 1 && ($cr1['taches'][0]['personnes'][0]['pid'] ?? '') === $pidA2);
+$tid = (string) ($cr1['taches'][0]['id'] ?? '');
+$tFait = appel('a1@ci.test', 'tache_save', ['reunion_id' => $crId, 'id' => $tid, 'data' => ['texte' => 'Chercher deux articles', 'fait' => true, 'personnes' => []]]);
+verifie('tâches : case « fait » et personnes remplacées', ($crLe($tFait, $crId)['taches'][0]['fait'] ?? false) === true && ($crLe($tFait, $crId)['taches'][0]['personnes'] ?? ['x']) === []);
+verifie('tâches : personne hors groupe refusée', $err(appel('a1@ci.test', 'tache_save', ['reunion_id' => $crId, 'id' => $tid, 'data' => ['texte' => 'x', 'personnes' => [(string) valeur($pdo, 'SELECT pid FROM utilisateurs WHERE email = ?', ['a4@ci.test'])]]])) === 'invalid');
+verifie('tâches : personne hors du groupe ne crée rien', $err(appel('a4@ci.test', 'tache_save', ['reunion_id' => $crId, 'data' => ['texte' => 'Intrus']])) === 'forbidden');
+$bl = appel('a1@ci.test', 'memoire_bloc', ['groupe_id' => $alpha, 'data' => ['type' => 'paragraphe', 'texte' => 'Bloc à lier']]);
+$blocId = '';
+foreach ($bl['memoire']['blocs'] ?? [] as $b) {
+    if (str_starts_with($b['texte'], 'Bloc à lier')) {
+        $blocId = (string) $b['id'];
+    }
+}
+$lRes = appel('a1@ci.test', 'lien_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'tache_id' => $tid, 'data' => ['cible_type' => 'bloc_memoire', 'cible_id' => $blocId, 'description' => 'à reprendre dans l’intro']]);
+$cr2 = $crLe($lRes, $crId);
+verifie('liens : lien posé sur une tâche, avec sa raison et le libellé de la cible', ($cr2['taches'][0]['liens'][0]['description'] ?? '') === 'à reprendre dans l’intro' && str_starts_with($cr2['taches'][0]['liens'][0]['libelle'] ?? '', 'Mémoire : '));
+$lRes2 = appel('a1@ci.test', 'lien_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'data' => ['cible_type' => 'bloc_memoire', 'cible_id' => $blocId, 'description' => 'hors tâche']]);
+verifie('liens : lien posé directement sur le compte rendu', count($crLe($lRes2, $crId)['liens'] ?? []) === 1);
+verifie('liens : cible hors du groupe refusée', $err(appel('a1@ci.test', 'lien_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'data' => ['cible_type' => 'bloc_memoire', 'cible_id' => '00000000-0000-0000-0000-000000000000', 'description' => 'x']])) === 'invalid');
+verifie('liens : sans raison, refusé', $err(appel('a1@ci.test', 'lien_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'data' => ['cible_type' => 'bloc_memoire', 'cible_id' => $blocId, 'description' => ' ']])) === 'invalid');
+$pdfB64 = base64_encode('%PDF-1.4 test');
+$fRes = null;
+for ($i = 1; $i <= 5; $i++) {
+    $fRes = appel('a1@ci.test', 'reunion_fichier_ajouter', ['reunion_id' => $crId, 'nom' => "doc$i.pdf", 'contenu' => $pdfB64]);
+}
+verifie('pièces jointes : cinq acceptées', count($crLe($fRes ?? [], $crId)['fichiers'] ?? []) === 5);
+verifie('pièces jointes : une sixième refusée', $err(appel('a1@ci.test', 'reunion_fichier_ajouter', ['reunion_id' => $crId, 'nom' => 'doc6.pdf', 'contenu' => $pdfB64])) === 'invalid');
+verifie('pièces jointes : format texte refusé', $err(appel('a1@ci.test', 'reunion_fichier_ajouter', ['reunion_id' => $crId, 'nom' => 'a.txt', 'contenu' => base64_encode('bonjour')])) === 'invalid');
+if (function_exists('imagecreatetruecolor') && function_exists('imagejpeg')) {
+    $gros = imagecreatetruecolor(2400, 2400);
+    for ($y = 0; $y < 2400; $y++) {
+        imagefilledrectangle($gros, 0, $y, 2399, $y, imagecolorallocate($gros, $y % 256, intdiv($y, 10) % 256, 128));
+    }
+    ob_start();
+    imagejpeg($gros, null, 100);
+    $brut = (string) ob_get_clean();
+    $petit = \Lpc\Fichiers::compresser($brut, 'image/jpeg', 300 * 1024);
+    verifie('photos : image lourde ramenée à 300 Ko au plus', $petit !== null && strlen($petit['contenu']) <= 300 * 1024 && strlen($brut) > 300 * 1024);
+}
+verifie('CR : une personne hors groupe ne peut pas le lire ni le modifier', $err(appel('a4@ci.test', 'reunion_fichier_lire', ['id' => '00000000-0000-0000-0000-000000000000'])) !== null);
+verifie('pied : le texte saisi par le groupe remplace le pied par défaut',($enSurcharge['memoire']['pied'] ?? '') === 'Mon pied de page' && str_contains($piedSurcharge, 'Mon pied de page') && !str_contains($piedSurcharge, 'IFSI Vannes'));
 verifie('jalon : les personnes sont vues des autres membres', ($jalonPar(appel('a3@ci.test', 'list'), $jid)['personnes'][0]['pid'] ?? '') === $pidA2);
 $pdo->prepare('DELETE FROM membres WHERE groupe_id = ? AND utilisateur_id = ?')->execute([$alpha, $B['a2']]);
 verifie('jalon : une personne qui quitte le groupe n\'apparaît plus', ($jalonPar(appel('a1@ci.test', 'list'), $jid)['personnes'] ?? ['x']) === []);

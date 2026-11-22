@@ -17,10 +17,23 @@ function crPage(r) {
       <h2>Compte rendu de réunion</h2>
       <div class="crsous">${esc(fmtD(r.date))}${r.titre ? " · " + esc(r.titre) : ""}</div></div>
     ${r.participants ? `<section class="crsect"><h3>Participants</h3><div class="crtxt">${esc(r.participants)}</div></section>` : ""}
-    ${sect("Ce qui a été vu", r.vu)}${sect("Ce qui est attendu", r.attendu)}${sect("Étapes pour la suite", r.suite)}
-    ${[r.vu, r.attendu, r.suite].some(v => String(v || "").trim()) ? "" : '<div class="meta">Ce compte rendu est vide.</div>'}
+    ${sect("Ce qui a été vu", r.vu)}${sect("Ce qui est attendu", r.attendu)}${crBlocSuite(r)}
+    ${[r.vu, r.attendu, r.suite].some(v => String(v || "").trim()) || (r.taches || []).length ? "" : '<div class="meta">Ce compte rendu est vide.</div>'}
     <footer class="crpied">Saisi par ${esc(r.par || "—")}${r.modifie_par ? ` · modifié par ${esc(r.modifie_par)}` : ""} · édité le ${esc(fmtD(new Date().toISOString()))}</footer>
   </article>`;
+}
+
+// Étapes pour la suite (tâches, personnes, liens par tâche), liens du compte rendu et pièces jointes, pour l'aperçu et l'impression.
+function crBlocSuite(r) {
+  const t = r.taches || [], l = r.liens || [], f = r.fichiers || [];
+  if (!t.length && !l.length && !f.length && !String(r.suite || "").trim()) return "";
+  const taches = t.map(x => `<li>${x.fait ? "☑" : "☐"} ${esc(x.texte)}${x.personnes.length ? " — " + esc(x.personnes.map(p => p.prenom).join(", ")) : ""}
+    ${x.liens.map(lien => `<div class="crlien">↳ ${esc(lien.libelle)} : ${esc(lien.description)}</div>`).join("")}</li>`).join("");
+  const liens = l.map(lien => `<li>${esc(lien.libelle)} : ${esc(lien.description)}</li>`).join("");
+  const pj = f.map(x => esc(x.nom)).join(", ");
+  return `<section class="crsect"><h3>Étapes pour la suite</h3>
+    ${t.length ? `<ul>${taches}</ul>` : ""}${String(r.suite || "").trim() ? `<div class="crtxt">${esc(r.suite)}</div>` : ""}
+    ${liens ? `<h4>Liens</h4><ul>${liens}</ul>` : ""}${pj ? `<div class="crtxt"><b>Pièces jointes :</b> ${pj}</div>` : ""}</section>`;
 }
 
 function ouvrirCompteRendu(id, type = "reunion") {
@@ -68,7 +81,12 @@ function pdfCompteRendu() {
   y += 1; ecrire("Compte rendu de réunion", 17, true); y += 1;
   ecrire(fmtD(r.date) + (r.titre ? " · " + r.titre : ""), 11, false, 70); y += 4;
   const bloc = (titre, texte) => { if (!String(texte || "").trim()) return; ecrire(titre, 11, true); y += 0.5; ecrire(texte, 10, false); y += 4; };
-  bloc("Participants", r.participants); bloc("Ce qui a été vu", r.vu); bloc("Ce qui est attendu", r.attendu); bloc("Étapes pour la suite", r.suite);
+  bloc("Participants", r.participants); bloc("Ce qui a été vu", r.vu); bloc("Ce qui est attendu", r.attendu);
+  const taches = (r.taches || []).map(x => (x.fait ? "[x] " : "[ ] ") + x.texte + (x.personnes.length ? " (" + x.personnes.map(p => p.prenom).join(", ") + ")" : "")
+    + x.liens.map(lien => "\n      ↳ " + lien.libelle + " : " + lien.description).join("")).join("\n");
+  bloc("Étapes pour la suite", [taches, r.suite].filter(v => String(v || "").trim()).join("\n"));
+  bloc("Liens", (r.liens || []).map(lien => "• " + lien.libelle + " : " + lien.description).join("\n"));
+  bloc("Pièces jointes", (r.fichiers || []).map(f => f.nom).join(", "));
   y += 2; ecrire("Saisi par " + (r.par || "—") + (r.modifie_par ? " · modifié par " + r.modifie_par : "") + " · édité le " + fmtD(new Date().toISOString()), 8, false, 120);
   const nom = cleTitre(r.titre || "reunion").replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "reunion";
   doc.save("compte-rendu-" + (r.date || stamp()) + "-" + nom + ".pdf");
