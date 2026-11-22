@@ -936,3 +936,7 @@ header #sub .ctxtxt{color:rgba(255,255,255,.92);font-size:13px;padding:5px 4px}
 header #sub select{padding:5px 26px 5px 10px}
 @media (max-width:640px){.brand .logo{min-height:46px;max-height:56px}}
 .sub .lnk#themebtn{font-size:inherit}
+
+/* Logo de l'en-tête : l'image entière (pas de recadrage), réduite à la hauteur disponible */
+header .brand .logo{aspect-ratio:1402 / 1122;width:auto;background:#fff url(qocot.webp) center / contain no-repeat;min-height:62px;max-height:96px;padding:2px}
+@media (max-width:640px){header .brand .logo{min-height:46px;max-height:56px}}
