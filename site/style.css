@@ -943,3 +943,10 @@ header .brand .logo{aspect-ratio:1402 / 1122;width:auto;background:#fff url(qoco
 
 /* Personnes assignées à une entrée du rétroplanning : une pastille de leur couleur */
 .ppers{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);margin-left:3px;vertical-align:middle;box-shadow:0 0 0 1.5px var(--card)}
+
+/* En-tête (correctifs) : marge intérieure autour du logo entier ; titre sur une seule ligne sur écran large */
+header .brand .logo{box-sizing:border-box;padding:7px;background-origin:content-box;background-size:contain;background-position:center}
+header .brand h1{white-space:nowrap}
+.toprow > div:first-child{flex:1 1 auto;min-width:0}
+.rightcol{flex:0 1 auto;min-width:0;max-width:60%}
+@media (max-width:640px){header .brand h1{white-space:normal}.rightcol{max-width:100%}}
