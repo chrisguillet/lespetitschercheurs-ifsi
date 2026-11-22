@@ -822,6 +822,9 @@ verifie('auteurs : chaque auteur enregistré, champs de la lecture dérivés', v
     && valeur($pdo, 'SELECT nation FROM articles WHERE titre = ?', ['Article à deux auteurs']) === 'française, belge'
     && valeur($pdo, 'SELECT qualite FROM articles WHERE titre = ?', ['Article à deux auteurs']) === 'IDE, cadre de santé'
     && count(json_decode((string) valeur($pdo, 'SELECT auteurs FROM articles WHERE titre = ?', ['Article à deux auteurs']), true) ?: []) === 2);
+$deuxL = array_values(array_filter($lect('a1@ci.test'), static fn ($l) => ($l['titre'] ?? '') === 'Article à deux auteurs'))[0] ?? [];
+verifie('auteurs : la liste des auteurs (métier et nationalité de chacun) est envoyée au client',
+    (json_decode((string) ($deuxL['auteurs'] ?? ''), true)[1]['qualite'] ?? '') === 'cadre de santé');
 verifie('auteurs : lecture terminée, un auteur sans métier refusé', str_contains((string) (appel('a1@ci.test', 'add', ['data' => array_merge($deuxAuteurs, ['titre' => 'Sans métier', 'nouveau' => true, 'auteurs' => [['nom' => 'Dupont, A.', 'nation' => 'française', 'qualite' => '']]])])['message'] ?? ''), 'qualité'));
 appel('a1@ci.test', 'delete', ['id' => (string) ($deuxR['id'] ?? '')]);   // lecture partagée avec la promo : retirée pour les contrôles suivants
 verifie('fiche : lien javascript: refusé', $err(appel('a1@ci.test', 'add', ['data' => array_merge($art1, ['lien' => 'javascript:alert(1)'])])) === 'invalid');

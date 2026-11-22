@@ -42,7 +42,7 @@ function exportFichePdf(id) {
   doc.text("Fiche de " + i.etudiant + " (" + stInfo(i.statut).lib.toLowerCase() + ") · " + (i.groupe || "") + " · saisie le " + fmtD(i.ajoute), 15, y); y += 7;
   doc.setFontSize(10);
   bloc("Référence APA", LydiaApa.apa(i).text);
-  bloc("Article", ["Parution : " + (fmtD(i.parution) || "-"), "Auteur : " + (i.auteur || "-") + " (" + (i.qualite || "-") + ")", "Nationalité : " + (i.nation || "-"), "Type : " + (i.type || "-")].join("\n"));
+  bloc("Article", ["Parution : " + (fmtD(i.parution) || "-"), ...auteursLignes(i), "Type : " + (i.type || "-")].join("\n"));
   [["Mots-clés", i.mots], ["Keywords", i.kw], ["Concepts en sciences infirmières", i.concepts], ["Objet / sujet principal", i.objet], ["Opinion de l’auteur", i.opinion], ["Controverse", i.controverse], ["Libre", i.libre]].forEach(([k, v]) => bloc(k, v));
   doc.save("fiche-" + (cleTitre(i.titre).replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "lecture") + "-" + stamp() + ".pdf");
 }
@@ -66,7 +66,7 @@ function exportPdf() {
   doc.setFontSize(8); doc.text("Export du " + fmtD(new Date().toISOString()), 10, 15);
   const l = filtered();
   const body = l.map(i => [i.etudiant + "\n" + ("(" + stInfo(i.statut).lib.toLowerCase() + ")"),
-    (i.titre || "") + "\nParution : " + (fmtD(i.parution) || "-") + "\nAuteur : " + (i.auteur || "-") + " (" + (i.qualite || "-") + ")\nNationalité : " + (i.nation || "-") + "\nType : " + (i.type || "-") + "\nSaisi le " + fmtD(i.ajoute) + (urlSure(i.lien) ? "\nLien : " + urlSure(i.lien) : ""),
+    (i.titre || "") + "\nParution : " + (fmtD(i.parution) || "-") + "\n" + auteursLignes(i).join("\n") + "\nType : " + (i.type || "-") + "\nSaisi le " + fmtD(i.ajoute) + (urlSure(i.lien) ? "\nLien : " + urlSure(i.lien) : ""),
     i.mots || "", i.kw || "", i.concepts || "", i.objet || "", i.opinion || "", i.controverse || "", i.libre || "", LydiaApa.apa(i).text]);
   doc.autoTable({
     startY: 18,

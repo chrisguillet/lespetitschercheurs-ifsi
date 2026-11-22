@@ -7,11 +7,12 @@ const optionsDoc = i => `<span class="optwrap"><button type="button" class="btn 
 // Ligne du document : titre et références objectives, résumé des lecteurs. Les fiches de lecture (partie subjective) sont dans la ligne dépliée dessous.
 function artRow(g) {
   const i = g[0], k = cleArt(i), open = artOuvert(k);
-  const qn = [i.qualite, i.nation].filter(Boolean).join(" · ");
+  // Colonne Auteur : chaque auteur avec son métier et sa nationalité.
+  const auts = auteursDe(i);
   return `<tr class="art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}"><td class="first c1"><div class="artbadges"><span class="chev" aria-hidden="true"></span>${badgesArticle(g)}${optionsDoc(i)}</div>
    <div class="arttitre"><b>${esc(i.titre)}</b>${lienHtml(i, true)}</div>
    ${propHtml(i)}${fichiersHtml(i)}</td>
-   <td class="c2">${esc(i.auteur) || "—"}${qn ? `<div class="meta">${esc(qn)}</div>` : ""}</td>
+   <td class="c2">${auts.length ? auts.map(a => { const qn = [a.qualite, a.nation].filter(Boolean).join(" · "); return `<div>${esc(a.nom) || "—"}${qn ? `<div class="meta">${esc(qn)}</div>` : ""}</div>`; }).join("") : "—"}</td>
    <td class="c3">${esc(anneeDe(i)) || "—"}<div class="meta">${esc(i.type) || ""}</div></td>
    <td class="c4 artres"><div class="meta" style="margin-bottom:4px"><span class="hint-c">Cliquez pour voir les fiches de lecture</span><span class="hint-o">Fiches de lecture ci-dessous</span></div>${resumeFiches(g)}</td>
    <td class="c5 apa">${apaCell(i)}</td></tr>`;

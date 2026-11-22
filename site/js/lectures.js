@@ -34,6 +34,13 @@ function auteursDe(i) {
   if (Array.isArray(l) && l.length) return l.map(a => ({ nom: String(a.nom || ""), nation: String(a.nation || ""), qualite: String(a.qualite || "") }));
   return i && i.auteur ? LydiaApa.listeAuteurs(i.auteur).map(nom => ({ nom, nation: String(i.nation || ""), qualite: String(i.qualite || "") })) : [];
 }
+// Auteurs pour l'affichage (aperçu, PDF, tableau) : chacun avec son métier et sa nationalité, en caractères sûrs pour le PDF.
+const auteurTexte = a => (a.nom || "-") + " (métier : " + (a.qualite || "-") + " ; nationalité : " + (a.nation || "-") + ")";
+function auteursLignes(i) {
+  const l = auteursDe(i);
+  if (!l.length) return ["Auteur : -"];
+  return l.length === 1 ? ["Auteur : " + auteurTexte(l[0])] : ["Auteurs :", ...l.map(a => "  - " + auteurTexte(a))];
+}
 // Lignes renseignées (les lignes vides ne sont pas envoyées).
 const auteursPropres = () => auteursForm.map(a => ({ nom: (a.nom || "").trim(), nation: (a.nation || "").trim(), qualite: (a.qualite || "").trim() }))
   .filter(a => a.nom || a.nation || a.qualite);

@@ -147,7 +147,7 @@ function actionsArticle(i) {
 }
 
 function infosHtml(i) {
-  return `Parution : ${esc(fmtD(i.parution)) || "—"}<br>Auteur : ${esc(i.auteur) || "—"} (${esc(i.qualite) || "—"})<br>Nationalité : ${esc(i.nation) || "—"}<br>Type : ${esc(i.type) || "—"}<br><i>Saisi le ${esc(fmtD(i.ajoute))}</i>${i.modifie_par ? `<br><i>Modifié par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}</i>` : ""}`;
+  return `Parution : ${esc(fmtD(i.parution)) || "—"}<br>${auteursLignes(i).map(esc).join("<br>").replace(/  - /g, "&nbsp;&nbsp;– ")}<br>Type : ${esc(i.type) || "—"}<br><i>Saisi le ${esc(fmtD(i.ajoute))}</i>${i.modifie_par ? `<br><i>Modifié par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))}</i>` : ""}`;
 }
 
 // Un document (article) par ligne ; ses fiches de lecture se déplient en dessous.

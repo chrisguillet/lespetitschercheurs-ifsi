@@ -616,7 +616,7 @@ final class Lectures
         $st = $pdo->prepare(
             "SELECT a.id, a.article_id, a.utilisateur_id, a.groupe_id, a.statut, a.priorite, a.mots, a.kw, a.concepts, a.objet, a.opinion,
                     a.controverse, a.libre, a.portee, a.ajoute, a.modifie_le AS a_modifie_le, a.modifie_par AS a_modifie_par,
-                    r.titre, r.parution, r.auteur, r.qualite, r.nation, r.type, r.source, r.volume, r.numero, r.pages, r.doi, r.lien,
+                    r.titre, r.parution, r.auteurs, r.auteur, r.qualite, r.nation, r.type, r.source, r.volume, r.numero, r.pages, r.doi, r.lien,
                     r.modifie_le AS r_modifie_le, r.modifie_par AS r_modifie_par,
                     g.nom AS groupe, g.promo_id, p.nom AS promo, e.nom AS etab, u.prenom, u.nom AS u_nom, u.pseudo, u.couleur
              FROM analyses a JOIN articles r ON r.id = a.article_id JOIN groupes g ON g.id = a.groupe_id

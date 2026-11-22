@@ -144,8 +144,7 @@ $("crmodal")?.addEventListener("keydown", e => { if (e.key === "Escape") fermerC
 const ficheDeApercu = () => itemsAll.find(x => x.id === CR.id);
 function fichePage(i) {
   const sect = (t, v) => `<section class="crsect"><h3>${esc(t)}</h3><div class="crtxt">${esc(String(v || "").trim() || "—")}</div></section>`;
-  const auteurs = auteursDe(i).map(a => "Auteur : " + (a.nom || "-") + " — métier : " + (a.qualite || "-") + " ; nationalité : " + (a.nation || "-"));
-  const article = ["Parution : " + (fmtD(i.parution) || "-"), ...(auteurs.length ? auteurs : ["Auteur : -"]), "Type : " + (i.type || "-")].join("\n");
+  const article = ["Parution : " + (fmtD(i.parution) || "-"), ...auteursLignes(i), "Type : " + (i.type || "-")].join("\n");
   return `<article class="crpage">
     <div class="crhead"><div class="crsup">${esc(i.groupe || "")}</div>
       <h2>${esc(i.titre || "Sans titre")}</h2>
