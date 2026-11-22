@@ -13,7 +13,7 @@ function memStyleApercu() {
   const s = document.createElement("style");
   s.id = "memStyleApercu";
   s.textContent = ".memapercu-plein{position:fixed;inset:0;z-index:1000;overflow:auto;margin:0;border-radius:0;padding:16px;background:Canvas;color:CanvasText}"
-    + ".memapercu-plein .memfeuille{zoom:1 !important;margin:0 auto}";
+    + ".memapercu-plein #mem_apercu{height:calc(100vh - 110px) !important;min-height:0 !important}";
   document.head.appendChild(s);
 }
 // Bascule l'aperçu entre taille normale et plein écran.
@@ -132,7 +132,7 @@ function memDessiner() {
     </div>
     <div class="memcote">
       <div class="card"><h3 style="font-size:14px;margin:0 0 8px">Contrôle des normes</h3><div id="mem_controle">${memControleHtml()}</div></div>
-      <div class="card memapercu${MEM.plein ? " memapercu-plein" : ""}"><div class="tools" style="justify-content:space-between"><h3 style="font-size:14px;margin:0">Aperçu</h3><button type="button" class="btn sm sec" data-mem-plein aria-expanded="${MEM.plein ? "true" : "false"}">${MEM.plein ? "✕ Réduire" : "⤢ Agrandir"}</button></div><div id="mem_apercu" style="background:#d9dce6;padding:8px;border-radius:6px;overflow:hidden">${memApercuHtml()}</div></div>
+      <div class="card memapercu${MEM.plein ? " memapercu-plein" : ""}"><div class="tools" style="justify-content:space-between"><h3 style="font-size:14px;margin:0">Aperçu</h3><button type="button" class="btn sm sec" data-mem-plein aria-expanded="${MEM.plein ? "true" : "false"}">${MEM.plein ? "✕ Réduire" : "⤢ Agrandir"}</button></div><div id="mem_apercu" style="background:#d9dce6;padding:8px;border-radius:6px;height:70vh;min-height:320px;overflow:auto">${memApercuHtml()}</div></div>
     </div></div>`;
   memZoomApercu();
 }
