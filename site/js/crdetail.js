@@ -9,7 +9,8 @@ const CR_FICHIER_MAX = 5 * 1024 * 1024;   // taille maximale d'une pièce jointe
 const CR_LIENS = { mem: [] };              // blocs du mémoire chargés pour le choix d’un lien
 
 // Sur téléphone ou tablette : bouton qui ouvre directement l'appareil photo (capture) ; la photo est ajoutée dès qu'elle est prise.
-const crTactile = () => !!(window.matchMedia && matchMedia("(pointer: coarse)").matches);
+// Écran tactile (téléphone, tablette, y compris un iPad qui se présente comme un Mac) : le bouton photo est proposé.
+const crTactile = () => (navigator.maxTouchPoints || 0) > 0 || !!(window.matchMedia && matchMedia("(any-pointer: coarse)").matches);
 const crBoutonPhoto = attrs => crTactile() ? ` <button type="button" class="btn sm sec" ${attrs.bouton}>📷 Prendre une photo</button><input type="file" hidden ${attrs.champ} accept="image/*" capture="environment">` : "";
 // Les photos de l'appareil arrivent souvent sous le nom « image.jpg » : on leur donne un nom daté.
 function crNomPhoto(file) {
@@ -57,7 +58,7 @@ function reunionDetailHtml(x) {
       ${ecrit ? `<button type="button" class="btn sm sec" data-lnew="" data-rid="${esc(x.id)}">🔗 Ajouter un lien</button><div id="lf_${esc(x.id)}_"></div>` : ""}
     </div>
     <div class="sect"><b>Pièces jointes</b> <span class="meta">(${pieces.length}/${CR_PIECES_MAX} ; images réduites à 300 Ko)</span>
-      ${pieces.length ? `<ul class="crpieces">${pieces.map(f => `<li><button type="button" class="btn sm sec" data-fdl="${esc(f.id)}">📎 ${esc(f.nom)}</button> <span class="meta">${esc(crTaille(f.taille))} · ${esc(f.par)}</span>
+      ${pieces.length ? `<ul class="crpieces">${pieces.map(f => `<li><button type="button" class="btn sm sec" data-fdl="${esc(f.id)}" title="Voir la pièce jointe">📎 ${esc(f.nom)}</button> <span class="meta">${esc(crTaille(f.taille))} · ${esc(f.par)}</span>
         ${ecrit ? ` <button type="button" class="btn sm sec del" data-fdel="${esc(f.id)}" aria-label="Supprimer la pièce jointe">🗑</button>` : ""}</li>`).join("")}</ul>` : '<div class="meta">Aucune pièce jointe.</div>'}
       ${ecrit && pieces.length < CR_PIECES_MAX ? `<button type="button" class="btn sm sec" data-fadd="${esc(x.id)}">＋ Joindre un fichier</button><input type="file" hidden data-fin="${esc(x.id)}" accept="application/pdf,image/png,image/jpeg">${crBoutonPhoto({ bouton: `data-fcam="${esc(x.id)}"`, champ: `data-fcin="${esc(x.id)}"` })}` : ""}
     </div></div>`;
@@ -188,6 +189,46 @@ async function ajouterPiece(rid, file, reduire = false) {
     const contenu = await crContenuFichier(file, reduire);
     applyResult(await enCours("Envoi du fichier…", () => api("reunion_fichier_ajouter", { reunion_id: rid, nom: file.name, contenu })));
   } catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Envoi impossible : " + e.message); }
+}
+
+// Aperçu d'une pièce jointe dans une fenêtre : l'image, ou le PDF dans un cadre ; on peut aussi la télécharger.
+let crPjUrl = "";
+function crPieceDe(fid) {
+  for (const r of reunionsAll) { const f = (r.fichiers || []).find(x => x.id === fid); if (f) return f; }
+  return null;
+}
+async function apercuPiece(fid) {
+  const f = crPieceDe(fid); if (!f) return;
+  let src = CR_IMG.get(fid);
+  try {
+    if (!src || !crEstImage(f)) {
+      const d = await enCours("Ouverture de la pièce jointe…", () => api("reunion_fichier_lire", { id: fid }));
+      const octets = Uint8Array.from(atob(d.data), c => c.charCodeAt(0));
+      if (crEstImage(f)) { src = "data:" + d.type + ";base64," + d.data; CR_IMG.set(fid, src); }
+      else { if (crPjUrl) URL.revokeObjectURL(crPjUrl); crPjUrl = URL.createObjectURL(new Blob([octets], { type: d.type })); src = crPjUrl; }
+    }
+  } catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Ouverture impossible : " + e.message); return; }
+  fermerApercuPiece();
+  const m = document.createElement("div");
+  m.id = "pjmodal"; m.className = "modal"; m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true"); m.setAttribute("aria-label", "Aperçu de " + f.nom);
+  m.innerHTML = `<div class="modalbox" style="max-width:920px">
+    <div class="modalhead"><div><h2>📎 ${esc(f.nom)}</h2></div>
+      <div class="grow"><button class="btn sm" type="button" data-pjdl="${esc(fid)}">⬇️ Télécharger</button><button class="btn sm sec" type="button" data-pjclose>✕ Fermer</button></div></div>
+    <div class="pjcorps">${crEstImage(f) ? `<img src="${src}" alt="${esc(f.nom)}">` : `<iframe src="${src}" title="${esc(f.nom)}"></iframe>`}</div>
+    ${crEstImage(f) ? "" : '<div class="meta" style="margin-top:6px">Si le PDF ne s’affiche pas (certains téléphones), utilisez « Télécharger ».</div>'}</div>`;
+  m.addEventListener("click", e => {
+    if (e.target === m || e.target.closest("[data-pjclose]")) return fermerApercuPiece();
+    const b = e.target.closest("[data-pjdl]"); if (b) telechargerPiece(b.dataset.pjdl);
+  });
+  m.addEventListener("keydown", e => { if (e.key === "Escape") fermerApercuPiece(); });
+  document.body.appendChild(m); document.body.classList.add("modalopen");
+  m.querySelector("[data-pjclose]").focus();
+}
+function fermerApercuPiece() {
+  const m = $("pjmodal"); if (!m) return;
+  m.remove();
+  if (crPjUrl) { URL.revokeObjectURL(crPjUrl); crPjUrl = ""; }
+  if (!document.querySelector(".modal:not(.hidden)")) document.body.classList.remove("modalopen");
 }
 
 async function telechargerPiece(fid) {
@@ -336,7 +377,7 @@ $("suivi")?.addEventListener("click", e => {
   if (d.caCam !== undefined) { const i = $("ca_cam"); if (i) i.click(); return; }
   if (d.fcam !== undefined) { const i = document.querySelector('[data-fcin="' + d.fcam + '"]'); if (i) i.click(); return; }
   if (d.fadd !== undefined) { const i = document.querySelector('[data-fin="' + d.fadd + '"]'); if (i) i.click(); return; }
-  if (d.fdl !== undefined) return telechargerPiece(d.fdl);
+  if (d.fdl !== undefined) return apercuPiece(d.fdl);
   if (d.fdel !== undefined) { if (!confirm("Supprimer cette pièce jointe ?")) return; return supprimerPiece(d.fdel); }
 });
 
