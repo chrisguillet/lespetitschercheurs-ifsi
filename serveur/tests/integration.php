@@ -1079,6 +1079,13 @@ verifie('notes : DOCX avec footnotes.xml et appel de note', str_contains($docx, 
 $exo = appel('a1@ci.test', 'memoire_export', ['groupe_id' => $alpha, 'format' => 'odt']);
 $odt = base64_decode((string) ($exo['contenu'] ?? ''));
 verifie('notes : ODT avec note de bas de page', str_contains($odt, 'text:note-class="footnote"') && str_contains($odt, 'Une note'));
+$enPied = appel('a1@ci.test', 'memoire_entete', ['groupe_id' => $alpha, 'data' => ['titre' => 'Autonomie', 'ue' => 'UE 6.1', 'referent' => 'KH', 'auteurs' => 'Dupont – Ana', 'pied' => '', 'date_rendu' => '2027-01-15']]);
+$piedDefaut = base64_decode((string) (appel('a1@ci.test', 'memoire_export', ['groupe_id' => $alpha, 'format' => 'docx'])['contenu'] ?? ''));
+verifie('pied : par défaut, tiré de l\'établissement (pas de « GAVY »)', str_contains($piedDefaut, 'IFSI Vannes') && !str_contains($piedDefaut, 'GAVY'));
+verifie('pied : les auteurs saisis reviennent au client', ($enPied['memoire']['auteurs'] ?? '') === 'Dupont – Ana' && ($enPied['memoire']['etablissement'] ?? '') === 'IFSI Vannes');
+$enSurcharge = appel('a1@ci.test', 'memoire_entete', ['groupe_id' => $alpha, 'data' => ['titre' => 'Autonomie', 'ue' => 'UE 6.1', 'referent' => 'KH', 'auteurs' => 'Dupont – Ana', 'pied' => 'Mon pied de page', 'date_rendu' => '2027-01-15']]);
+$piedSurcharge = base64_decode((string) (appel('a1@ci.test', 'memoire_export', ['groupe_id' => $alpha, 'format' => 'odt'])['contenu'] ?? ''));
+verifie('pied : le texte saisi par le groupe remplace le pied par défaut', ($enSurcharge['memoire']['pied'] ?? '') === 'Mon pied de page' && str_contains($piedSurcharge, 'Mon pied de page') && !str_contains($piedSurcharge, 'IFSI Vannes'));
 verifie('jalon : les personnes sont vues des autres membres', ($jalonPar(appel('a3@ci.test', 'list'), $jid)['personnes'][0]['pid'] ?? '') === $pidA2);
 $pdo->prepare('DELETE FROM membres WHERE groupe_id = ? AND utilisateur_id = ?')->execute([$alpha, $B['a2']]);
 verifie('jalon : une personne qui quitte le groupe n\'apparaît plus', ($jalonPar(appel('a1@ci.test', 'list'), $jid)['personnes'] ?? ['x']) === []);

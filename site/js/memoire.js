@@ -63,6 +63,8 @@ function memDessiner() {
           <div><label for="mem_ref">Référent pédagogique</label><input id="mem_ref" maxlength="120" value="${esc(m.referent)}" ${ecrit ? "" : "disabled"}></div>
           <div style="grid-column:1/-1"><label for="mem_auteurs">Auteur(s) de la couverture <span class="meta">(NOM – Prénom, séparés par ;)</span></label><input id="mem_auteurs" maxlength="300" value="${esc(m.auteurs)}" placeholder="ex. Dupont – Ana ; Martin – Ben" ${ecrit ? "" : "disabled"}></div>
           <div><label for="mem_date">Date de rendu</label><input id="mem_date" type="date" value="${esc(m.date_rendu)}" ${ecrit ? "" : "disabled"}></div>
+          <div style="grid-column:1/-1"><label for="mem_pied">Pied de page <span class="meta">(facultatif : vide = pied par défaut)</span></label><input id="mem_pied" maxlength="300" value="${esc(m.pied || "")}" placeholder="${esc(memPiedDefaut())}" ${ecrit ? "" : "disabled"}>
+            <div class="meta">Consignes : <b>${esc(MEM_PIED_ATTENDU)}</b> (le numéro de page est ajouté). Pied actuel : ${esc(memTexteArrierePlan())}</div></div>
         </div>
         <div id="mem_msg" class="meta" role="status">${esc(MEM.msg)}</div>
         <div class="memexp"><span class="meta">Exporter :</span> <button type="button" class="btn sm" data-mem-exp="pdf">⬇️ PDF</button> <button type="button" class="btn sm sec" data-mem-exp="docx">Word (DOCX)</button> <button type="button" class="btn sm sec" data-mem-exp="odt">OpenDocument (ODT)</button></div>
@@ -105,10 +107,16 @@ function memCouvertureHtml() {
     <div class="memcouv-bas">Référent pédagogique : ${esc(m.referent)}<br>Date : ${esc(m.date_rendu ? fmtD(m.date_rendu) : "")}</div>
   </section>`;
 }
-// Pied de page de la maquette, sur chaque page sauf la couverture.
-function memPiedHtml(page) {
+// Consignes de la maquette pour le pied de page (le numéro de page est ajouté à la fin).
+const MEM_PIED_ATTENDU = "ÉTABLISSEMENT – UE – Titre – Promotion – NOM Prénom – Date";
+// Pied de page par défaut : établissement du groupe, UE, titre, promotion, auteurs, date (même règle que le serveur).
+function memPiedDefaut() {
   const m = MEM.data, g = groupeCourant() || {};
-  return `<footer class="mempied">IFSI GAVY – SAINT-NAZAIRE – ${esc(m.ue || "UE")} – ${esc(m.titre || "Titre du document")} – ${esc(memPromoMaquette(g.promo))} – ${esc(m.auteurs || "NOM Prénom")} – ${esc(m.date_rendu ? fmtD(m.date_rendu) : "Date")} – Page ${page}</footer>`;
+  return `${m.etablissement || "Établissement"} – ${m.ue || "UE"} – ${m.titre || ""} – ${memPromoMaquette(g.promo)} – ${m.auteurs || "NOM Prénom"} – ${memDateFr(m.date_rendu) || "Date"}`;
+}
+// Pied de page de la maquette, sur chaque page sauf la couverture : le texte saisi par le groupe, sinon le pied par défaut.
+function memPiedHtml(page) {
+  return `<footer class="mempied">${esc(memTexteArrierePlan())} – Page ${page}</footer>`;
 }
 function memApercuHtml() {
   const m = MEM.data; if (!m) return "";
@@ -152,6 +160,7 @@ function memControleHtml() {
 function memRafraichirApercu() {
   if ($("mem_apercu")) $("mem_apercu").innerHTML = memApercuHtml();
   if ($("mem_controle")) $("mem_controle").innerHTML = memControleHtml();
+  if ($("mem_pied")) $("mem_pied").placeholder = memPiedDefaut();
 }
 
 // Enregistre le bloc après modification (bloc par bloc, pour ne rien écraser chez les autres).
@@ -166,7 +175,7 @@ async function memSauverBloc(bid, data) {
 
 // Mémorise l'en-tête (titre, UE, référent, date).
 async function memSauverEntete() {
-  const data = { titre: $("mem_titre").value, ue: $("mem_ue").value, referent: $("mem_ref").value, auteurs: $("mem_auteurs").value, date_rendu: $("mem_date").value };
+  const data = { titre: $("mem_titre").value, ue: $("mem_ue").value, referent: $("mem_ref").value, auteurs: $("mem_auteurs").value, pied: $("mem_pied").value, date_rendu: $("mem_date").value };
   try {
     const res = await api("memoire_entete", { groupe_id: MEM.gid, data });
     MEM.data = res.memoire; MEM.msg = "En-tête enregistré."; memRafraichirApercu();
@@ -197,7 +206,7 @@ function memInsererNote() {
 
 $("memoirebox")?.addEventListener("change", e => {
   const t = e.target;
-  if (t.closest && t.closest("#mem_titre, #mem_ue, #mem_ref, #mem_auteurs, #mem_date")) return memSauverEntete();
+  if (t.closest && t.closest("#mem_titre, #mem_ue, #mem_ref, #mem_auteurs, #mem_pied, #mem_date")) return memSauverEntete();
   const bloc = t.closest && t.closest("[data-bid]");
   if (!bloc) return;
   const bid = bloc.dataset.bid, b = MEM.data.blocs.find(x => x.id === bid); if (!b) return;
@@ -265,8 +274,8 @@ function memNomFichier(ext) {
 const memDateFr = d => (/^(\d{4})-(\d{2})-(\d{2})$/.exec(d || "") ? d.slice(8, 10) + "/" + d.slice(5, 7) + "/" + d.slice(0, 4) : "");
 // Pied de page : même texte que dans les fichiers Word et OpenDocument (le numéro de page est ajouté).
 function memTexteArrierePlan() {
-  const m = MEM.data, g = groupeCourant() || {};
-  return `IFSI GAVY – SAINT-NAZAIRE – ${m.ue || "UE"} – ${m.titre || ""} – ${memPromoMaquette(g.promo)} – ${m.auteurs || "NOM Prénom"} – ${memDateFr(m.date_rendu) || "Date"}`;
+  const m = MEM.data, saisi = String(m.pied || "").trim();
+  return saisi !== "" ? saisi : memPiedDefaut();
 }
 
 // PDF aux normes : A4, marges 3 cm (gauche), 2,5 cm (droite), 2,5 cm (haut), 3 cm (bas) ; Times ; corps 12, titres 16 et 14 ; interligne 1,5 ; justifié.

@@ -36,9 +36,12 @@ final class Memoire
     {
         self::groupeVisible($c, $gid);
         $pdo = $c->db->principale();
-        $st = $pdo->prepare('SELECT titre, ue, referent, date_rendu, modifie_le FROM memoires WHERE groupe_id = ?');
+        $st = $pdo->prepare('SELECT titre, ue, referent, auteurs, pied, date_rendu, modifie_le FROM memoires WHERE groupe_id = ?');
         $st->execute([$gid]);
-        $en = $st->fetch() ?: ['titre' => '', 'ue' => '', 'referent' => '', 'auteurs' => '', 'date_rendu' => '', 'modifie_le' => null];
+        $en = $st->fetch() ?: ['titre' => '', 'ue' => '', 'referent' => '', 'auteurs' => '', 'pied' => '', 'date_rendu' => '', 'modifie_le' => null];
+        $st = $pdo->prepare('SELECT e.nom FROM groupes g JOIN promos p ON p.id = g.promo_id JOIN etablissements e ON e.id = p.etablissement_id WHERE g.id = ?');
+        $st->execute([$gid]);
+        $etablissement = (string) $st->fetchColumn();
         $st = $pdo->prepare(
             'SELECT b.id, b.ordre, b.type, b.texte, b.modifie_le, u.prenom, u.nom, u.pseudo
              FROM memoire_blocs b LEFT JOIN utilisateurs u ON u.id = b.auteur_id WHERE b.groupe_id = ? ORDER BY b.ordre, b.id'
@@ -53,6 +56,7 @@ final class Memoire
         return [
             'groupe_id' => $gid,
             'titre' => (string) $en['titre'], 'ue' => (string) $en['ue'], 'referent' => (string) $en['referent'], 'auteurs' => (string) $en['auteurs'], 'date_rendu' => (string) $en['date_rendu'],
+            'pied' => (string) $en['pied'], 'etablissement' => $etablissement,
             'modifie_le' => Temps::iso($en['modifie_le'] === null ? null : (string) $en['modifie_le']),
             'blocs' => $blocs,
             'modifiable' => $c->droits()->estEtudiant() && Membres::estMembre($pdo, $gid, (int) $c->user->id),
@@ -67,7 +71,7 @@ final class Memoire
             throw new Erreur('invalid', 'Données manquantes');
         }
         $t = [];
-        foreach (['titre' => 200, 'ue' => 200, 'referent' => 120, 'auteurs' => 300] as $k => $max) {
+        foreach (['titre' => 200, 'ue' => 200, 'referent' => 120, 'auteurs' => 300, 'pied' => 300] as $k => $max) {
             $v = is_scalar($data[$k] ?? null) ? trim((string) $data[$k]) : '';
             if (mb_strlen($v) > $max) {
                 throw new Erreur('invalid', "Champ « $k » trop long ($max caractères maximum)");
@@ -79,9 +83,9 @@ final class Memoire
             throw new Erreur('invalid', 'Date de rendu invalide');
         }
         $now = Temps::maintenant();
-        $pdo->prepare('INSERT INTO memoires (groupe_id, titre, ue, referent, auteurs, date_rendu, modifie_le, modifie_par) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                       ON DUPLICATE KEY UPDATE titre = VALUES(titre), ue = VALUES(ue), referent = VALUES(referent), auteurs = VALUES(auteurs), date_rendu = VALUES(date_rendu), modifie_le = VALUES(modifie_le), modifie_par = VALUES(modifie_par)')
-            ->execute([$gid, $t['titre'], $t['ue'], $t['referent'], $t['auteurs'], $date, $now, $c->user->id]);
+        $pdo->prepare('INSERT INTO memoires (groupe_id, titre, ue, referent, auteurs, pied, date_rendu, modifie_le, modifie_par) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON DUPLICATE KEY UPDATE titre = VALUES(titre), ue = VALUES(ue), referent = VALUES(referent), auteurs = VALUES(auteurs), pied = VALUES(pied), date_rendu = VALUES(date_rendu), modifie_le = VALUES(modifie_le), modifie_par = VALUES(modifie_par)')
+            ->execute([$gid, $t['titre'], $t['ue'], $t['referent'], $t['auteurs'], $t['pied'], $date, $now, $c->user->id]);
     }
 
     /** Ajoute (sans id) ou modifie (avec id) un bloc. @param array<string,mixed> $data */
@@ -174,6 +178,13 @@ final class Memoire
         return $nettoie(mb_strtoupper($nom)) . '.' . $nettoie($prenom) . '_' . $nettoie($u) . '_' . substr($t, 0, 60) . '_' . $jour . '.' . $ext;
     }
 
+    /** Pied de page par défaut (sans numéro de page, ajouté à l'export) : établissement, UE, titre, promotion, auteurs, date. */
+    public static function piedDefaut(string $etablissement, string $ue, string $titre, string $promo, string $auteurs, string $date): string
+    {
+        return $etablissement . ' – ' . ($ue !== '' ? $ue : 'UE') . ' – ' . $titre . ' – ' . $promo . ' – '
+            . ($auteurs !== '' ? $auteurs : 'NOM Prénom') . ' – ' . ($date !== '' ? $date : 'Date');
+    }
+
     /** Exporte le mémoire en DOCX ou ODT, aux normes de la maquette. @return array{nom:string,type:string,contenu:string} */
     public static function exporter(Contexte $c, string $gid, string $format): array
     {
@@ -182,7 +193,7 @@ final class Memoire
             throw new Erreur('invalid', 'Format d’export inconnu');
         }
         $pdo = $c->db->principale();
-        $st = $pdo->prepare('SELECT m.titre, m.ue, m.referent, m.auteurs, m.date_rendu, p.nom AS promo FROM groupes g JOIN promos p ON p.id = g.promo_id LEFT JOIN memoires m ON m.groupe_id = g.id WHERE g.id = ?');
+        $st = $pdo->prepare('SELECT m.titre, m.ue, m.referent, m.auteurs, m.pied, m.date_rendu, p.nom AS promo, e.nom AS etablissement FROM groupes g JOIN promos p ON p.id = g.promo_id JOIN etablissements e ON e.id = p.etablissement_id LEFT JOIN memoires m ON m.groupe_id = g.id WHERE g.id = ?');
         $st->execute([$gid]);
         $en = $st->fetch();
         if ($en === false) {
@@ -204,8 +215,9 @@ final class Memoire
         $entete = [
             'titre' => $titre, 'ue' => $ue, 'referent' => (string) ($en['referent'] ?? ''),
             'auteurs' => $auteurs, 'date' => $dateAff, 'promo' => $annees,
-            'nom_pied' => 'IFSI GAVY – SAINT-NAZAIRE – ' . ($ue !== '' ? $ue : 'UE') . ' – ' . $titre . ' – ' . $annees . ' – '
-                . ($auteurs !== '' ? $auteurs : 'NOM Prénom') . ' – ' . ($dateAff !== '' ? $dateAff : 'Date'),
+            // Pied saisi par le groupe s'il existe ; sinon pied par défaut : établissement, UE, titre, promotion, auteurs, date.
+            'nom_pied' => trim((string) ($en['pied'] ?? '')) !== '' ? trim((string) $en['pied'])
+                : self::piedDefaut((string) $en['etablissement'], $ue, $titre, $annees, $auteurs, $dateAff),
         ];
         $u = $c->user;
         $nom = self::nomFichier((string) $u->nom, (string) $u->prenom, $ue, $titre, $date, $format);
