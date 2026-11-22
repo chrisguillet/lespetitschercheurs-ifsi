@@ -46,6 +46,9 @@ final class Suivi
         if ($gid === '' || !Membres::estMembre($pdo, $gid, $uid)) {
             throw new Erreur('forbidden', 'Vous ne faites pas partie de ce groupe');
         }
+        if ($type === 'jalon' && $identifiant !== '' && self::estDeTache($pdo, $identifiant)) {
+            throw new Erreur('forbidden', 'Cette échéance vient d’une tâche de compte rendu : modifiez-la dans le compte rendu');
+        }
 
         $d = [];
         foreach ($def['champs'] as $k) {
@@ -125,6 +128,9 @@ final class Suivi
                 throw new Erreur('forbidden', 'Vous ne faites pas partie de ce groupe');
             }
         }
+        if ($type === 'jalon' && self::estDeTache($pdo, $id)) {
+            throw new Erreur('forbidden', 'Cette échéance vient d’une tâche de compte rendu : supprimez la tâche dans le compte rendu');
+        }
         $pdo->prepare("DELETE FROM `$table` WHERE id = ?")->execute([$id]);
     }
 
@@ -171,6 +177,7 @@ final class Suivi
             }
             if ($type === 'jalon') {
                 $o['personnes'] = $assignes[(string) $r['id']] ?? [];
+                $o['tache_id'] = $r['tache_id'] === null ? '' : (string) $r['tache_id'];
             }
             $out[] = $o;
         }
@@ -249,6 +256,15 @@ final class Suivi
                 throw new Erreur('invalid', 'Alerte : nombre de jours entre 0 et 365');
             }
         }
+    }
+
+    /** Un jalon issu d'une tâche de compte rendu ne se modifie ni ne se supprime depuis le calendrier. */
+    private static function estDeTache(\PDO $pdo, string $jalonId): bool
+    {
+        $st = $pdo->prepare('SELECT tache_id FROM jalons WHERE id = ?');
+        $st->execute([$jalonId]);
+        $t = $st->fetchColumn();
+        return $t !== false && $t !== null;
     }
 
     private static function titre(string $t): void

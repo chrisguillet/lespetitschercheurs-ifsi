@@ -22,11 +22,12 @@ final class SuiviTaches
             return $out;
         }
         $marques = Lectures::marques(count($gids));
-        $st = $pdo->prepare("SELECT t.id, t.reunion_id, t.texte, t.fait FROM taches t WHERE t.groupe_id IN ($marques) ORDER BY t.ordre, t.cree_le, t.id");
+        $st = $pdo->prepare("SELECT t.id, t.reunion_id, t.texte, t.fait, j.echeance FROM taches t LEFT JOIN jalons j ON j.tache_id = t.id WHERE t.groupe_id IN ($marques) ORDER BY t.ordre, t.cree_le, t.id");
         $st->execute($gids);
         $taches = [];
         foreach ($st->fetchAll() as $t) {
-            $taches[(string) $t['id']] = ['id' => (string) $t['id'], 'reunion_id' => (string) $t['reunion_id'], 'texte' => (string) $t['texte'], 'fait' => (int) $t['fait'] === 1, 'personnes' => [], 'liens' => []];
+            $taches[(string) $t['id']] = ['id' => (string) $t['id'], 'reunion_id' => (string) $t['reunion_id'], 'texte' => (string) $t['texte'], 'fait' => (int) $t['fait'] === 1,
+                'echeance' => $t['echeance'] === null ? '' : (string) $t['echeance'], 'personnes' => [], 'liens' => []];
         }
         // Personnes assignées (seulement celles qui sont encore membres du groupe).
         $sp = $pdo->prepare("SELECT tp.tache_id, u.pid, u.prenom, u.nom, u.pseudo, u.couleur
@@ -58,7 +59,7 @@ final class SuiviTaches
             }
         }
         foreach ($taches as $t) {
-            $out['taches'][$t['reunion_id']][] = ['id' => $t['id'], 'texte' => $t['texte'], 'fait' => $t['fait'], 'personnes' => $t['personnes'], 'liens' => $t['liens']];
+            $out['taches'][$t['reunion_id']][] = ['id' => $t['id'], 'texte' => $t['texte'], 'fait' => $t['fait'], 'echeance' => $t['echeance'], 'personnes' => $t['personnes'], 'liens' => $t['liens']];
         }
         return $out;
     }
@@ -79,6 +80,10 @@ final class SuiviTaches
             throw new Erreur('invalid', 'Tâche trop longue (' . self::TEXTE_MAX . ' caractères maximum)');
         }
         $fait = !empty($data['fait']) ? 1 : 0;
+        $echeance = is_scalar($data['echeance'] ?? null) ? trim((string) $data['echeance']) : '';
+        if ($echeance !== '' && (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $echeance, $m) !== 1 || !checkdate((int) $m[2], (int) $m[3], (int) $m[1]))) {
+            throw new Erreur('invalid', 'Échéance invalide');
+        }
         $uid = (int) $c->user->id;
         $now = Temps::maintenant();
         $identifiant = is_string($id) ? $id : '';
@@ -99,6 +104,44 @@ final class SuiviTaches
         if (is_array($data['personnes'] ?? null)) {
             self::personnes($pdo, $gid, $identifiant, $data['personnes']);
         }
+        self::synchroniserJalon($pdo, $gid, $reunionId, $identifiant, $texte, $fait === 1, $echeance, $uid);
+    }
+
+    /**
+     * Une tâche datée est un jalon « tâche » du calendrier : titre, échéance, statut et personnes suivent la tâche.
+     * Sans échéance, le jalon est retiré.
+     */
+    private static function synchroniserJalon(\PDO $pdo, string $gid, string $reunionId, string $tacheId, string $texte, bool $fait, string $echeance, int $uid): void
+    {
+        $st = $pdo->prepare('SELECT id FROM jalons WHERE tache_id = ?');
+        $st->execute([$tacheId]);
+        $jalon = $st->fetchColumn();
+        if ($echeance === '') {
+            if ($jalon !== false) {
+                $pdo->prepare('DELETE FROM jalons WHERE id = ?')->execute([$jalon]);
+            }
+            return;
+        }
+        $st = $pdo->prepare('SELECT date, titre FROM reunions WHERE id = ?');
+        $st->execute([$reunionId]);
+        $cr = $st->fetch() ?: ['date' => null, 'titre' => ''];
+        $quand = $cr['date'] !== null ? substr((string) $cr['date'], 8, 2) . '/' . substr((string) $cr['date'], 5, 2) : '';
+        $note = mb_substr(trim('Compte rendu du ' . $quand . ($cr['titre'] !== '' ? ' : ' . (string) $cr['titre'] : '')), 0, 500);
+        $titre = mb_substr($texte, 0, 200);
+        $statut = $fait ? 'fait' : 'a_faire';
+        $now = Temps::maintenant();
+        if ($jalon === false) {
+            $jalon = Ids::uuid();
+            $pdo->prepare('INSERT INTO jalons (id, groupe_id, titre, type, echeance, statut, note, tache_id, cree_par, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                ->execute([$jalon, $gid, $titre, 'tache', $echeance, $statut, $note, $tacheId, $uid, $now]);
+        } else {
+            $pdo->prepare('UPDATE jalons SET titre = ?, echeance = ?, statut = ?, note = ?, modifie_le = ? WHERE id = ?')
+                ->execute([$titre, $echeance, $statut, $note, $now, $jalon]);
+        }
+        // Personnes du jalon = personnes de la tâche.
+        $pdo->prepare('DELETE FROM jalons_personnes WHERE jalon_id = ?')->execute([$jalon]);
+        $pdo->prepare('INSERT INTO jalons_personnes (jalon_id, utilisateur_id) SELECT ?, utilisateur_id FROM taches_personnes WHERE tache_id = ?')
+            ->execute([$jalon, $tacheId]);
     }
 
     public static function supprimerTache(Contexte $c, mixed $id): void

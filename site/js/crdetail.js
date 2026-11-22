@@ -22,6 +22,7 @@ function tacheHtml(t, r, membres, ecrit) {
   const pers = t.personnes.map(p => `<span class="chip">${esc(p.prenom)}</span>`).join(" ");
   return `<li class="crtache">
     <div class="tools"><label class="chk"><input type="checkbox" data-tfait="${esc(t.id)}" ${t.fait ? "checked" : ""} ${ecrit ? "" : "disabled"}> <span class="${t.fait ? "meta" : ""}">${esc(t.texte)}</span></label> ${pers}
+      <input type="date" data-techeance="${esc(t.id)}" value="${esc(t.echeance || "")}" title="Échéance : la tâche apparaît alors dans le calendrier" aria-label="Échéance de la tâche" ${ecrit ? "" : "disabled"}>
       ${ecrit ? `<button type="button" class="btn sm sec" data-tpers="${esc(t.id)}" aria-expanded="false" title="Personnes concernées">👥</button>
       <button type="button" class="btn sm sec" data-lnew="${esc(t.id)}" data-rid="${esc(r.id)}" title="Lier un article, une fiche ou un bloc du mémoire">🔗 Lier</button>
       <button type="button" class="btn sm sec del" data-tdel="${esc(t.id)}" aria-label="Supprimer la tâche">🗑</button>` : ""}</div>
@@ -201,8 +202,8 @@ function crAttenteRafraichir() {
   const m = crEnAttente, membres = (groupeCourant() || {}).membres || [];
   const retrait = (cle, i) => `<button type="button" class="btn sm sec del" data-ca-del="${cle}:${i}" aria-label="Retirer">✕</button>`;
   z.innerHTML = `<div class="sect"><b>Étapes pour la suite</b> <span class="meta">(facultatif, ajoutées au compte rendu à l’enregistrement)</span>
-    ${m.taches.length ? `<ul class="crtaches">${m.taches.map((t, i) => `<li>${esc(t.texte)} ${t.personnes.length ? `<span class="meta">— ${esc(t.personnes.map(p => ((membres.find(x => x.pid === p) || {}).prenom || "")).join(", "))}</span>` : ""} ${retrait("tache", i)}</li>`).join("")}</ul>` : ""}
-    <div class="tools"><input id="ca_tache" maxlength="300" placeholder="Nouvelle tâche" style="flex:1"><select id="ca_pers" multiple size="3" aria-label="Personnes concernées">${membres.map(x => `<option value="${esc(x.pid)}">${esc(x.prenom)}</option>`).join("")}</select><button type="button" class="btn sm sec" data-ca-tache>＋ Tâche</button></div></div>
+    ${m.taches.length ? `<ul class="crtaches">${m.taches.map((t, i) => `<li>${esc(t.texte)} ${t.echeance ? `<span class="meta">📅 ${esc(fmtD(t.echeance))}</span> ` : ""}${t.personnes.length ? `<span class="meta">— ${esc(t.personnes.map(p => ((membres.find(x => x.pid === p) || {}).prenom || "")).join(", "))}</span>` : ""} ${retrait("tache", i)}</li>`).join("")}</ul>` : ""}
+    <div class="tools"><input id="ca_tache" maxlength="300" placeholder="Nouvelle tâche" style="flex:1"><input type="date" id="ca_echeance" title="Échéance facultative : la tâche apparaît alors dans le calendrier" aria-label="Échéance"><select id="ca_pers" multiple size="3" aria-label="Personnes concernées">${membres.map(x => `<option value="${esc(x.pid)}">${esc(x.prenom)}</option>`).join("")}</select><button type="button" class="btn sm sec" data-ca-tache>＋ Tâche</button></div></div>
     <div class="sect"><b>Liens</b> <span class="meta">(un article, une fiche ou un bloc du mémoire, et pourquoi)</span>
       ${m.liens.length ? `<ul class="crliens">${m.liens.map((l, i) => `<li>🔗 <b>${esc(l.libelle)}</b> — ${esc(l.description)} ${retrait("lien", i)}</li>`).join("")}</ul>` : ""}
       <button type="button" class="btn sm sec" data-lnew="" data-rid="">🔗 Ajouter un lien</button><div id="lf__"></div></div>
@@ -222,7 +223,7 @@ async function enregistrerCompteRendu(id, gid, errId) {
       const rid = id || ((res.reunions || []).find(r => !avant.has(r.id)) || {}).id;
       if (!rid) throw new Error("compte rendu introuvable après enregistrement");
       for (const t of crEnAttente.taches) {
-        try { res = await api("tache_save", { groupe_id: gid, reunion_id: rid, data: { texte: t.texte, fait: false, personnes: t.personnes } }); }
+        try { res = await api("tache_save", { groupe_id: gid, reunion_id: rid, data: { texte: t.texte, fait: false, personnes: t.personnes, echeance: t.echeance || "" } }); }
         catch (e) { erreurs.push("tâche « " + t.texte + " » : " + e.message); }
       }
       for (const l of crEnAttente.liens) {
@@ -262,7 +263,8 @@ $("suivi")?.addEventListener("click", e => {
     const texte = ($("ca_tache").value || "").trim();
     if (!texte) return;
     const personnes = [...$("ca_pers").selectedOptions].map(o => o.value);
-    crEnAttente.taches.push({ texte, personnes });
+    const echeance = ($("ca_echeance").value || "");
+    crEnAttente.taches.push({ texte, personnes, echeance });
     return crAttenteRafraichir();
   }
   if (d.caDel !== undefined) {
@@ -280,12 +282,16 @@ $("suivi")?.addEventListener("change", e => {
   const t = e.target;
   if (t.matches("[data-tfait]")) {
     const f = crTacheDe(t.dataset.tfait); if (!f) return;
-    return enregistrerTache(f.r.id, f.t.id, { texte: f.t.texte, fait: t.checked, personnes: f.t.personnes.map(p => p.pid) });
+    return enregistrerTache(f.r.id, f.t.id, { texte: f.t.texte, fait: t.checked, personnes: f.t.personnes.map(p => p.pid), echeance: f.t.echeance || "" });
   }
   if (t.matches("[data-tp]")) {
     const f = crTacheDe(t.dataset.tp); if (!f) return;
     const pids = [...document.querySelectorAll('[data-tp="' + f.t.id + '"]:checked')].map(c => c.value);
-    return enregistrerTache(f.r.id, f.t.id, { texte: f.t.texte, fait: f.t.fait, personnes: pids });
+    return enregistrerTache(f.r.id, f.t.id, { texte: f.t.texte, fait: f.t.fait, personnes: pids, echeance: f.t.echeance || "" });
+  }
+  if (t.matches("[data-techeance]")) {
+    const f = crTacheDe(t.dataset.techeance); if (!f) return;
+    return enregistrerTache(f.r.id, f.t.id, { texte: f.t.texte, fait: f.t.fait, personnes: f.t.personnes.map(p => p.pid), echeance: t.value });
   }
   if (t.matches("[data-lt]")) return remplirChoixLien(t.closest(".crlform"));
   if (t.id === "ca_file" && t.files && t.files[0]) {

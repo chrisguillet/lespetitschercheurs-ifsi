@@ -1141,7 +1141,24 @@ if (function_exists('imagecreatetruecolor') && function_exists('imagejpeg')) {
     $petit = \Lpc\Fichiers::compresser($brut, 'image/jpeg', 300 * 1024);
     verifie('photos : image lourde ramenée à 300 Ko au plus', $petit !== null && strlen($petit['contenu']) <= 300 * 1024 && strlen($brut) > 300 * 1024);
 }
-verifie('CR : une personne hors groupe ne peut pas le lire ni le modifier', $err(appel('a4@ci.test', 'reunion_fichier_lire', ['id' => '00000000-0000-0000-0000-000000000000'])) !== null);
+// Tâche datée = jalon « tâche » du calendrier, qui suit la tâche.
+$t2 = appel('a1@ci.test', 'tache_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'data' => ['texte' => 'Relire le plan', 'fait' => false, 'personnes' => [$pidA2], 'echeance' => '2027-03-01']]);
+$tid2 = '';
+foreach ($crLe($t2, $crId)['taches'] ?? [] as $t) {
+    if (($t['texte'] ?? '') === 'Relire le plan') {
+        $tid2 = (string) $t['id'];
+    }
+}
+$jal2 = (string) valeur($pdo, 'SELECT id FROM jalons WHERE tache_id = ?', [$tid2]);
+verifie('calendrier : tâche datée devient un jalon « tâche » à la bonne date', $jal2 !== '' && valeur($pdo, 'SELECT type FROM jalons WHERE id = ?', [$jal2]) === 'tache' && valeur($pdo, 'SELECT echeance FROM jalons WHERE id = ?', [$jal2]) === '2027-03-01');
+verifie('calendrier : les personnes de la tâche sont celles du jalon', (int) valeur($pdo, 'SELECT COUNT(*) FROM jalons_personnes WHERE jalon_id = ?', [$jal2]) === 1);
+appel('a1@ci.test', 'tache_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'id' => $tid2, 'data' => ['texte' => 'Relire le plan', 'fait' => true, 'personnes' => [$pidA2], 'echeance' => '2027-03-01']]);
+verifie('calendrier : tâche faite, jalon fait', valeur($pdo, 'SELECT statut FROM jalons WHERE id = ?', [$jal2]) === 'fait');
+verifie('calendrier : un jalon issu d\'une tâche ne se modifie ni ne se supprime depuis le calendrier', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'id' => $jal2, 'data' => ['titre' => 'Autre', 'echeance' => '2027-03-02', 'statut' => 'a_faire']])) === 'forbidden' && $err(appel('a1@ci.test', 'jalon_delete', ['id' => $jal2])) === 'forbidden');
+verifie('calendrier : échéance invalide refusée', $err(appel('a1@ci.test', 'tache_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'id' => $tid2, 'data' => ['texte' => 'x', 'echeance' => '2027-02-30']])) === 'invalid');
+appel('a1@ci.test', 'tache_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'id' => $tid2, 'data' => ['texte' => 'Relire le plan', 'fait' => true, 'personnes' => [$pidA2], 'echeance' => '']]);
+verifie('calendrier : échéance retirée, jalon retiré', (int) valeur($pdo, 'SELECT COUNT(*) FROM jalons WHERE tache_id = ?', [$tid2]) === 0);
+verifie('CR : une personne hors groupe ne peut pas le lire ni le modifier',$err(appel('a4@ci.test', 'reunion_fichier_lire', ['id' => '00000000-0000-0000-0000-000000000000'])) !== null);
 verifie('pied : le texte saisi par le groupe remplace le pied par défaut',($enSurcharge['memoire']['pied'] ?? '') === 'Mon pied de page' && str_contains($piedSurcharge, 'Mon pied de page') && !str_contains($piedSurcharge, 'IFSI Vannes'));
 verifie('jalon : les personnes sont vues des autres membres', ($jalonPar(appel('a3@ci.test', 'list'), $jid)['personnes'][0]['pid'] ?? '') === $pidA2);
 $pdo->prepare('DELETE FROM membres WHERE groupe_id = ? AND utilisateur_id = ?')->execute([$alpha, $B['a2']]);
