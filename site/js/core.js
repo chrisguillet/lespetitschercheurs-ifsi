@@ -161,7 +161,7 @@ function reinitialiserEtat() {
   $("pending").textContent = ""; $("cmtcount").textContent = "";
   document.body.classList.remove("nogroup");
   $("nogroup").innerHTML = ""; $("nogroup").dataset.sig = ""; $("accueil").innerHTML = ""; $("accueil").classList.add("hidden");
-  $("sub").textContent = ""; $("tagline").classList.remove("hidden");
+  $("sub").textContent = ""; $("sub").dataset.sig = ""; $("tagline").classList.remove("hidden");
 }
 
 function logout() {

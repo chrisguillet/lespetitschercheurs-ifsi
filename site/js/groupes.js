@@ -28,31 +28,31 @@ function renderCtx() {
       : "Aucun groupe ne vous est affecté pour le moment : contactez l’administrateur."; }
   }
   msg.classList.toggle("hidden", !(me && !g));
-  // Établissement · promo · groupe : à droite, sous le menu du compte (qui donne déjà le nom) ; le slogan ne reste qu'avant la connexion.
-  $("sub").textContent = g ? `${g.etablissement} · ${g.promo} · ${g.nom}` : "";
+  // Ligne à droite, sous le menu du compte (qui donne déjà le nom) : le groupe courant ; avec plusieurs groupes, c'est directement le sélecteur.
+  majLigneGroupe(g);
   $("tagline").classList.toggle("hidden", !!me);
-  if (!g || tab === "home" || tab === "dash" || (tab === "admin" && typeof adminComplet === "function" && adminComplet())) { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
+  // Bandeau sous les onglets : seulement le choix « mon groupe / toute la promo » (l'administrateur voit toujours toute la promo, il n'en a pas besoin).
+  const avecVue = !["mine", "suivi", "glossaire", "admin", "home", "dash"].includes(tab) && !isSuper();   // groupe / promo n'a de sens que pour tableau, commentaires, biblio, synthèse
+  if (!g || !avecVue) { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
   bar.classList.remove("hidden");
-  const avecVue = !["mine", "suivi", "glossaire", "admin", "home", "dash"].includes(tab);   // groupe / promo n'a de sens que pour tableau, commentaires, biblio, synthèse
-  const sig = JSON.stringify([avecVue, ctx.gid, ctx.vue, groupes.map(x => [x.id, x.nom, x.promo, x.etablissement, nonLusDe(x, "groupe")]), nonLusDe(g, "promo"), votesAFaire(g), votes.filter(v => v.groupe_id === g.id).length]);
+  const sig = JSON.stringify([ctx.gid, ctx.vue, nonLusDe(g, "groupe"), nonLusDe(g, "promo")]);
   if (sig === ctxSig && bar.innerHTML) return;
   ctxSig = sig;
-  const nvG = nonLusDe(g, "groupe"), nvP = nonLusDe(g, "promo"), vf = votesAFaire(g);
+  const nvG = nonLusDe(g, "groupe"), nvP = nonLusDe(g, "promo");
   const pastille = n => n ? ` <span class="count">${n}</span>` : "";
-  // Administrateur général : pas de « mon groupe ». Sous Lectures il choisit une promo (toute la promo est montrée) ; sous Groupes, le groupe à consulter.
-  const parPromo = isSuper() && avecVue;
-  const promos = []; groupes.forEach(x => { if (!promos.some(p => memePromo(p, x))) promos.push(x); });
-  const choix = parPromo
-    ? (promos.length > 1
-      ? `<label class="meta" for="ctxg" style="margin:0">Promo</label><select id="ctxg" aria-label="Choisir la promo">${promos.map(x => `<option value="${esc(x.id)}" ${memePromo(x, g) ? "selected" : ""}>${esc(x.etablissement)} · ${esc(x.promo)}</option>`).join("")}</select>`
-      : `<span class="meta">${esc(g.etablissement)} · ${esc(g.promo)}</span>`)
-    : groupes.length > 1
-    ? `<label class="meta" for="ctxg" style="margin:0">Groupe</label><select id="ctxg" aria-label="Choisir le groupe">${groupes.map(x => { const n = nonLusDe(x, "groupe"); return `<option value="${esc(x.id)}" ${x.id === g.id ? "selected" : ""}>${esc(x.etablissement)} · ${esc(x.promo)} — ${esc(x.nom)}${n ? " (" + n + " non lu" + (n > 1 ? "s" : "") + ")" : ""}</option>`; }).join("")}</select>`
-    : `<span class="meta">${esc(g.nom)}</span>`;
-  bar.innerHTML = `${choix}
-    ${avecVue && !isSuper() ? `<span class="seg"><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "" : "on"}" id="vg" aria-pressed="${ctx.vue !== "promo"}">👥 Mon groupe${ctx.vue === "promo" ? pastille(nvG) : ""}</button><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "on" : ""}" id="vp" aria-pressed="${ctx.vue === "promo"}">🌐 Toute la promo${ctx.vue === "promo" ? "" : pastille(nvP)}</button></span>` : ""}`;
-  if ($("ctxg")) $("ctxg").onchange = e => changerContexte({ gid: e.target.value });
-  if ($("vg")) { $("vg").onclick = () => changerContexte({ vue: "groupe" }); $("vp").onclick = () => changerContexte({ vue: "promo" }); }
+  bar.innerHTML = `<span class="seg"><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "" : "on"}" id="vg" aria-pressed="${ctx.vue !== "promo"}">👥 Mon groupe${ctx.vue === "promo" ? pastille(nvG) : ""}</button><button type="button" class="btn sm sec ${ctx.vue === "promo" ? "on" : ""}" id="vp" aria-pressed="${ctx.vue === "promo"}">🌐 Toute la promo${ctx.vue === "promo" ? "" : pastille(nvP)}</button></span>`;
+  $("vg").onclick = () => changerContexte({ vue: "groupe" }); $("vp").onclick = () => changerContexte({ vue: "promo" });
+}
+
+// Établissement · promo · groupe : texte simple, ou liste déroulante quand la personne a plusieurs groupes (administrateurs, formateurs…). Reconstruite seulement si elle change.
+function majLigneGroupe(g) {
+  const sub = $("sub");
+  const sig = JSON.stringify([g && g.id, groupes.map(x => [x.id, x.nom, x.promo, x.etablissement, nonLusDe(x, "groupe")])]);
+  if (sub.dataset.sig === sig) return;
+  sub.dataset.sig = sig;
+  if (!g || groupes.length < 2) { sub.textContent = g ? `${g.etablissement} · ${g.promo} · ${g.nom}` : ""; return; }
+  sub.innerHTML = `<select id="ctxg" aria-label="Choisir le groupe">${groupes.map(x => { const n = nonLusDe(x, "groupe"); return `<option value="${esc(x.id)}" ${x.id === g.id ? "selected" : ""}>${esc(x.etablissement)} · ${esc(x.promo)} · ${esc(x.nom)}${n ? " (" + n + " non lu" + (n > 1 ? "s" : "") + ")" : ""}</option>`; }).join("")}</select>`;
+  $("ctxg").onchange = e => changerContexte({ gid: e.target.value });
 }
 
 function changerContexte(c) {

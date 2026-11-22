@@ -908,3 +908,8 @@ header h1{font-size:24px}
 .jeuvign{aspect-ratio:11 / 5}
 .jeuvign canvas{object-position:50% 80%}
 .jeuicone{font-size:30px}
+
+/* Sélecteur de groupe dans l'en-tête, sous le menu du compte */
+header #sub select{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.38);border-radius:10px;padding:5px 28px 5px 10px;font:inherit;font-size:13px;width:auto;max-width:100%;cursor:pointer;backdrop-filter:blur(4px)}
+header #sub select:hover{background:rgba(255,255,255,.26);border-color:#fff}
+header #sub select option{color:#18203a;background:#fff}
