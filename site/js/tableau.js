@@ -165,7 +165,7 @@ function groupesArticles(l) {
 
 // Résumé d'un document : qui a fait une fiche, et où elle en est.
 function resumeFiches(g) {
-  return g.map(x => `<span class="badge ${stInfo(x.statut).cl}" style="--c:${esc(x.couleur)}" title="${esc(stInfo(x.statut).long + (lieuDe(x) ? " · " + lieuDe(x) : ""))}">${esc(x.etudiant)} ${stInfo(x.statut).ico}</span>`).join(" ");
+  return g.map(x => `<span class="badge ${stInfo(x.statut).cl}" style="--c:${esc(x.couleur)}" title="${esc(stInfo(x.statut).long + (lieuDe(x) ? " · " + lieuDe(x) : ""))}">${esc(x.etudiant)}</span>`).join(" ");
 }
 function badgesArticle(g) {
   const nc = g.reduce((n, x) => n + comments.filter(c => c.lecture_id === x.id).length, 0);
