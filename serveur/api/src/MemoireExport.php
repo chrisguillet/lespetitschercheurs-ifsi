@@ -55,6 +55,31 @@ final class MemoireExport
     }
 
     /**
+     * Entrées du sommaire : titres de chapitre (niveau 1) et sous-titres (niveau 2), sans notes ni marques de mise en forme.
+     * @param list<array{type:string,texte:string}> $blocs
+     * @return list<array{0:int,1:string}>
+     */
+    public static function sommaire(array $blocs): array
+    {
+        $out = [];
+        foreach ($blocs as $b) {
+            $niv = $b['type'] === 'titre1' ? 1 : ($b['type'] === 'titre2' ? 2 : 0);
+            if ($niv === 0) {
+                continue;
+            }
+            $t = '';
+            foreach (self::morceaux($b['texte']) as [$k, $v]) {
+                if ($k === 't') {
+                    $t .= $v;
+                }
+            }
+            $t = trim((string) preg_replace('/\s+/u', ' ', str_replace(['**', '*'], '', $t)));
+            $out[] = [$niv, $t !== '' ? $t : '(sans titre)'];
+        }
+        return $out;
+    }
+
+    /**
      * Découpe un texte saisi en morceaux : notes de bas de page ^[texte] et texte ordinaire.
      * @return list<array{0:string,1:string}> ['n', texte de la note] ou ['t', texte]
      */
@@ -137,7 +162,21 @@ final class MemoireExport
         $couv .= self::pDocx('Couverture', [['Date : ' . $entete['date'], false, false]], 'left');
         $couv .= '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 
-        $corps = '';
+        // Sommaire : champ TOC de Word, prérempli avec les titres (les numéros de page apparaissent après « Mettre à jour le champ »).
+        $sommaire = self::sommaire($blocs);
+        $sommXml = '';
+        if ($sommaire !== []) {
+            $sommXml = self::pDocxXml('Normal', self::runsDocx([['Sommaire', true, false]]), 'center');
+            $sommXml .= '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \o "1-2" \h \z \u </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r></w:p>';
+            $dernier = array_key_last($sommaire);
+            foreach ($sommaire as $k => [$niv, $t]) {
+                $sommXml .= '<w:p><w:pPr><w:pStyle w:val="TM' . $niv . '"/></w:pPr><w:r><w:t xml:space="preserve">' . self::x($t) . '</w:t></w:r>'
+                    . ($k === $dernier ? '<w:r><w:fldChar w:fldCharType="end"/></w:r>' : '') . '</w:p>';
+            }
+            $sommXml .= '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+        }
+
+        $corps = $sommXml;
         $notes = [];
         foreach ($blocs as $b) {
             $runs = self::rDocx($b['texte'], $notes);
@@ -180,6 +219,8 @@ final class MemoireExport
             . '<w:style w:type="paragraph" w:styleId="Pied"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:line="240" w:lineRule="auto" w:after="0"/></w:pPr><w:rPr><w:sz w:val="18"/></w:rPr></w:style>'
             . '<w:style w:type="paragraph" w:styleId="Note"><w:name w:val="footnote text"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="60" w:line="240" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr><w:rPr><w:sz w:val="20"/></w:rPr></w:style>'
             . '<w:style w:type="character" w:styleId="NoteRef"><w:name w:val="footnote reference"/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>'
+            . '<w:style w:type="paragraph" w:styleId="TM1"><w:name w:val="toc 1"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="80" w:line="276" w:lineRule="auto"/></w:pPr></w:style>'
+            . '<w:style w:type="paragraph" w:styleId="TM2"><w:name w:val="toc 2"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="60" w:line="276" w:lineRule="auto"/><w:ind w:left="567"/></w:pPr></w:style>'
             . '</w:styles>';
         $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             . '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
@@ -267,7 +308,17 @@ final class MemoireExport
             . self::pOdt('CouvGauche', [['Référent pédagogique : ' . $entete['referent'], false, false]])
             . self::pOdt('CouvGauche', [['Date : ' . $entete['date'], false, false]])
             . '<text:p text:style-name="Saut"/>';
-        $corps = '';
+        // Sommaire : table des matières OpenDocument, préremplie avec les titres (à actualiser dans le logiciel pour les numéros de page).
+        $somXml = '';
+        $sommaire = self::sommaire($blocs);
+        if ($sommaire !== []) {
+            $somXml = '<text:table-of-content text:name="Sommaire" text:protected="true"><text:table-of-content-source text:outline-level="2">'
+                . '<text:index-title-template text:style-name="SommaireTitre">Sommaire</text:index-title-template></text:table-of-content-source>'
+                . '<text:index-body><text:index-title text:name="Sommaire"><text:p text:style-name="SommaireTitre">Sommaire</text:p></text:index-title>'
+                . implode('', array_map(static fn (array $e): string => '<text:p text:style-name="Som' . $e[0] . '">' . self::x($e[1]) . '</text:p>', $sommaire))
+                . '</text:index-body></text:table-of-content><text:p text:style-name="SautSimple"/>';
+        }
+        $corps = $somXml;
         $notes = [];
         foreach ($blocs as $b) {
             $runs = self::rOdt($b['texte'], $notes);
@@ -293,8 +344,8 @@ final class MemoireExport
             . '<office:styles>'
             . '<style:default-style style:family="paragraph"><style:paragraph-properties fo:line-height="150%" fo:text-align="justify"/><style:text-properties style:font-name="Times New Roman" fo:font-size="12pt" fo:color="#000000" fo:language="fr" fo:country="FR"/></style:default-style>'
             . '<style:style style:name="Corps" style:family="paragraph" style:display-name="Corps de texte"><style:paragraph-properties fo:text-indent="1.25cm" fo:margin-bottom="0.2cm"/></style:style>'
-            . '<style:style style:name="Titre1" style:family="paragraph" style:display-name="Titre 1"><style:paragraph-properties fo:text-align="start" fo:margin-top="0.6cm" fo:margin-bottom="0.3cm" fo:keep-with-next="always"/><style:text-properties fo:font-size="16pt" fo:font-weight="bold"/></style:style>'
-            . '<style:style style:name="Titre2" style:family="paragraph" style:display-name="Titre 2"><style:paragraph-properties fo:text-align="start" fo:margin-top="0.4cm" fo:margin-bottom="0.2cm" fo:keep-with-next="always"/><style:text-properties fo:font-size="14pt" fo:font-weight="bold"/></style:style>'
+            . '<style:style style:name="Titre1" style:family="paragraph" style:display-name="Titre 1" style:default-outline-level="1"><style:paragraph-properties fo:text-align="start" fo:margin-top="0.6cm" fo:margin-bottom="0.3cm" fo:keep-with-next="always"/><style:text-properties fo:font-size="16pt" fo:font-weight="bold"/></style:style>'
+            . '<style:style style:name="Titre2" style:family="paragraph" style:display-name="Titre 2" style:default-outline-level="2"><style:paragraph-properties fo:text-align="start" fo:margin-top="0.4cm" fo:margin-bottom="0.2cm" fo:keep-with-next="always"/><style:text-properties fo:font-size="14pt" fo:font-weight="bold"/></style:style>'
             . '<style:style style:name="Citation" style:family="paragraph"><style:paragraph-properties fo:margin-left="1.5cm" fo:margin-right="1.5cm"/></style:style>'
             . '<style:style style:name="Reference" style:family="paragraph"><style:paragraph-properties fo:margin-left="1.25cm" fo:text-indent="-1.25cm"/></style:style>'
             . '<style:style style:name="Note" style:family="paragraph" style:display-name="Note"><style:paragraph-properties fo:text-align="justify" fo:line-height="100%" fo:margin-bottom="0.1cm"/><style:text-properties fo:font-size="10pt"/></style:style>'
@@ -302,6 +353,10 @@ final class MemoireExport
             . '<style:style style:name="CouvGras" style:family="paragraph"><style:paragraph-properties fo:text-align="center"/><style:text-properties fo:font-size="14pt" fo:font-weight="bold"/></style:style>'
             . '<style:style style:name="CouvGauche" style:family="paragraph"><style:paragraph-properties fo:text-align="start"/></style:style>'
             . '<style:style style:name="CouvDebut" style:family="paragraph" style:master-page-name="Couverture"><style:paragraph-properties fo:text-align="center"/></style:style><style:style style:name="Saut" style:family="paragraph" style:master-page-name="Standard"><style:paragraph-properties fo:break-before="page"/></style:style>'
+            . '<style:style style:name="SommaireTitre" style:family="paragraph" style:display-name="Sommaire"><style:paragraph-properties fo:text-align="center" fo:margin-bottom="0.4cm"/><style:text-properties fo:font-size="16pt" fo:font-weight="bold"/></style:style>'
+            . '<style:style style:name="Som1" style:family="paragraph"><style:paragraph-properties fo:text-align="start" fo:margin-bottom="0.2cm"/></style:style>'
+            . '<style:style style:name="Som2" style:family="paragraph"><style:paragraph-properties fo:text-align="start" fo:margin-left="0.6cm" fo:margin-bottom="0.15cm"/></style:style>'
+            . '<style:style style:name="SautSimple" style:family="paragraph"><style:paragraph-properties fo:break-before="page"/></style:style>'
             . '<text:notes-configuration text:note-class="footnote" style:num-format="1" text:start-value="0" text:footnotes-position="page" text:start-numbering-at="document"/>'
             . '</office:styles><office:automatic-styles>'
             . '<style:page-layout style:name="PL1"><style:page-layout-properties fo:page-width="21cm" fo:page-height="29.7cm" fo:margin-top="2.5cm" fo:margin-bottom="3cm" fo:margin-left="3cm" fo:margin-right="2.5cm"/>'

@@ -5,7 +5,7 @@
 "use strict";
 /* ---------- Mémoire ---------- */
 
-const MEM = { gid: "", data: null, chargement: false, msg: "" };
+const MEM = { gid: "", data: null, chargement: false, msg: "", repli: new Set() };
 const MEM_TYPES = { titre1: "Titre de chapitre", titre2: "Sous-titre", paragraphe: "Paragraphe", citation: "Citation", reference: "Référence APA" };
 // Marges de la maquette, en cm : gauche (reliure), droite, haut, bas.
 const MEM_MARGES = { g: 3, d: 2.5, h: 2.5, b: 3 };
@@ -35,12 +35,44 @@ function memDepuisHtml(html) {
 
 function memSignature() { return JSON.stringify(MEM.data); }
 
+// Niveau d'un bloc de section : 1 pour un titre de chapitre, 2 pour un sous-titre, 0 pour le reste.
+const memNiveau = b => (b.type === "titre1" ? 1 : b.type === "titre2" ? 2 : 0);
+// Sections repliées : mémorisées par personne, par groupe (le stockage peut être indisponible : pas de mémorisation).
+function memChargerRepli() {
+  MEM.repli = new Set();
+  try { MEM.repli = new Set(JSON.parse(localStorage.getItem("mem_repli_" + MEM.gid) || "[]")); } catch (e) { /* ignoré */ }
+}
+function memEnregistrerRepli() {
+  try { localStorage.setItem("mem_repli_" + MEM.gid, JSON.stringify([...MEM.repli])); } catch (e) { /* ignoré */ }
+}
+// Blocs cachés parce qu'une section au-dessus est repliée : une section s'étend jusqu'au prochain titre de niveau égal ou supérieur.
+function memMasques(blocs) {
+  const masques = new Set();
+  let jusqua = 0;   // niveau de la section repliée qui cache les blocs suivants (0 = aucune)
+  blocs.forEach(b => {
+    const niv = memNiveau(b);
+    if (niv && jusqua && niv <= jusqua) jusqua = 0;
+    if (jusqua) { masques.add(b.id); return; }
+    if (niv && MEM.repli.has(b.id)) jusqua = niv;
+  });
+  return masques;
+}
+// Nombre de blocs que repli d'une section, à l'indice i, cache.
+function memPortee(blocs, i) {
+  const niv = memNiveau(blocs[i]);
+  if (!niv) return 0;
+  let j = i + 1;
+  while (j < blocs.length && (!memNiveau(blocs[j]) || memNiveau(blocs[j]) > niv)) j++;
+  return j - i - 1;
+}
+
 async function renderMemoire() {
   const box = $("memoirebox"); if (!box) return;
   const g = groupeCourant();
   if (!g) { box.innerHTML = '<div class="card empty">Rejoignez un groupe pour écrire son mémoire.</div>'; return; }
   if (MEM.gid !== g.id || !MEM.data) {
     MEM.gid = g.id;
+    memChargerRepli();
     box.innerHTML = '<div class="card empty">Chargement du mémoire…</div>';
     try { MEM.data = (await api("memoire_get", { groupe_id: g.id })).memoire; }
     catch (e) { if (e.code === "unauthorized") return sessionError(e); box.innerHTML = '<div class="card empty">Mémoire indisponible : ' + esc(e.message) + "</div>"; return; }
@@ -74,7 +106,8 @@ function memDessiner() {
         ${refs.length ? `<button type="button" class="btn sm sec" id="mem_refbtn">＋ Référence APA</button>` : ""}
         <button type="button" class="btn sm sec" data-mem-note title="Insère ^[ ] à la place du curseur, dans le bloc en cours">＋ Note de bas de page</button>
         <div id="mem_refs" class="hidden">${refs.map(i => `<button type="button" class="memref" data-mem-ref="${esc(i.id)}">${esc(i.titre)} <span class="meta">${esc(i.auteur || "")}</span></button>`).join("")}</div></div>` : '<div class="card meta">Lecture seule : seules les membres du groupe modifient le mémoire.</div>'}
-      <div class="memblocs">${m.blocs.length ? m.blocs.map((b, i) => memBlocHtml(b, i, ecrit)).join("") : '<div class="card empty">Le mémoire est vide. Commencez par un titre de chapitre.</div>'}</div>
+      ${m.blocs.some(b => memNiveau(b)) ? '<div class="tools"><span class="meta">Sections :</span> <button type="button" class="btn sm sec" data-mem-repli-tout="replier">Tout replier</button> <button type="button" class="btn sm sec" data-mem-repli-tout="deplier">Tout déplier</button></div>' : ""}
+      <div class="memblocs">${m.blocs.length ? (() => { const masques = memMasques(m.blocs); return m.blocs.map((b, i) => (masques.has(b.id) ? "" : memBlocHtml(b, i, ecrit, memPortee(m.blocs, i)))).join(""); })() : '<div class="card empty">Le mémoire est vide. Commencez par un titre de chapitre.</div>'}</div>
     </div>
     <div class="memcote">
       <div class="card"><h3 style="font-size:14px;margin:0 0 8px">Contrôle des normes</h3><div id="mem_controle">${memControleHtml()}</div></div>
@@ -82,10 +115,12 @@ function memDessiner() {
     </div></div>`;
 }
 
-function memBlocHtml(b, i, ecrit) {
+function memBlocHtml(b, i, ecrit, portee) {
   const dis = ecrit ? "" : "disabled";
+  const replie = MEM.repli.has(b.id), section = memNiveau(b) > 0;
+  const bouton = section ? `<button type="button" class="btn sm sec" data-mem-repli="${esc(b.id)}" aria-expanded="${replie ? "false" : "true"}" title="Replier ou déplier cette section">${replie ? "▸" : "▾"}${replie && portee ? " " + portee + " bloc" + (portee > 1 ? "s" : "") : ""}</button> ` : "";
   return `<div class="card memblc" data-bid="${esc(b.id)}">
-    <div class="memtete"><select data-mem-type ${dis} aria-label="Type du bloc">${Object.keys(MEM_TYPES).map(k => `<option value="${k}" ${k === b.type ? "selected" : ""}>${esc(MEM_TYPES[k])}</option>`).join("")}</select>
+    <div class="memtete">${bouton}<select data-mem-type ${dis} aria-label="Type du bloc">${Object.keys(MEM_TYPES).map(k => `<option value="${k}" ${k === b.type ? "selected" : ""}>${esc(MEM_TYPES[k])}</option>`).join("")}</select>
       <span class="meta">${esc(b.par)}${b.par ? " · " : ""}${esc(fmtDT(b.modifie_le))}</span>
       ${ecrit ? `<span class="memops"><button type="button" class="btn sm sec" data-mem-mv="-1" aria-label="Monter" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" class="btn sm sec" data-mem-mv="1" aria-label="Descendre">↓</button><button type="button" class="btn sm sec del" data-mem-del aria-label="Supprimer">🗑</button></span>` : ""}</div>
     <textarea class="memtxt memtxt-${esc(b.type)}" rows="${b.type === "paragraphe" || b.type === "citation" || b.type === "reference" ? 4 : 1}" ${dis} aria-label="Texte du bloc">${esc(b.texte)}</textarea>
@@ -131,8 +166,20 @@ function memApercuHtml() {
   }).join("");
   // Notes de bas de page (corps 10) au bas de la feuille, numérotées comme les appels.
   const liste = notes.length ? `<ol class="mnotes" style="font-size:10pt;line-height:1.2;margin:18px 0 0;padding:6px 0 0 18px;border-top:1px solid #000;list-style:decimal">${notes.map(n => `<li>${memInline(n)}</li>`).join("")}</ol>` : "";
+  // Sommaire automatique : titres de chapitre et sous-titres, dans l'ordre (sans numéros de page dans l'aperçu).
+  const som = memSommaire(m.blocs);
+  const sommaire = som.length ? `<section class="memsommaire" style="margin-bottom:24px"><div class="mh1">Sommaire</div>${som.map(s => `<div style="padding-left:${(s.niveau - 1) * 18}px;margin:4px 0">${esc(s.texte)}</div>`).join("")}</section>` : "";
   // L'aperçu montre une seule feuille de contenu : la pagination exacte se fait à l'export.
-  return memCouvertureHtml() + `<section class="memcontenu">${corps || '<p class="meta">Le contenu apparaîtra ici.</p>'}${liste}${memPiedHtml(2)}</section>`;
+  return memCouvertureHtml() + sommaire + `<section class="memcontenu">${corps || '<p class="meta">Le contenu apparaîtra ici.</p>'}${liste}${memPiedHtml(2)}</section>`;
+}
+
+// Texte d'un bloc sans notes ni marques de mise en forme.
+function memTextePlain(texte) {
+  return memMorceaux(texte).filter(m => m.note === undefined).map(m => m.texte).join("").replace(/\*\*|\*/g, "").replace(/\s+/g, " ").trim();
+}
+// Entrées du sommaire : niveau (1 ou 2) et titre.
+function memSommaire(blocs) {
+  return blocs.filter(b => memNiveau(b)).map(b => ({ niveau: memNiveau(b), texte: memTextePlain(b.texte) || "(sans titre)" }));
 }
 
 // Contrôles automatiques : ce qui se vérifie sur le contenu. Les marges, la police et l’interligne sont fixés par la feuille d’aperçu.
@@ -237,6 +284,17 @@ $("memoirebox")?.addEventListener("mousedown", e => {
 $("memoirebox")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.hasAttribute("data-mem-note")) return memInsererNote();
+  if (b.hasAttribute("data-mem-repli")) {
+    const id = b.dataset.memRepli;
+    if (MEM.repli.has(id)) MEM.repli.delete(id); else MEM.repli.add(id);
+    memEnregistrerRepli();
+    return memDessiner();
+  }
+  if (b.dataset.memRepliTout) {
+    MEM.repli = new Set(b.dataset.memRepliTout === "replier" ? MEM.data.blocs.filter(x => memNiveau(x)).map(x => x.id) : []);
+    memEnregistrerRepli();
+    return memDessiner();
+  }
   if (b.id === "mem_refbtn") { $("mem_refs").classList.toggle("hidden"); return; }
   if (b.dataset.memExp) return b.dataset.memExp === "pdf" ? memPdf() : memExporter(b.dataset.memExp);
   if (b.dataset.memNew) return memStructure(() => api("memoire_bloc", { groupe_id: MEM.gid, data: { type: b.dataset.memNew, texte: "" } }));
@@ -370,6 +428,7 @@ function memPdf() {
       const notesLigne = l.filter(w => w.sup);
       const hN = notesLigne.reduce((s, w) => s + hauteurNote(w.note), 0);
       if (y + taille * ESP * PT > H - MB - espaceNotes(hNotesPage + hN)) saut();
+      if (i === 0 && opt.entree) opt.entree.page = doc.getNumberOfPages();   // page du titre, pour le sommaire
       const lh = taille * ESP * PT;
       notesLigne.forEach(w => notesPage.push({ num: w.t, texte: w.note }));
       hNotesPage += hN;
@@ -387,15 +446,36 @@ function memPdf() {
     y += opt.apres || 0;
   };
 
+  // Sommaire : ses pages sont réservées après la couverture (30 entrées par page) et remplies une fois le corps mis en page.
+  const som = memSommaire(m.blocs), pagesSom = Math.ceil(som.length / 30);
+  for (let k = 0; k < pagesSom; k++) doc.addPage();
+  const entrees = som.map(s => ({ ...s, page: 0 }));
+  let rang = 0;
   doc.addPage();
   (m.blocs || []).forEach(b => {
-    if (b.type === "titre1") paragraphe(b.texte, 16, true, { retrait: 0, premiere: 0, suite: 0, avant: 6, apres: 3, justifie: false });
-    else if (b.type === "titre2") paragraphe(b.texte, 14, true, { retrait: 0, premiere: 0, suite: 0, avant: 4, apres: 2, justifie: false });
+    const entree = memNiveau(b) ? entrees[rang++] : null;
+    if (b.type === "titre1") paragraphe(b.texte, 16, true, { retrait: 0, premiere: 0, suite: 0, avant: 6, apres: 3, justifie: false, entree });
+    else if (b.type === "titre2") paragraphe(b.texte, 14, true, { retrait: 0, premiere: 0, suite: 0, avant: 4, apres: 2, justifie: false, entree });
     else if (b.type === "citation") paragraphe(b.texte, 12, false, { retrait: 15, premiere: 0, suite: 0, justifie: true, apres: 2 });
     else if (b.type === "reference") paragraphe(b.texte, 12, false, { retrait: 0, premiere: 0, suite: 12.5, justifie: true, apres: 2 });
     else paragraphe(b.texte, 12, false, { retrait: 0, premiere: 12.5, suite: 0, justifie: true, apres: 2 });
   });
   dessinerNotes();
+
+  // Remplit le sommaire : titre sur chaque page, entrées avec pointillés et numéro de page.
+  for (let p = 0; p < pagesSom; p++) {
+    doc.setPage(2 + p); police(true, false); doc.setFontSize(16); doc.text("Sommaire", W / 2, MT, { align: "center" });
+  }
+  entrees.forEach((e, k) => {
+    doc.setPage(2 + Math.floor(k / 30));
+    const yy = MT + 14 + (k % 30) * 7, taille = e.niveau === 1 ? 12 : 11, x = ML + (e.niveau - 1) * 6;
+    police(e.niveau === 1, false); doc.setFontSize(taille);
+    const titre = doc.splitTextToSize(e.texte, LARG - 14 - (e.niveau - 1) * 6)[0];
+    const num = String(e.page), wT = doc.getTextWidth(titre), wN = doc.getTextWidth(num), point = doc.getTextWidth(".");
+    doc.text(titre, x, yy);
+    doc.text(num, W - MR, yy, { align: "right" });
+    for (let xx = x + wT + 2; xx < W - MR - wN - 2; xx += point) doc.text(".", xx, yy);
+  });
 
   // Pied de page sur toutes les pages sauf la couverture ; numéro de page = rang de la page (couverture = 1)
   const total = doc.getNumberOfPages();

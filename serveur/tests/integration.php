@@ -1085,6 +1085,10 @@ verifie('pied : par défaut, tiré de l\'établissement (pas de « GAVY »)', st
 verifie('pied : les auteurs saisis reviennent au client', ($enPied['memoire']['auteurs'] ?? '') === 'Dupont – Ana' && ($enPied['memoire']['etablissement'] ?? '') === 'IFSI Vannes');
 $enSurcharge = appel('a1@ci.test', 'memoire_entete', ['groupe_id' => $alpha, 'data' => ['titre' => 'Autonomie', 'ue' => 'UE 6.1', 'referent' => 'KH', 'auteurs' => 'Dupont – Ana', 'pied' => 'Mon pied de page', 'date_rendu' => '2027-01-15']]);
 $piedSurcharge = base64_decode((string) (appel('a1@ci.test', 'memoire_export', ['groupe_id' => $alpha, 'format' => 'odt'])['contenu'] ?? ''));
+$docxSom = base64_decode((string) (appel('a1@ci.test', 'memoire_export', ['groupe_id' => $alpha, 'format' => 'docx'])['contenu'] ?? ''));
+$odtSom = base64_decode((string) (appel('a1@ci.test', 'memoire_export', ['groupe_id' => $alpha, 'format' => 'odt'])['contenu'] ?? ''));
+verifie('sommaire : DOCX avec champ TOC prérempli, ODT avec table des matières', str_contains($docxSom, 'TOC \o') && str_contains($docxSom, 'Introduction') && str_contains($odtSom, 'text:table-of-content') && str_contains($odtSom, 'Introduction'));
+
 // ---------- Comptes rendus : tâches, liens, pièces jointes ----------
 $crLe = static fn (array $res, string $id): array => current(array_filter($res['reunions'] ?? [], static fn ($r) => ($r['id'] ?? '') === $id)) ?: [];
 $crRes = appel('a1@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'data' => ['date' => '2027-02-01', 'titre' => 'CR de test', 'vu' => 'Point d’étape']]);
