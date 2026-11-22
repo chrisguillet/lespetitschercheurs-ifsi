@@ -18,8 +18,10 @@ const lienHtml = (i, compact) => urlSure(i.lien) && compact
   ? `<a class="lien" href="${esc(urlSure(i.lien))}" target="_blank" rel="noopener noreferrer" title="${esc(urlSure(i.lien))}">🔗 Ouvrir le lien</a>` : "";
 
 // Dans la vue promo on indique le groupe d'origine ; dans la vue du groupe, une fiche partagée porte une pastille.
+// Établissement · promo · groupe d'une fiche : en infobulle (le nom du groupe n'est plus répété dans le tableau replié).
+const lieuDe = i => [i.etablissement, i.promo, i.groupe].filter(Boolean).join(" · ");
 const badgeGroupe = i => ctx.vue === "promo"
-  ? `<span class="badge grp" title="Groupe de ${esc(i.etudiant)}">👥 ${esc(i.groupe)}</span>`
+  ? `<span class="badge grp" title="${esc("Groupe de " + i.etudiant + (lieuDe(i) ? " · " + lieuDe(i) : ""))}">👥 ${esc(i.groupe)}</span>`
   : i.portee === "promo" ? '<span class="badge share" title="Cette fiche est aussi visible de toute la promo">🌐 Partagée</span>' : "";
 
 const anneeDe = i => (/^(\d{4})/.exec(i.parution || "") || [])[1] || "";
@@ -163,7 +165,7 @@ function groupesArticles(l) {
 
 // Résumé d'un document : qui a fait une fiche, et où elle en est.
 function resumeFiches(g) {
-  return g.map(x => `<span class="badge ${stInfo(x.statut).cl}" style="--c:${esc(x.couleur)}" title="${stInfo(x.statut).long}">${esc(x.etudiant)} ${stInfo(x.statut).ico}${x.groupe ? ` <span class="grpn">· ${esc(x.groupe)}</span>` : ""}</span>`).join(" ");
+  return g.map(x => `<span class="badge ${stInfo(x.statut).cl}" style="--c:${esc(x.couleur)}" title="${esc(stInfo(x.statut).long + (lieuDe(x) ? " · " + lieuDe(x) : ""))}">${esc(x.etudiant)} ${stInfo(x.statut).ico}</span>`).join(" ");
 }
 function badgesArticle(g) {
   const nc = g.reduce((n, x) => n + comments.filter(c => c.lecture_id === x.id).length, 0);

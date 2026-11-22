@@ -28,7 +28,7 @@ function fichesRow(g) {
 function cells(i) {
   const c = esc(i.couleur), k = cleArt(i);
   const prog = stInfo(i.statut).cl;
-  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="fi ${prog} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
+  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="fi ${prog} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c} title="${esc(lieuDe(i))}"">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
    <div class="meta">${i.modifie_par ? `Modifiée par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))} · ` : ""}saisie le ${esc(fmtD(i.ajoute))}</div>
    <div class="rowacts">${actionsHtml(i)}</div>${motsCle(i)}</td>
    <td>${clampTxt(i.id, i.concepts)}</td><td>${clampTxt(i.id, i.objet)}</td><td>${clampTxt(i.id, i.opinion)}</td>
@@ -65,7 +65,7 @@ function cardHtml(i) {
   const prog = stInfo(i.statut).cl;
   const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b>${clampTxt(i.id, v)}</div>` : "";
   return `<article class="cardc fiche ${prog} ${openRows.has(i.id) ? "open" : ""}" data-id="${esc(i.id)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" style="--c:${c}">
-   <div><span class="badge" style="--c:${c}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}</div>
+   <div><span class="badge" style="--c:${c} title="${esc(lieuDe(i))}"">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}</div>
    <h3><span class="chev" aria-hidden="true"></span>Fiche de lecture de ${esc(i.etudiant)}</h3>
    ${kwLang !== "en" && motsListe(i.mots).length ? `<div class="sect"><b>Mots-clés</b><div class="chipsc">${chips(i.mots)}</div></div>` : ""}${kwLang !== "fr" && motsListe(i.kw).length ? `<div class="sect"><b>Keywords (EN)</b><div class="chipsc">${chips(i.kw)}</div></div>` : ""}
    ${sect("Concepts en sciences infirmières", i.concepts)}${sect("Objet / sujet principal", i.objet)}${sect("Opinion de l’auteur", i.opinion)}${sect("Controverse", i.controverse)}${sect("Libre", i.libre)}
