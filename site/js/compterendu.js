@@ -20,8 +20,32 @@ function crPage(r) {
     ${sect("Ce qui a été vu", r.vu)}${sect("Ce qui est attendu", r.attendu)}${crBlocSuite(r)}
     ${[r.vu, r.attendu, r.suite].some(v => String(v || "").trim()) || (r.taches || []).length ? "" : '<div class="meta">Ce compte rendu est vide.</div>'}
     <footer class="crpied">Saisi par ${esc(r.par || "—")}${r.modifie_par ? ` · modifié par ${esc(r.modifie_par)}` : ""} · édité le ${esc(fmtD(new Date().toISOString()))}</footer>
-  </article>`;
+  </article>${crAnnexes(r)}`;
 }
+
+// ---------- Annexes : les pièces jointes, à la suite du compte rendu (images affichées, PDF signalés) ----------
+const CR_IMG = new Map();   // id de la pièce jointe → data URL de l'image (chargée une fois)
+const crEstImage = f => /^image\//.test(f.type || "");
+
+function crAnnexes(r) {
+  const f = r.fichiers || []; if (!f.length) return "";
+  return `<article class="crpage crannexes"><div class="crhead"><h2>Annexes</h2></div>
+    ${f.map((x, i) => `<figure class="crannexe"><figcaption><b>Annexe ${i + 1}</b> · ${esc(x.nom)}</figcaption>
+      ${!crEstImage(x) ? '<div class="meta">Document PDF : à ouvrir depuis le compte rendu (📎).</div>'
+        : CR_IMG.has(x.id) ? `<img src="${CR_IMG.get(x.id)}" alt="${esc(x.nom)}">` : '<div class="meta">Chargement de l’image…</div>'}</figure>`).join("")}</article>`;
+}
+
+// Charge les images des pièces jointes qui ne le sont pas encore ; renvoie true si au moins une a été chargée.
+async function crChargerImages(r) {
+  const manquantes = (r.fichiers || []).filter(x => crEstImage(x) && !CR_IMG.has(x.id));
+  for (const x of manquantes) {
+    try { const d = await api("reunion_fichier_lire", { id: x.id }); CR_IMG.set(x.id, "data:" + d.type + ";base64," + d.data); }
+    catch (e) { if (e.code === "unauthorized") { sessionError(e); return false; } }
+  }
+  return manquantes.length > 0;
+}
+
+const crDimensions = src => new Promise(ok => { const i = new Image(); i.onload = () => ok([i.naturalWidth, i.naturalHeight]); i.onerror = () => ok(null); i.src = src; });
 
 // Étapes pour la suite (tâches, personnes, liens par tâche), liens du compte rendu et pièces jointes, pour l'aperçu et l'impression.
 function crBlocSuite(r) {
@@ -30,7 +54,7 @@ function crBlocSuite(r) {
   const taches = t.map(x => `<li>${x.fait ? "☑" : "☐"} ${esc(x.texte)}${x.personnes.length ? " — " + esc(x.personnes.map(p => p.prenom).join(", ")) : ""}
     ${x.liens.map(lien => `<div class="crlien">↳ ${esc(lien.libelle)} : ${esc(lien.description)}</div>`).join("")}</li>`).join("");
   const liens = l.map(lien => `<li>${esc(lien.libelle)} : ${esc(lien.description)}</li>`).join("");
-  const pj = f.map(x => esc(x.nom)).join(", ");
+  const pj = f.map((x, i) => esc(x.nom) + " (annexe " + (i + 1) + ")").join(", ");
   return `<section class="crsect"><h3>Étapes pour la suite</h3>
     ${t.length ? `<ul>${taches}</ul>` : ""}${String(r.suite || "").trim() ? `<div class="crtxt">${esc(r.suite)}</div>` : ""}
     ${liens ? `<h4>Liens</h4><ul>${liens}</ul>` : ""}${pj ? `<div class="crtxt"><b>Pièces jointes :</b> ${pj}</div>` : ""}</section>`;
@@ -44,6 +68,9 @@ function ouvrirCompteRendu(id, type = "reunion") {
   $("crbody").innerHTML = html;
   $("crmodal").classList.remove("hidden"); document.body.classList.add("modalopen");
   $("crprint").focus();
+  // Les images en annexe arrivent ensuite : l'aperçu est redessiné une fois chargées.
+  const r = type === "reunion" ? crReunion() : null;
+  if (r) crChargerImages(r).then(n => { if (n && CR.ouvert && CR.id === id) $("crbody").innerHTML = crPageCourante(); });
 }
 function fermerCompteRendu() {
   if (!CR.ouvert) return;
@@ -55,7 +82,8 @@ function fermerCompteRendu() {
 }
 
 // Impression : la page est copiée dans un élément à part, seul visible à l'impression (voir style.css).
-function imprimerCompteRendu() {
+async function imprimerCompteRendu() {
+  if (CR.type === "reunion" && crReunion()) await enCours("Chargement des annexes…", () => crChargerImages(crReunion()));
   const html = crPageCourante(); if (!html) return;
   let z = $("crprintzone");
   if (!z) { z = document.createElement("div"); z.id = "crprintzone"; document.body.appendChild(z); }
@@ -66,9 +94,10 @@ function imprimerCompteRendu() {
   window.print();
 }
 
-function pdfCompteRendu() {
+async function pdfCompteRendu() {
   const r = crReunion(); if (!r) return;
   if (!window.jspdf) { alert("Module PDF non chargé."); return; }
+  await enCours("Chargement des annexes…", () => crChargerImages(r));
   const g = crGroupe(r);
   const doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
   const larg = 180; let y = 18;
@@ -86,8 +115,21 @@ function pdfCompteRendu() {
     + x.liens.map(lien => "\n      ↳ " + lien.libelle + " : " + lien.description).join("")).join("\n");
   bloc("Étapes pour la suite", [taches, r.suite].filter(v => String(v || "").trim()).join("\n"));
   bloc("Liens", (r.liens || []).map(lien => "• " + lien.libelle + " : " + lien.description).join("\n"));
-  bloc("Pièces jointes", (r.fichiers || []).map(f => f.nom).join(", "));
+  bloc("Pièces jointes", (r.fichiers || []).map((f, i) => f.nom + " (annexe " + (i + 1) + ")").join(", "));
   y += 2; ecrire("Saisi par " + (r.par || "—") + (r.modifie_par ? " · modifié par " + r.modifie_par : "") + " · édité le " + fmtD(new Date().toISOString()), 8, false, 120);
+  // Annexes : une page par pièce jointe, l'image ajustée à la page (190 × 255 mm au plus).
+  const fichiers = r.fichiers || [];
+  for (let i = 0; i < fichiers.length; i++) {
+    const f = fichiers[i];
+    doc.addPage(); y = 18;
+    ecrire("Annexe " + (i + 1) + " · " + f.nom, 12, true); y += 2;
+    const src = CR_IMG.get(f.id);
+    const dim = src ? await crDimensions(src) : null;
+    if (!src || !dim) { ecrire(crEstImage(f) ? "Image indisponible." : "Document PDF joint au compte rendu, à ouvrir depuis l’outil.", 10, false, 90); continue; }
+    const k = Math.min(180 / dim[0], (280 - y) / dim[1]);
+    try { doc.addImage(src, /png/i.test(f.type) ? "PNG" : "JPEG", 15, y, dim[0] * k, dim[1] * k); }
+    catch (e) { ecrire("Image illisible.", 10, false, 90); }
+  }
   const nom = cleTitre(r.titre || "reunion").replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "reunion";
   doc.save("compte-rendu-" + (r.date || stamp()) + "-" + nom + ".pdf");
 }

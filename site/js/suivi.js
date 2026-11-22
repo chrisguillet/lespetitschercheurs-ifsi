@@ -141,8 +141,10 @@ function renderSuivi() {
   $("reunions").innerHTML = reu.length ? reu.map(x => `<article class="cardc reunion"><div class="tools" style="justify-content:space-between"><h3 style="margin:0">${esc(fmtD(x.date))}${x.titre ? " · " + esc(x.titre) : ""}</h3>
     <div><button type="button" class="btn sm sec" data-rcr="${esc(x.id)}" title="Aperçu avant impression ou enregistrement en PDF">📄 Aperçu / PDF</button>${x.modifiable ? ` <button type="button" class="btn sm sec" data-red="${esc(x.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-rdel="${esc(x.id)}">Supprimer</button>` : ""}</div></div>
     <div class="meta">${x.participants ? "Participants : " + esc(x.participants) + " · " : ""}saisi par ${esc(x.par)}${x.modifie_par ? ` · modifié par ${esc(x.modifie_par)}` : ""}</div>
-    ${sect("Ce qui a été vu", x.vu)}${sect("Ce qui est attendu", x.attendu)}${reunionDetailHtml(x)}</article>`).join("")
+    ${sect("Ce qui a été vu", x.vu)}${sect("Ce qui est attendu", x.attendu)}${suiviForm && suiviForm.type === "reunion" && suiviForm.id === x.id
+      ? '<div class="meta">✏️ Tâches, liens et pièces jointes : dans le formulaire de modification ci-dessus.</div>' : reunionDetailHtml(x)}</article>`).join("")
     : `<div class="empty">Aucun compte rendu pour l’instant.</div>`;
+  if (suiviForm && suiviForm.type === "reunion") crAttenteRafraichir();
 }
 
 function ouvrirSuiviForm(type, id) {
@@ -184,14 +186,19 @@ function ouvrirSuiviForm(type, id) {
       <div id="cr_attente"></div>
       <div class="savebar"><div id="rerr" class="err" role="alert"></div><button class="btn" id="rsave" type="button">Enregistrer le compte rendu</button> <button class="btn sec" id="rcancel" type="button">Annuler</button></div></div>`;
     crAttenteReinit(id);
-    crAttenteRafraichir();
+    crDetailSignature = "";
+    if (id) renderSuivi(); else crAttenteRafraichir();   // en modification, le détail passe de la fiche au formulaire
     $("rsave").onclick = () => enregistrerCompteRendu(id, g.id, "rerr");
     $("rcancel").onclick = () => fermerSuiviForm();
     $("r_vu").focus();
   }
 }
 
-function fermerSuiviForm() { suiviForm = null; $("jalonform").innerHTML = ""; $("reunionform").innerHTML = ""; }
+function fermerSuiviForm() {
+  const etaitModif = suiviForm && suiviForm.type === "reunion" && suiviForm.id;
+  suiviForm = null; $("jalonform").innerHTML = ""; $("reunionform").innerHTML = "";
+  if (etaitModif) renderSuivi();   // le détail revient sur la fiche du compte rendu
+}
 
 async function enregistrerSuivi(type, gid, id, data, errId) {
   try {

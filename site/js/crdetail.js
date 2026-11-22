@@ -232,8 +232,20 @@ async function validerTacheForm(form) {
 }
 
 // Zone « Étapes, liens et pièces jointes » du formulaire de compte rendu.
+// En modification d'un compte rendu existant : ses tâches, liens et pièces jointes, modifiables aussitôt (comme sur sa fiche).
+// La zone n'est redessinée que si ces éléments ont changé, pour ne pas fermer un formulaire en cours de saisie.
+let crDetailSignature = "";
 function crAttenteRafraichir() {
   const z = $("cr_attente"); if (!z) return;
+  const enModif = suiviForm && suiviForm.type === "reunion" && suiviForm.id ? reunionsAll.find(r => r.id === suiviForm.id) : null;
+  if (enModif) {
+    const sig = JSON.stringify([enModif.taches, enModif.liens, enModif.fichiers, enModif.suite, enModif.modifiable]);
+    if (sig === crDetailSignature && z.firstChild) return;
+    crDetailSignature = sig;
+    z.innerHTML = reunionDetailHtml(enModif);
+    return;
+  }
+  crDetailSignature = "";
   const m = crEnAttente, membres = (groupeCourant() || {}).membres || [];
   const retrait = cle => `<button type="button" class="btn sm sec del" data-ca-del="${cle}" aria-label="Retirer">✕</button>`;
   z.innerHTML = `<div class="sect"><b>Étapes pour la suite</b> <span class="meta">(facultatif, ajoutées au compte rendu à l’enregistrement)</span>
