@@ -160,22 +160,22 @@ final class Memoire
     /** Nom de fichier normalisé de la maquette : NOM.Prénom_UE_Titre_AAAAMMJJ, sans espaces. */
     public static function nomFichier(string $nom, string $prenom, string $ue, string $titre, string $date, string $ext): string
     {
-        $u = preg_match('/UEs*(d+(?:.d+)?)/i', $ue, $m) === 1 ? 'UE' . $m[1] : (trim($ue) === '' ? 'UE' : trim($ue));
-        $nettoie = static fn (string $s): string => trim((string) preg_replace('/[^p{L}p{N}]+/u', '-', $s), '-');
+        $u = preg_match('/UE\s*(\d+(?:\.\d+)?)/i', $ue, $m) === 1 ? 'UE' . $m[1] : (trim($ue) === '' ? 'UE' : trim($ue));
+        $nettoie = static fn (string $s): string => trim((string) preg_replace('/[^\p{L}\p{N}]+/u', '-', $s), '-');
         $t = $nettoie($titre);
-        $jour = preg_match('/^d{4}-d{2}-d{2}$/', $date) === 1 ? str_replace('-', '', $date) : gmdate('Ymd');
+        $jour = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? str_replace('-', '', $date) : gmdate('Ymd');
         return $nettoie(mb_strtoupper($nom)) . '.' . $nettoie($prenom) . '_' . $nettoie($u) . '_' . substr($t, 0, 60) . '_' . $jour . '.' . $ext;
     }
 
-    /** Exporte le mémoire en DOCX ou ODT, aux normes de la maquette.  array{nom:string,type:string,contenu:string} */
+    /** Exporte le mémoire en DOCX ou ODT, aux normes de la maquette. @return array{nom:string,type:string,contenu:string} */
     public static function exporter(Contexte $c, string $gid, string $format): array
     {
         self::groupeVisible($c, $gid);
         if (!in_array($format, ['docx', 'odt'], true)) {
-            throw new Erreur('invalid', 'Format d'export inconnu');
+            throw new Erreur('invalid', 'Format d’export inconnu');
         }
         $pdo = $c->db->principale();
-        $st = $pdo->prepare('SELECT m.titre, m.ue, m.referent, m.auteurs, m.date_rendu, g.promo_id, p.nom AS promo FROM groupes g JOIN promos p ON p.id = g.promo_id LEFT JOIN memoires m ON m.groupe_id = g.id WHERE g.id = ?');
+        $st = $pdo->prepare('SELECT m.titre, m.ue, m.referent, m.auteurs, m.date_rendu, p.nom AS promo FROM groupes g JOIN promos p ON p.id = g.promo_id LEFT JOIN memoires m ON m.groupe_id = g.id WHERE g.id = ?');
         $st->execute([$gid]);
         $en = $st->fetch();
         if ($en === false) {
@@ -183,19 +183,29 @@ final class Memoire
         }
         $st = $pdo->prepare('SELECT type, texte FROM memoire_blocs WHERE groupe_id = ? ORDER BY ordre, id');
         $st->execute([$gid]);
-        $blocs = array_map(static fn (array $r): array => ['type' => (string) $r['type'], 'texte' => (string) ($r['texte'] ?? '')], $st->fetchAll());
+        $blocs = [];
+        foreach ($st->fetchAll() as $r) {
+            $blocs[] = ['type' => (string) $r['type'], 'texte' => (string) ($r['texte'] ?? '')];
+        }
         $date = (string) ($en['date_rendu'] ?? '');
         $dateAff = $date !== '' ? substr($date, 8, 2) . '/' . substr($date, 5, 2) . '/' . substr($date, 0, 4) : '';
-        $annees = preg_match('/(d{2})s*-s*(d{2})/', (string) $en['promo'], $pm) === 1 ? 'PROMOTION 20' . $pm[1] . '-20' . $pm[2] : strtoupper((string) $en['promo']);
+        $annees = preg_match('/(\d{2})\s*-\s*(\d{2})/', (string) $en['promo'], $pm) === 1
+            ? 'PROMOTION 20' . $pm[1] . '-20' . $pm[2] : strtoupper((string) $en['promo']);
         $auteurs = (string) ($en['auteurs'] ?? '');
+        $ue = (string) ($en['ue'] ?? '');
+        $titre = (string) ($en['titre'] ?? '');
         $entete = [
-            'titre' => (string) ($en['titre'] ?? ''), 'ue' => (string) ($en['ue'] ?? ''), 'referent' => (string) ($en['referent'] ?? ''),
+            'titre' => $titre, 'ue' => $ue, 'referent' => (string) ($en['referent'] ?? ''),
             'auteurs' => $auteurs, 'date' => $dateAff, 'promo' => $annees,
-            'nom_pied' => 'IFSI GAVY – SAINT-NAZAIRE – ' . ((string) ($en['ue'] ?? 'UE')) . ' – ' . ((string) ($en['titre'] ?? '')) . ' – ' . $annees . ' – ' . ($auteurs !== '' ? $auteurs : 'NOM Prénom') . ' – ' . ($dateAff !== '' ? $dateAff : 'Date'),
+            'nom_pied' => 'IFSI GAVY – SAINT-NAZAIRE – ' . ($ue !== '' ? $ue : 'UE') . ' – ' . $titre . ' – ' . $annees . ' – '
+                . ($auteurs !== '' ? $auteurs : 'NOM Prénom') . ' – ' . ($dateAff !== '' ? $dateAff : 'Date'),
         ];
         $u = $c->user;
-        $base = self::nomFichier((string) $u->nom, (string) $u->prenom, (string) ($en['ue'] ?? ''), (string) ($en['titre'] ?? ''), $date, $format);
+        $nom = self::nomFichier((string) $u->nom, (string) $u->prenom, $ue, $titre, $date, $format);
         $contenu = $format === 'docx' ? MemoireExport::docx($entete, $blocs) : MemoireExport::odt($entete, $blocs);
-        return ['nom' => $base, 'type' => $format === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/vnd.oasis.opendocument.text', 'contenu' => base64_encode($contenu)];
+        $type = $format === 'docx'
+            ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            : 'application/vnd.oasis.opendocument.text';
+        return ['nom' => $nom, 'type' => $type, 'contenu' => base64_encode($contenu)];
     }
 }

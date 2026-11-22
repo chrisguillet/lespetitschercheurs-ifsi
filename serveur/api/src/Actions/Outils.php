@@ -197,39 +197,47 @@ final class Outils
     /** Mémoire du groupe. @param array<string,mixed> $req @return array<string,mixed> */
     public static function memoireGet(Contexte $c, array $req): array
     {
-        return ['ok' => true, 'memoire' => pcmemoire::pourclient($c, is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '')];
+        return ['ok' => true, 'memoire' => \Lpc\Memoire::pourclient($c, is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '')];
     }
 
     /** modifie l'en-tête du mémoire. @param array<string,mixed> $req @return array<string,mixed> */
-    public static function memoireentete(contexte $c, array $req): array
+    public static function memoireentete(Contexte $c, array $req): array
     {
         $gid = is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '';
-        pcmemoire::enregistrerentete($c, $gid, $req['data'] ?? null);
-        return ['ok' => true, 'memoire' => pcmemoire::pourclient($c, $gid)];
+        \Lpc\Memoire::enregistrerentete($c, $gid, $req['data'] ?? null);
+        return ['ok' => true, 'memoire' => \Lpc\Memoire::pourclient($c, $gid)];
     }
 
     /** ajoute ou modifie un bloc du mémoire. @param array<string,mixed> $req @return array<string,mixed> */
-    public static function memoirebloc(contexte $c, array $req): array
+    public static function memoirebloc(Contexte $c, array $req): array
     {
         $gid = is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '';
-        pcmemoire::enregistrerbloc($c, $gid, $req['id'] ?? null, $req['data'] ?? null);
-        return ['ok' => true, 'memoire' => pcmemoire::pourclient($c, $gid)];
+        \Lpc\Memoire::enregistrerbloc($c, $gid, $req['id'] ?? null, $req['data'] ?? null);
+        return ['ok' => true, 'memoire' => \Lpc\Memoire::pourclient($c, $gid)];
     }
 
     /** supprime un bloc du mémoire. @param array<string,mixed> $req @return array<string,mixed> */
-    public static function memoireblocsupprimer(contexte $c, array $req): array
+    public static function memoireblocsupprimer(Contexte $c, array $req): array
     {
         $gid = is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '';
-        pcmemoire::supprimerbloc($c, $gid, $req['id'] ?? null);
-        return ['ok' => true, 'memoire' => pcmemoire::pourclient($c, $gid)];
+        \Lpc\Memoire::supprimerbloc($c, $gid, $req['id'] ?? null);
+        return ['ok' => true, 'memoire' => \Lpc\Memoire::pourclient($c, $gid)];
     }
 
     /** nouvel ordre des blocs. @param array<string,mixed> $req @return array<string,mixed> */
-    public static function memoireordre(contexte $c, array $req): array
+    public static function memoireordre(Contexte $c, array $req): array
     {
         $gid = is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '';
-        pcmemoire::reordonner($c, $gid, $req['ids'] ?? null);
-        return ['ok' => true, 'memoire' => pcmemoire::pourclient($c, $gid)];
+        \Lpc\Memoire::reordonner($c, $gid, $req['ids'] ?? null);
+        return ['ok' => true, 'memoire' => \Lpc\Memoire::pourclient($c, $gid)];
+    }
+
+    /** Export du mémoire en DOCX ou ODT. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function memoireExport(Contexte $c, array $req): array
+    {
+        $gid = is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '';
+        $format = is_string($req['format'] ?? null) ? $req['format'] : '';
+        return ['ok' => true] + \Lpc\Memoire::exporter($c, $gid, $format);
     }
 
     /** propose (ou modifie) une lecture à une promo : formateurs et administrateurs. @param array<string,mixed> $req @return array<string,mixed> */

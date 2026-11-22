@@ -1063,7 +1063,7 @@ verifie('mémoire : une personne extérieure au groupe ne lit ni n\'écrit', $er
 $r = appel('a1@ci.test', 'memoire_ordre', ['groupe_id' => $alpha, 'ids' => array_reverse($ids)]);
 verifie('mémoire : réordonnancement', ($r['memoire']['blocs'][0]['id'] ?? '') === $ids[1]);
 $ex = appel('a1@ci.test', 'memoire_export', ['groupe_id' => $alpha, 'format' => 'docx']);
-verifie('mémoire : export DOCX, nom normalisé NOM.Prénom_UE_Titre_AAAAMMJJ', ($ex['ok'] ?? false) === true && preg_match('/^[^.]+.[^_]+_UE[^_]*_[^_]+_d{8}.docx$/u', (string) ($ex['nom'] ?? '')) === 1 && str_starts_with(base64_decode((string) ($ex['contenu'] ?? '')), 'PK'));
+verifie('mémoire : export DOCX, nom normalisé NOM.Prénom_UE_Titre_AAAAMMJJ', ($ex['ok'] ?? false) === true && preg_match('/^[^.]+\.[^_]+_UE[^_]*_[^_]+_\d{8}\.docx$/u', (string) ($ex['nom'] ?? '')) === 1 && str_starts_with(base64_decode((string) ($ex['contenu'] ?? '')), 'PK'));
 $ex2 = appel('a1@ci.test', 'memoire_export', ['groupe_id' => $alpha, 'format' => 'pdf']);
 verifie('mémoire : format inconnu refusé', $err($ex2) === 'invalid');
 $1, $err(appel('a1@ci.test', 'memoire_ordre', ['groupe_id' => $alpha, 'ids' => [$ids[0]]])) === 'invalid');
