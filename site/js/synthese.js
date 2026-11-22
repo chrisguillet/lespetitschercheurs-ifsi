@@ -59,7 +59,8 @@ function nuageMotsCles(listes, imprimable) {
   return `<div class="card nuage">${entete}<div class="nuagebox">${mots}</div></div>`;
 }
 
-function carteNationalites(arts, imprimable) {
+// Pays cités par les articles (une fois par article et par pays) et nationalités non reconnues.
+function repartitionPays(arts) {
   const parPays = new Map(), inconnues = new Map();
   arts.forEach(i => {
     const texte = String(i.nation || "").trim();
@@ -68,6 +69,11 @@ function carteNationalites(arts, imprimable) {
     if (!trouves.length) { inconnues.set(texte, (inconnues.get(texte) || 0) + 1); return; }
     trouves.forEach(p => parPays.set(p, (parPays.get(p) || 0) + 1));
   });
+  return { parPays, inconnues };
+}
+
+function carteNationalites(arts, imprimable) {
+  const { parPays, inconnues } = repartitionPays(arts);
   if (!parPays.size && !inconnues.size) return "";
   const entete = `<h3>Nationalité des auteurs ${vueSwitch("nation", [["carte", "Carte"], ["liste", "Liste"]], imprimable)}</h3>`;
   if (SV.nation === "liste") return `<div class="card carte">${entete}${lignesBarres(compter(arts.map(i => i.nation), 15))}</div>`;
@@ -93,11 +99,11 @@ function pairesMotsCles(listes) {
     }
   });
   const top = [...paires.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, n]) => { const [x, y] = id.split("\u0001"); return [noms.get(x), noms.get(y), n]; });
-  if (!top.length) return { html: "", lignes: [] };
+  if (!top.length) return { html: "", lignes: [], top: [] };
   const max = top[0][2];
   const html = `<div class="card"><h3>Mots-clés qui vont ensemble <span class="meta">(cités dans les mêmes fiches ; cliquer pour filtrer le tableau)</span></h3>${top.map(([a, b, n]) =>
     `<div class="bar"><button type="button" class="bl lnk" data-paire="${esc(a)}|${esc(b)}" title="Filtrer sur ces deux mots-clés (les deux à la fois)">${esc(a)} + ${esc(b)}</button><div class="bt"><div class="bf" style="width:${Math.round(n / max * 100)}%;background:var(--pri)"></div></div><span class="bn">${n}</span></div>`).join("")}</div>`;
-  return { html, lignes: top.map(([a, b, n]) => ["Mots-clés associés", a + " + " + b, n]) };
+  return { html, lignes: top.map(([a, b, n]) => ["Mots-clés associés", a + " + " + b, n]), top };
 }
 
 // ----- Assemblage -----
@@ -169,3 +175,130 @@ $("synthbox").addEventListener("click", e => {
   const mot = b.dataset.nuage;
   if (!F.kw.includes(cleTitre(mot))) filtrerMotCle(mot);
 });
+
+// ----- PDF vectoriel de la synthèse (jsPDF) : mêmes données que l'écran, dessinées à la main (texte, barres, carte). -----
+function pdfSynthese() {
+  if (!window.jspdf) { alert("Module PDF non chargé."); return; }
+  if (!items.length) return;
+  const doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+  const M = 15, L = 180, BAS = 285, BLEU = [47, 95, 208];
+  let y = 16;
+  const place = h => { if (y + h > BAS) { doc.addPage(); y = 16; } };
+  const texte = (t, x, yy, taille, gras, coul, al) => { doc.setFont("helvetica", gras ? "bold" : "normal"); doc.setFontSize(taille); doc.setTextColor(...(coul || [25, 30, 40])); doc.text(String(t), x, yy, al ? { align: al } : undefined); };
+  const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+
+  const g = groupeCourant() || {};
+  const arts = parArticle(items);
+  const motsDe = i => (kwLang !== "en" ? motsListe(i.mots) : []).concat(kwLang !== "fr" ? motsListe(i.kw) : []);
+  const listes = items.map(motsDe);
+
+  // En-tête
+  texte([g.etablissement, g.promo].filter(Boolean).join(" · "), M, y, 9, false, [110, 118, 130]); y += 7;
+  texte("Synthèse des lectures", M, y, 18, true); y += 6;
+  texte((ctx.vue === "promo" ? "toute la promo" : "groupe « " + (g.nom || "") + " »") + " · édité le " + fmtD(new Date().toISOString()), M, y, 10, false, [70, 78, 92]); y += 3;
+  doc.setDrawColor(...BLEU); doc.setLineWidth(0.6); doc.line(M, y, M + L, y); y += 8;
+
+  // Chiffres clés
+  const kp = [[items.length, "lectures"], [items.filter(i => i.statut === "Terminée").length, "terminées"], [items.filter(i => i.statut === "En cours").length, "en cours"]];
+  if (items.some(i => i.statut === "À lire")) kp.push([items.filter(i => i.statut === "À lire").length, "à lire"]);
+  kp.push([comments.length, "commentaires"]);
+  const lk = (L - (kp.length - 1) * 4) / kp.length;
+  kp.forEach(([n, t], i) => { const x = M + i * (lk + 4); doc.setDrawColor(208, 213, 221); doc.setLineWidth(0.3); doc.roundedRect(x, y, lk, 16, 2, 2); texte(n, x + 4, y + 8, 15, true); texte(t, x + 4, y + 13.5, 8.5, false, [90, 98, 112]); });
+  y += 24;
+
+  // Mots-clés : nuage (les plus fréquents au centre de chaque ligne, taille selon la fréquence)
+  const c = compter(listes.flatMap(l => l), 40);
+  if (c.length) {
+    place(40); texte("Mots-clés les plus fréquents", M, y, 11, true); y += 7;
+    const max = Math.max(...c.map(e => e[1])), min = Math.min(...c.map(e => e[1]));
+    const COUL = ["#2f5fd0", "#7c3aed", "#0d9488", "#d97706", "#be185d", "#0369a1"].map(hex);
+    const mots = c.slice().sort((a, b) => a[0].localeCompare(b[0], "fr")).map(([m, n], i) => {
+      const t = max === min ? 0.5 : Math.sqrt((n - min) / (max - min)), taille = 9 + t * 11;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(taille);
+      return { m, taille, w: doc.getTextWidth(m), coul: COUL[(i * 7 + m.length) % COUL.length] };
+    });
+    const lignes = []; let cur = [], largeur = 0;
+    mots.forEach(w => { if (largeur + w.w > L && cur.length) { lignes.push(cur); cur = []; largeur = 0; } cur.push(w); largeur += w.w + 5; });
+    if (cur.length) lignes.push(cur);
+    lignes.forEach(l => {
+      const h = Math.max(...l.map(w => w.taille)) * 0.42, tot = l.reduce((n, w) => n + w.w, 0) + (l.length - 1) * 5;
+      place(h + 3); let x = M + (L - tot) / 2;
+      l.forEach(w => { texte(w.m, x, y + h, w.taille, true, w.coul); x += w.w + 5; });
+      y += h + 3;
+    });
+    y += 5;
+  }
+
+  // Carte des nationalités : fonds de carte tracé en vecteur, un disque par pays
+  const { parPays, inconnues } = repartitionPays(arts);
+  if (parPays.size || inconnues.size) {
+    const ech = L / 360, hc = 143 * ech;
+    place(hc + 22); texte("Nationalité des auteurs", M, y, 11, true); y += 4;
+    const oy = y - 5 * ech;
+    doc.setFillColor(238, 242, 250); doc.rect(M, y, L, hc, "F");
+    doc.setFillColor(214, 220, 232);
+    MONDE_TERRES.split("Z").filter(Boolean).forEach(r => {
+      const pts = r.replace(/^M/, "").split("L").map(p => p.split(" ").map(Number));
+      if (pts.length < 3) return;
+      const v = []; for (let k = 1; k < pts.length; k++) v.push([(pts[k][0] - pts[k - 1][0]) * ech, (pts[k][1] - pts[k - 1][1]) * ech]);
+      const x0 = M + pts[0][0] * ech, y0 = oy + pts[0][1] * ech;
+      doc.saveGraphicsState(); doc.rect(M, y, L, hc, null); doc.clip(); doc.discardPath();
+      doc.lines(v, x0, y0, [1, 1], "F", true);
+      doc.restoreGraphicsState();
+    });
+    const liste = [...parPays.entries()].sort((a, b) => b[1] - a[1]);
+    const mx = liste.length ? liste[0][1] : 1;
+    doc.setFillColor(...BLEU); doc.setDrawColor(...BLEU); doc.setLineWidth(0.3);
+    doc.saveGraphicsState(); doc.setGState(new doc.GState({ opacity: 0.55 }));
+    liste.forEach(([p, n]) => doc.circle(M + (p.lon + 180) * ech, oy + (90 - p.lat) * ech, (2 + 7 * Math.sqrt(n / mx)) * ech, "FD"));
+    doc.restoreGraphicsState();
+    y += hc + 5;
+    const leg = liste.map(([p, n]) => p.nom + " " + n).join("  ·  ") + (inconnues.size ? "   —   non placées : " + [...inconnues.entries()].map(([k, n]) => k + " (" + n + ")").join(", ") : "");
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+    doc.splitTextToSize(leg, L).forEach(l => { place(5); texte(l, M, y, 8.5, false, [70, 78, 92]); y += 4.2; });
+    y += 5;
+  }
+
+  // Graphiques en barres : deux colonnes (la dernière rubrique, seule, occupe la largeur)
+  const annees = new Map();
+  arts.forEach(i => { const a = (/^(\d{4})/.exec(i.parution || "") || [])[1]; if (a) annees.set(a, (annees.get(a) || 0) + 1); });
+  const rubriques = [
+    ["Types d’articles", compter(arts.map(i => i.type), 8)],
+    ["Qualité des auteurs", compter(arts.flatMap(i => metiersListe(i.qualite)), 8)],
+    ["Années de parution", [...annees.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12)],
+    ["Revues et sources les plus citées", compter(arts.map(i => i.source), 8)]
+  ].filter(r => r[1].length);
+  const barres2 = (titre, e, x, yy, larg) => {
+    texte(titre, x, yy, 10, true); yy += 5;
+    const mx = Math.max(...e.map(v => v[1])), lw = larg * 0.5;
+    e.forEach(([lib, n]) => {
+      const lignes = doc.splitTextToSize(String(lib), lw - 2).slice(0, 2);
+      texte(lignes.join("\n"), x, yy + 3, 8.5, false, [30, 36, 48]);
+      const bw = Math.max(1.5, (larg - lw - 8) * n / mx);
+      doc.setFillColor(...BLEU); doc.roundedRect(x + lw, yy, bw, 4, 1, 1, "F"); texte(n, x + lw + bw + 1.5, yy + 3.2, 8, false, [90, 98, 112]);
+      yy += Math.max(6, lignes.length * 4 + 2);
+    });
+    return yy;
+  };
+  for (let i = 0; i < rubriques.length; i += 2) {
+    const a = rubriques[i], b = rubriques[i + 1];
+    const hA = a[1].length * 7 + 8, hB = b ? b[1].length * 7 + 8 : 0;
+    place(Math.max(hA, hB));
+    if (b) { const ya = barres2(a[0], a[1], M, y, L / 2 - 6), yb = barres2(b[0], b[1], M + L / 2 + 6, y, L / 2 - 6); y = Math.max(ya, yb) + 6; }
+    else { y = barres2(a[0], a[1], M, y, L) + 6; }
+  }
+
+  // Mots-clés qui vont ensemble
+  const top = pairesMotsCles(listes).top;
+  if (top.length) {
+    place(top.length * 6 + 10);
+    texte("Mots-clés qui vont ensemble (cités dans les mêmes fiches)", M, y, 10, true); y += 5;
+    const mx = top[0][2];
+    top.forEach(([a, b, n]) => {
+      texte(a + " + " + b, M, y + 3, 8.5, false, [30, 36, 48]);
+      const bw = Math.max(1.5, 70 * n / mx); doc.setFillColor(...BLEU); doc.roundedRect(M + 100, y, bw, 4, 1, 1, "F"); texte(n, M + 100 + bw + 1.5, y + 3.2, 8, false, [90, 98, 112]);
+      y += 6;
+    });
+  }
+  doc.save("synthese-lectures-" + stamp() + ".pdf");
+}
