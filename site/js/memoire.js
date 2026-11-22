@@ -127,7 +127,7 @@ function memDessiner() {
         <button type="button" class="btn sm sec" data-mem-note title="Insère ^[ ] à la place du curseur, dans le bloc en cours">＋ Note de bas de page</button>
         <div id="mem_refs" class="hidden">${refs.map(i => `<button type="button" class="memref" data-mem-ref="${esc(i.id)}">${esc(i.titre)} <span class="meta">${esc(i.auteur || "")}</span></button>`).join("")}</div></div>` : '<div class="card meta">Lecture seule : seules les membres du groupe modifient le mémoire.</div>'}
       ${m.blocs.some(b => memNiveau(b)) ? '<div class="tools"><span class="meta">Sections :</span> <button type="button" class="btn sm sec" data-mem-repli-tout="replier">Tout replier</button> <button type="button" class="btn sm sec" data-mem-repli-tout="deplier">Tout déplier</button></div>' : ""}
-      <div class="memblocs">${m.blocs.length ? (() => { const masques = memMasques(m.blocs); return m.blocs.map((b, i) => (masques.has(b.id) ? "" : memBlocHtml(b, i, ecrit, memPortee(m.blocs, i)))).join(""); })() : '<div class="card empty">Le mémoire est vide. Commencez par un titre de chapitre.</div>'}</div>
+      <div class="memblocs">${m.blocs.length ? (() => { const masques = memMasques(m.blocs), ind = memIndentations(m.blocs); return m.blocs.map((b, i) => (masques.has(b.id) ? "" : memBlocHtml(b, i, ecrit, memPortee(m.blocs, i), ind[i]))).join(""); })() : '<div class="card empty">Le mémoire est vide. Commencez par un titre de chapitre.</div>'}</div>
     </div>
     <div class="memcote">
       <div class="card"><h3 style="font-size:14px;margin:0 0 8px">Contrôle des normes</h3><div id="mem_controle">${memControleHtml()}</div></div>
@@ -135,15 +135,35 @@ function memDessiner() {
     </div></div>`;
 }
 
-function memBlocHtml(b, i, ecrit, portee) {
+// Profondeur d'affichage : un chapitre à 0, son contenu et ses sous-titres à 1, le contenu d'un sous-titre à 2.
+function memIndentations(blocs) {
+  let courant = 0;
+  return blocs.map(b => {
+    const n = memNiveau(b);
+    const ind = n === 1 ? 0 : n === 2 ? 1 : courant;
+    if (n) courant = n;
+    return ind;
+  });
+}
+// Texte d'un bloc replié : un extrait sur une ligne.
+function memExtrait(texte) {
+  const t = memTextePlain(texte);
+  return t ? (t.length > 110 ? t.slice(0, 110) + "…" : t) : "(bloc vide)";
+}
+
+function memBlocHtml(b, i, ecrit, portee, ind) {
   const dis = ecrit ? "" : "disabled";
   const replie = MEM.repli.has(b.id), section = memNiveau(b) > 0;
-  const bouton = section ? `<button type="button" class="btn sm sec" data-mem-repli="${esc(b.id)}" aria-expanded="${replie ? "false" : "true"}" title="Replier ou déplier cette section">${replie ? "▸" : "▾"}${replie && portee ? " " + portee + " bloc" + (portee > 1 ? "s" : "") : ""}</button> ` : "";
-  return `<div class="card memblc" data-bid="${esc(b.id)}">
+  const libelle = section ? (replie && portee ? " " + portee + " bloc" + (portee > 1 ? "s" : "") : "") : "";
+  const bouton = `<button type="button" class="btn sm sec" data-mem-repli="${esc(b.id)}" aria-expanded="${replie ? "false" : "true"}" title="${section ? "Replier ou déplier cette section" : "Replier ou déplier ce bloc"}">${replie ? "▸" : "▾"}${libelle}</button> `;
+  const corps = replie && !section
+    ? `<div class="meta memextrait" style="padding:4px 2px">${esc(memExtrait(b.texte))}</div>`
+    : `<textarea class="memtxt memtxt-${esc(b.type)}" rows="${b.type === "paragraphe" || b.type === "citation" || b.type === "reference" ? 4 : 1}" ${dis} aria-label="Texte du bloc">${esc(b.texte)}</textarea>`;
+  return `<div class="card memblc" data-bid="${esc(b.id)}" style="margin-left:${(ind || 0) * 28}px">
     <div class="memtete">${bouton}<select data-mem-type ${dis} aria-label="Type du bloc">${Object.keys(MEM_TYPES).map(k => `<option value="${k}" ${k === b.type ? "selected" : ""}>${esc(MEM_TYPES[k])}</option>`).join("")}</select>
       <span class="meta">${esc(b.par)}${b.par ? " · " : ""}${esc(fmtDT(b.modifie_le))}</span>
       ${ecrit ? `<span class="memops"><button type="button" class="btn sm sec" data-mem-mv="-1" aria-label="Monter" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" class="btn sm sec" data-mem-mv="1" aria-label="Descendre">↓</button><button type="button" class="btn sm sec del" data-mem-del aria-label="Supprimer">🗑</button></span>` : ""}</div>
-    <textarea class="memtxt memtxt-${esc(b.type)}" rows="${b.type === "paragraphe" || b.type === "citation" || b.type === "reference" ? 4 : 1}" ${dis} aria-label="Texte du bloc">${esc(b.texte)}</textarea>
+    ${corps}
   </div>`;
 }
 
@@ -312,7 +332,7 @@ $("memoirebox")?.addEventListener("click", e => {
     return memDessiner();
   }
   if (b.dataset.memRepliTout) {
-    MEM.repli = new Set(b.dataset.memRepliTout === "replier" ? MEM.data.blocs.filter(x => memNiveau(x)).map(x => x.id) : []);
+    MEM.repli = new Set(b.dataset.memRepliTout === "replier" ? MEM.data.blocs.map(x => x.id) : []);
     memEnregistrerRepli();
     return memDessiner();
   }
