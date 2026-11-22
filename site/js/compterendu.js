@@ -65,7 +65,7 @@ function ouvrirCompteRendu(id, type = "reunion") {
   CR.ouvert = true; CR.id = id; CR.type = type; CR.focus = document.activeElement;
   const html = crPageCourante(); if (!html) return fermerCompteRendu();
   $("crtitle").textContent = type === "fiche" ? "📄 Aperçu de la fiche de lecture" : type === "synthese" ? "📄 Aperçu de la synthèse" : type === "charte" ? "📄 Aperçu de la charte" : "📄 Aperçu du compte rendu";
-  $("crbody").innerHTML = html;
+  $("crbody").innerHTML = (type === "fiche" ? ficheActionsHtml(id) : "") + html;
   $("crmodal").classList.remove("hidden"); document.body.classList.add("modalopen");
   $("crprint").focus();
   // Les images en annexe arrivent ensuite : l'aperçu est redessiné une fois chargées.
@@ -139,6 +139,22 @@ $("crprint")?.addEventListener("click", imprimerCompteRendu);
 $("crpdf")?.addEventListener("click", () => CR.type === "fiche" ? exportFichePdf(CR.id) : CR.type === "synthese" ? pdfSynthese() : CR.type === "charte" ? pdfCharte() : pdfCompteRendu());
 $("crmodal")?.addEventListener("click", e => { if (e.target === $("crmodal")) fermerCompteRendu(); });
 $("crmodal")?.addEventListener("keydown", e => { if (e.key === "Escape") fermerCompteRendu(); });
+
+// Actions d'une fiche, au-dessus de son aperçu (pas imprimées) : commenter, et pour la sienne, modifier et voir ses versions.
+function ficheActionsHtml(id) {
+  const i = itemsAll.find(x => x.id === id); if (!i) return "";
+  const n = comments.filter(x => x.lecture_id === i.id).length, u = nbNonLus(i.id);
+  const edit = canWrite() && i.mine && i.modifiable
+    ? `<button type="button" class="btn sm" data-fae="${esc(i.id)}">✏️ Modifier ma fiche</button><button type="button" class="btn sm sec" data-fah="${esc(i.id)}" title="Versions précédentes de ma fiche">🕘 Versions</button>` : "";
+  return `<div class="cracts">${edit}<button type="button" class="btn sm ${edit ? "sec" : ""}" data-fac="${esc(i.id)}">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button></div>`;
+}
+$("crbody")?.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const d = b.dataset;
+  if (d.fac) { fermerCompteRendu(); ouvrirDiscussion(d.fac); }
+  else if (d.fae) { fermerCompteRendu(); startEdit(d.fae, false); }
+  else if (d.fah) { fermerCompteRendu(); ouvrirHistorique("lecture", d.fah); }
+});
 
 // Fiche de lecture : même aperçu, même choix imprimer / PDF.
 const ficheDeApercu = () => itemsAll.find(x => x.id === CR.id);

@@ -31,15 +31,30 @@ let auteursForm = [];   // liste en cours de saisie : [{nom, nation, qualite}]
 function auteursDe(i) {
   let l = [];
   try { l = JSON.parse((i && i.auteurs) || "[]") || []; } catch (e) { l = []; }
-  if (Array.isArray(l) && l.length) return l.map(a => ({ nom: String(a.nom || ""), nation: String(a.nation || ""), qualite: String(a.qualite || "") }));
+  // Une entrée reprise de l'ancien format peut porter plusieurs noms (« A; B ») : chacun devient un auteur, avec les mêmes infos.
+  if (Array.isArray(l) && l.length) return l.flatMap(a => {
+    const noms = LydiaApa.listeAuteurs(String(a.nom || ""));
+    return (noms.length > 1 ? noms : [String(a.nom || "")]).map(nom => ({ nom, nation: String(a.nation || ""), qualite: String(a.qualite || "") }));
+  });
   return i && i.auteur ? LydiaApa.listeAuteurs(i.auteur).map(nom => ({ nom, nation: String(i.nation || ""), qualite: String(i.qualite || "") })) : [];
 }
 // Auteurs pour l'affichage (aperçu, PDF, tableau) : chacun avec son métier et sa nationalité, en caractères sûrs pour le PDF.
-const auteurTexte = a => (a.nom || "-") + " (métier : " + (a.qualite || "-") + " ; nationalité : " + (a.nation || "-") + ")";
+// Les auteurs qui ont exactement les mêmes métier et nationalité (cas des fiches saisies avant la séparation par auteur)
+// sont regroupés : leurs infos ne sont écrites qu'une fois.
+function auteursGroupes(i) {
+  const out = [];
+  auteursDe(i).forEach(a => {
+    const cle = a.qualite.trim().toLowerCase() + "|" + a.nation.trim().toLowerCase();
+    const g = out.find(x => x.cle === cle);
+    if (g) g.noms.push(a.nom); else out.push({ cle, noms: [a.nom], qualite: a.qualite, nation: a.nation });
+  });
+  return out;
+}
+const auteurTexte = g => g.noms.map(n => n || "-").join(", ") + " (" + (g.noms.length > 1 ? "métier(s) communs : " : "métier : ") + (g.qualite || "-") + " ; nationalité : " + (g.nation || "-") + ")";
 function auteursLignes(i) {
-  const l = auteursDe(i);
-  if (!l.length) return ["Auteur : -"];
-  return l.length === 1 ? ["Auteur : " + auteurTexte(l[0])] : ["Auteurs :", ...l.map(a => "  - " + auteurTexte(a))];
+  const gs = auteursGroupes(i), n = gs.reduce((s, g) => s + g.noms.length, 0);
+  if (!n) return ["Auteur : -"];
+  return n === 1 ? ["Auteur : " + auteurTexte(gs[0])] : gs.length === 1 ? ["Auteurs : " + auteurTexte(gs[0])] : ["Auteurs :", ...gs.map(g => "  - " + auteurTexte(g))];
 }
 // Lignes renseignées (les lignes vides ne sont pas envoyées).
 const auteursPropres = () => auteursForm.map(a => ({ nom: (a.nom || "").trim(), nation: (a.nation || "").trim(), qualite: (a.qualite || "").trim() }))

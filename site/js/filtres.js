@@ -245,6 +245,7 @@ const onAction = e => {
     const a = e.target.closest("tr.art, .cardc.art");
     if (a) return toggleArt(a.dataset.art);
     const h = e.target.closest("tr[data-id], .cardc[data-id]");
+    if (h && h.dataset.apercu) return ouvrirCompteRendu(h.dataset.id, "fiche");   // fiche du tableau : aperçu et actions
     if (h) toggleOpen(h.dataset.id, h);
     return;
   }
@@ -305,6 +306,8 @@ $("rows").oninput = $("cards").oninput = $("cmbody").oninput = onDraft;
 $("rows").onkeydown = $("cards").onkeydown = e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("tr[data-id], .cardc[data-id], tr.art, .cardc.art")) {
     e.preventDefault();
-    if (e.target.dataset.art) toggleArt(e.target.dataset.art); else toggleOpen(e.target.dataset.id, e.target);
+    if (e.target.dataset.art) toggleArt(e.target.dataset.art);
+    else if (e.target.dataset.apercu) ouvrirCompteRendu(e.target.dataset.id, "fiche");
+    else toggleOpen(e.target.dataset.id, e.target);
   }
 };

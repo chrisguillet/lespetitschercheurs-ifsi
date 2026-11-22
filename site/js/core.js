@@ -288,6 +288,7 @@ function renderData() {
     if (tab === "dash") renderDash();
     if (tab === "suivi") renderSuivi();
     if (tab === "glossaire") renderGlossaire();
+    if (tab === "charte") renderCharte();
   });
   etape("barres", majBarres);
 }
@@ -297,7 +298,7 @@ function renderData() {
 // Onglets selon la personne : « Mes lectures » réservé aux étudiants, « Suivi de projet » à qui a un groupe,
 // « Administration » à l'administrateur et aux étudiants qui ont un groupe (un formateur ne l'a jamais).
 function majOnglets() {
-  const vis = { mine: canWrite(), dash: !!me && (me.role === "formateur" || isSuper()), suivi: !!groupeCourant(), memoire: !!groupeCourant(), glossaire: !!groupeCourant(), admin: canAdmin() && (isSuper() || adminDelegue() || !!groupeCourant()), sug: typeof sugVisible === "function" && sugVisible() };
+  const vis = { mine: canWrite(), dash: !!me && (me.role === "formateur" || isSuper()), suivi: !!groupeCourant(), memoire: !!groupeCourant(), glossaire: !!groupeCourant(), charte: !!groupeCourant(), admin: canAdmin() && (isSuper() || adminDelegue() || !!groupeCourant()), sug: typeof sugVisible === "function" && sugVisible() };
   Object.keys(vis).forEach(t => document.querySelector(`.tab[data-t="${t}"]`).classList.toggle("hidden", !vis[t]));
   if (vis[tab] === false) setTab("all");
   majSections();
@@ -390,6 +391,7 @@ async function refresh(manuel) {
     if (tab === "synth") renderSynth();
     if (tab === "suivi") renderSuivi();
     if (tab === "glossaire") renderGlossaire();
+    if (tab === "charte") renderCharte();
     majBarres();
     if (tab === "admin" && canAdmin()) await loadAdmin();
     clearStatus();

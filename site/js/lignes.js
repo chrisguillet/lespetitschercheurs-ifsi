@@ -8,11 +8,11 @@ const optionsDoc = i => `<span class="optwrap"><button type="button" class="btn 
 function artRow(g) {
   const i = g[0], k = cleArt(i), open = artOuvert(k);
   // Colonne Auteur : chaque auteur avec son métier et sa nationalité.
-  const auts = auteursDe(i);
+  const auts = auteursGroupes(i);
   return `<tr class="art ${open ? "open" : ""}" data-art="${esc(k)}" tabindex="0" aria-expanded="${open}"><td class="first c1"><div class="artbadges"><span class="chev" aria-hidden="true"></span>${badgesArticle(g)}${optionsDoc(i)}</div>
    <div class="arttitre"><b>${esc(i.titre)}</b>${lienHtml(i, true)}</div>
    ${propHtml(i)}${fichiersHtml(i)}</td>
-   <td class="c2">${auts.length ? auts.map(a => { const qn = [a.qualite, a.nation].filter(Boolean).join(" · "); return `<div>${esc(a.nom) || "—"}${qn ? `<div class="meta">${esc(qn)}</div>` : ""}</div>`; }).join("") : "—"}</td>
+   <td class="c2">${auts.length ? auts.map(a => { const qn = [a.qualite, a.nation].filter(Boolean).join(" · "); return `<div class="autgrp">${esc(a.noms.filter(Boolean).join(", ")) || "—"}${qn ? `<div class="meta">${esc(qn)}</div>` : ""}</div>`; }).join("") : "—"}</td>
    <td class="c3">${esc(anneeDe(i)) || "—"}<div class="meta">${esc(i.type) || ""}</div></td>
    <td class="c4 artres"><div class="meta" style="margin-bottom:4px"><span class="hint-c">Cliquez pour voir les fiches de lecture</span><span class="hint-o">Fiches de lecture ci-dessous</span></div>${resumeFiches(g)}</td>
    <td class="c5 apa">${apaCell(i)}</td></tr>`;
@@ -25,15 +25,18 @@ function fichesRow(g) {
    <tbody>${g.map(cells).join("")}</tbody></table></div></td></tr>`;
 }
 
-// Fiche de lecture : une ligne du tableau interne.
+// Fiche de lecture : une ligne du tableau interne (textes tronqués), puis ses mots-clés sur toute la largeur.
+// Un clic sur la fiche ouvre son aperçu, avec les actions (commenter, modifier, PDF).
 function cells(i) {
   const c = esc(i.couleur), k = cleArt(i);
   const prog = stInfo(i.statut).cl;
-  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" tabindex="0" aria-expanded="${openRows.has(i.id)}" class="fi ${prog} ${openRows.has(i.id) ? "open" : ""}" style="--c:${c}"><td class="first"><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}" title="${esc(lieuDe(i))}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
-   <div class="meta">${i.modifie_par ? `Modifiée par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))} · ` : ""}saisie le ${esc(fmtD(i.ajoute))}</div>
-   <div class="rowacts">${actionsHtml(i)}</div>${motsCle(i)}</td>
+  const titre = `Aperçu de la fiche de ${esc(i.etudiant)}`;
+  const kw = motsCle(i);
+  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" data-apercu="1" tabindex="0" role="button" aria-label="${titre}" title="${titre}" class="fi ficlic ${prog} ${kw ? "aveckw" : ""}" style="--c:${c}"><td class="first"><span class="badge" style="--c:${c}" title="${esc(lieuDe(i))}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
+   <div class="meta">${i.modifie_par ? `Modifiée par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))} · ` : ""}saisie le ${esc(fmtD(i.ajoute))}</div></td>
    <td>${clampTxt(i.id, i.concepts)}</td><td>${clampTxt(i.id, i.objet)}</td><td>${clampTxt(i.id, i.opinion)}</td>
-   <td>${clampTxt(i.id, i.controverse)}</td><td>${clampTxt(i.id, i.libre)}</td></tr>`;
+   <td>${clampTxt(i.id, i.controverse)}</td><td>${clampTxt(i.id, i.libre)}</td></tr>
+   ${kw ? `<tr class="fi fikw" data-id="${esc(i.id)}" data-apercu="1" style="--c:${c}"><td class="first" colspan="6">${kw}</td></tr>` : ""}`;
 }
 
 // Couverture générée : couleur et pictogramme selon le type d'article (pas d'image externe).

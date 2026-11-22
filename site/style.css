@@ -509,6 +509,18 @@ td.menuopen { z-index: 3 }
 .crannexe{margin:14px 0;break-inside:avoid}
 .crannexe figcaption{margin-bottom:6px}
 .crannexe img{display:block;max-width:100%;max-height:85vh;margin:0 auto;border:1px solid #ddd}
+/* Fiches de lecture du tableau : un clic ouvre l'aperçu ; mots-clés sur toute la largeur, sous la fiche */
+table.inner tr.ficlic{cursor:pointer}
+table.inner tr.ficlic:hover td,table.inner tr.ficlic:hover + tr.fikw td,table.inner tr.fikw:hover td{background:color-mix(in srgb,var(--pri) 6%,var(--card))}
+table.inner tr.fikw{cursor:pointer}
+table.inner tr.fi.aveckw td{border-bottom:0}
+table.inner tr.fikw td.first{max-width:none;padding-top:0}
+tr.fikw .kwzone{margin-top:0;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 14px}
+tr.fikw .kwhead{flex:0 0 auto}
+tr.fikw .kwbloc{display:flex;align-items:center;gap:6px}
+tr.fikw .chipsc{max-height:none;flex-wrap:wrap}
+.cracts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:0 auto 12px;max-width:700px}
+.autgrp + .autgrp{margin-top:6px}
 /* Charte de fonctionnement */
 .charte{border-top:4px solid var(--pri)}
 .ct-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0 4px}

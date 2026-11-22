@@ -133,9 +133,8 @@ function frise(l) {
 
 function renderSuivi() {
   const g = groupeCourant();
-  if (!g) { $("retro").innerHTML = ""; $("reunions").innerHTML = ""; if (typeof renderCharte === "function") renderCharte(); return; }
+  if (!g) { $("retro").innerHTML = ""; $("reunions").innerHTML = ""; return; }
   renderRetro();
-  if (typeof renderCharte === "function") renderCharte();
   $("addreunion").classList.toggle("hidden", !(canWrite() && groupes.some(x => x.id === g.id)));
   const reu = reunionsAll.filter(x => x.groupe_id === g.id).sort((a, b) => b.date.localeCompare(a.date));
   const sect = (t, v) => String(v || "").trim() ? `<div class="sect"><b>${t}</b><div style="white-space:pre-wrap">${esc(v)}</div></div>` : "";
