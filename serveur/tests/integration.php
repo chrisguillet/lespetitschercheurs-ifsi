@@ -1041,11 +1041,12 @@ verifie('jalon : type « tâche » par défaut, sans heure', ($r['jalons'][0]['t
 $pidA2 = Ids::pid('a2@ci.test'); $pidA5 = Ids::pid('a5@ci.test');
 $jalonPar = static fn (array $r, string $id): array => array_values(array_filter($r['jalons'] ?? [], static fn (array $j): bool => $j['id'] === $id))[0] ?? [];
 $r = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'id' => $jid, 'data' => array_merge($jalon, ['titre' => 'Relire le plan', 'type' => 'tache', 'personnes' => [$pidA2]])]);
+$hg = creerUtilisateur($pdo, 'hors-groupe@ci.test'); Attributions::ajouter($pdo, $hg, 'etudiant', null, $pv);
 verifie('jalon : une personne assignée (membre du groupe)', ($r['ok'] ?? false) === true && ($jalonPar($r, $jid)['personnes'][0]['pid'] ?? '') === $pidA2 && ($jalonPar($r, $jid)['personnes'][0]['couleur'] ?? '') !== '');
-verifie('jalon : une personne hors du groupe est refusée', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'id' => $jid, 'data' => array_merge($jalon, ['titre' => 'x', 'type' => 'tache', 'personnes' => [$pidA5]])])) === 'invalid');
-verifie('jalon : les personnes sont vues des autres membres', ($jalonPar(appel('a3@ci.test', 'init'), $jid)['personnes'][0]['pid'] ?? '') === $pidA2);
+verifie('jalon : une personne hors du groupe est refusée', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'id' => $jid, 'data' => array_merge($jalon, ['titre' => 'x', 'type' => 'tache', 'personnes' => [Ids::pid('hors-groupe@ci.test')]])])) === 'invalid');
+verifie('jalon : les personnes sont vues des autres membres', ($jalonPar(appel('a3@ci.test', 'list'), $jid)['personnes'][0]['pid'] ?? '') === $pidA2);
 $pdo->prepare('DELETE FROM membres WHERE groupe_id = ? AND utilisateur_id = ?')->execute([$alpha, $B['a2']]);
-verifie('jalon : une personne qui quitte le groupe n\'apparaît plus', ($jalonPar(appel('a1@ci.test', 'init'), $jid)['personnes'] ?? ['x']) === []);
+verifie('jalon : une personne qui quitte le groupe n\'apparaît plus', ($jalonPar(appel('a1@ci.test', 'list'), $jid)['personnes'] ?? ['x']) === []);
 $pdo->prepare('INSERT INTO membres (groupe_id, utilisateur_id, ajoute_le) VALUES (?, ?, ?)')->execute([$alpha, $B['a2'], gmdate('Y-m-d H:i:s')]);
 $r = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Point avec la formatrice', 'type' => 'reunion', 'echeance' => '2027-01-20', 'heure' => '14:30']]);
 $reuJalon = array_values(array_filter($r['jalons'] ?? [], static fn (array $j): bool => $j['titre'] === 'Point avec la formatrice'))[0] ?? [];
