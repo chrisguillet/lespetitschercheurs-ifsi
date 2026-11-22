@@ -22,6 +22,7 @@ function memBasculerApercu(force) {
   memStyleApercu();
   const carte = document.querySelector(".memapercu");
   if (carte) carte.classList.toggle("memapercu-plein", MEM.plein);
+  memZoomApercu();
   const bouton = document.querySelector("[data-mem-plein]");
   if (bouton) { bouton.textContent = MEM.plein ? "✕ Réduire" : "⤢ Agrandir"; bouton.setAttribute("aria-expanded", MEM.plein ? "true" : "false"); }
 }
@@ -131,8 +132,9 @@ function memDessiner() {
     </div>
     <div class="memcote">
       <div class="card"><h3 style="font-size:14px;margin:0 0 8px">Contrôle des normes</h3><div id="mem_controle">${memControleHtml()}</div></div>
-      <div class="card memapercu${MEM.plein ? " memapercu-plein" : ""}"><div class="tools" style="justify-content:space-between"><h3 style="font-size:14px;margin:0">Aperçu</h3><button type="button" class="btn sm sec" data-mem-plein aria-expanded="${MEM.plein ? "true" : "false"}">${MEM.plein ? "✕ Réduire" : "⤢ Agrandir"}</button></div><div class="memfeuille" id="mem_apercu">${memApercuHtml()}</div></div>
+      <div class="card memapercu${MEM.plein ? " memapercu-plein" : ""}"><div class="tools" style="justify-content:space-between"><h3 style="font-size:14px;margin:0">Aperçu</h3><button type="button" class="btn sm sec" data-mem-plein aria-expanded="${MEM.plein ? "true" : "false"}">${MEM.plein ? "✕ Réduire" : "⤢ Agrandir"}</button></div><div id="mem_apercu" style="background:#d9dce6;padding:8px;border-radius:6px;overflow:hidden">${memApercuHtml()}</div></div>
     </div></div>`;
+  memZoomApercu();
 }
 
 // Profondeur d'affichage : un chapitre à 0, son contenu et ses sous-titres à 1, le contenu d'un sous-titre à 2.
@@ -166,21 +168,6 @@ function memBlocHtml(b, i, ecrit, portee, ind) {
   </div>`;
 }
 
-// Promotion au format de la maquette : « Promo 24-27 » -> « PROMOTION 2024-2027 ».
-function memPromoMaquette(promo) {
-  const m = /(\d{2})\s*-\s*(\d{2})/.exec(promo || "");
-  return m ? "PROMOTION 20" + m[1] + "-20" + m[2] : String(promo || "").toUpperCase();
-}
-// Page de couverture selon le modèle : établissement en haut, UE et titre au centre, auteurs et promotion, référent et date en bas.
-function memCouvertureHtml() {
-  const m = MEM.data, g = groupeCourant() || {};
-  return `<section class="memcouv">
-    <div class="memcouv-haut">INSTITUT DE FORMATION EN SOINS INFIRMIERS<br>SAINT-NAZAIRE</div>
-    <div class="memcouv-centre">${m.ue ? esc(m.ue) + "<br>" : ""}<b>${esc(m.titre || "TITRE DU TRAVAIL").toUpperCase()}</b></div>
-    <div class="memcouv-auteurs">${esc(m.auteurs || "NOM – Prénom de l’étudiant(e)")}<br>${esc(memPromoMaquette(g.promo))}</div>
-    <div class="memcouv-bas">Référent pédagogique : ${esc(m.referent)}<br>Date : ${esc(m.date_rendu ? fmtD(m.date_rendu) : "")}</div>
-  </section>`;
-}
 // Consignes de la maquette pour le pied de page (le numéro de page est ajouté à la fin).
 const MEM_PIED_ATTENDU = "ÉTABLISSEMENT – UE – Titre – Promotion – NOM Prénom – Date";
 // Pied de page par défaut : établissement du groupe, UE, titre, promotion, auteurs, date (même règle que le serveur).
@@ -188,29 +175,136 @@ function memPiedDefaut() {
   const m = MEM.data, g = groupeCourant() || {};
   return `${m.etablissement || "Établissement"} – ${m.ue || "UE"} – ${m.titre || ""} – ${memPromoMaquette(g.promo)} – ${m.auteurs || "NOM Prénom"} – ${memDateFr(m.date_rendu) || "Date"}`;
 }
-// Pied de page de la maquette, sur chaque page sauf la couverture : le texte saisi par le groupe, sinon le pied par défaut.
-function memPiedHtml(page) {
-  return `<footer class="mempied">${esc(memTexteArrierePlan())} – Page ${page}</footer>`;
+
+// Promotion au format de la maquette : « Promo 24-27 » -> « PROMOTION 2024-2027 ».
+function memPromoMaquette(promo) {
+  const m = /(\d{2})\s*-\s*(\d{2})/.exec(promo || "");
+  return m ? "PROMOTION 20" + m[1] + "-20" + m[2] : String(promo || "").toUpperCase();
 }
+// ---------- Aperçu fidèle : pages A4 aux marges de la maquette, coupures calculées, notes en bas de page, pied et sommaire ----------
+const MEM_PX = 96 / 25.4;   // 1 mm à l'écran
+const MEM_PAGE = { w: 210 * MEM_PX, h: 297 * MEM_PX, ml: 30 * MEM_PX, mr: 25 * MEM_PX, mt: 25 * MEM_PX, mb: 30 * MEM_PX };
+MEM_PAGE.cw = MEM_PAGE.w - MEM_PAGE.ml - MEM_PAGE.mr;   // largeur du texte
+MEM_PAGE.ch = MEM_PAGE.h - MEM_PAGE.mt - MEM_PAGE.mb;   // hauteur du texte
+const MEM_FONTE = "font-family:'Times New Roman',Times,serif;color:#000;";
+const MEM_STYLE = {
+  paragraphe: "font-size:12pt;line-height:1.5;margin:0 0 2pt;text-indent:12.5mm;text-align:justify;",
+  citation: "font-size:12pt;line-height:1.5;margin:0 0 2pt 15mm;text-align:justify;",
+  reference: "font-size:12pt;line-height:1.5;margin:0 0 2pt;padding-left:12.5mm;text-indent:-12.5mm;text-align:justify;",
+  titre1: "font-size:16pt;line-height:1.5;font-weight:bold;margin:6pt 0 3pt;text-align:left;",
+  titre2: "font-size:14pt;line-height:1.5;font-weight:bold;margin:4pt 0 2pt;text-align:left;",
+};
+let memMesure = null;
+// Hauteur réelle d'un fragment HTML à la largeur du texte (élément caché, même police).
+function memHauteur(html) {
+  if (!memMesure) {
+    memMesure = document.createElement("div");
+    memMesure.style.cssText = "position:absolute;left:-99999px;top:0;visibility:hidden;";
+    document.body.appendChild(memMesure);
+  }
+  memMesure.style.width = MEM_PAGE.cw + "px";
+  memMesure.innerHTML = html;
+  return memMesure.getBoundingClientRect().height;
+}
+function memBloc(type, html) { return `<div style="${MEM_FONTE}${MEM_STYLE[type] || MEM_STYLE.paragraphe}">${html}</div>`; }
+// Bloc des notes d'une page : filet court puis les notes, en corps 10.
+function memNotesBloc(notes) {
+  if (!notes.length) return "";
+  return `<div style="${MEM_FONTE}font-size:10pt;line-height:1.2;text-align:justify;"><div style="border-top:0.5pt solid #000;width:50mm;margin-bottom:3pt"></div>`
+    + notes.map(x => `<div style="padding-left:4mm;text-indent:-4mm;margin:0 0 2pt"><sup>${x.n}</sup> ${memInline(x.texte)}</div>`).join("") + "</div>";
+}
+
+// Coupe le corps en pages : un paragraphe se coupe entre deux mots, un titre ou un paragraphe avec notes passe en entier.
+function memPagination(blocs) {
+  const notesDoc = [], elements = blocs.map(b => {
+    const avant = notesDoc.length;
+    const html = memInline(b.texte, notesDoc);
+    return { type: b.type, raw: b.texte, html, titre: memNiveau(b) > 0, notes: notesDoc.slice(avant).map((t, k) => ({ n: avant + k + 1, texte: t })) };
+  });
+  const pages = [];
+  const titrePages = [];   // page du corps (index) où commence chaque titre, dans l'ordre du sommaire
+  let page, used, pageNotes;
+  const nouvellePage = () => { page = { corps: [], notes: [] }; pages.push(page); used = 0; pageNotes = []; };
+  const dispo = extra => MEM_PAGE.ch - used - memHauteur(memNotesBloc(pageNotes.concat(extra)));
+  nouvellePage();
+  for (const e of elements) {
+    if (e.titre || e.notes.length) {
+      // Un titre ou un paragraphe avec notes ne se coupe pas : il passe à la page suivante s'il ne tient pas.
+      const bloc = memBloc(e.type, e.html), h = memHauteur(bloc);
+      if (h > dispo(e.notes) && page.corps.length) nouvellePage();
+      if (e.titre) titrePages.push(pages.length - 1);
+      page.corps.push(bloc); used += h; pageNotes = pageNotes.concat(e.notes); page.notes = pageNotes;
+      continue;
+    }
+    // Paragraphe ordinaire : on pose le plus de mots possible, la suite passe à la page suivante.
+    let mots = e.raw.split(/\s+/).filter(Boolean);
+    while (mots.length) {
+      let lo = 0, hi = mots.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (memHauteur(memBloc(e.type, memInline(mots.slice(0, mid).join(" ")))) <= dispo([])) lo = mid; else hi = mid - 1;
+      }
+      if (lo === 0) {
+        if (page.corps.length) { nouvellePage(); continue; }
+        lo = 1;   // un seul mot trop long pour la ligne : on le pose quand même
+      }
+      const bloc = memBloc(e.type, memInline(mots.slice(0, lo).join(" ")));
+      page.corps.push(bloc); used += memHauteur(bloc);
+      mots = mots.slice(lo);
+      if (mots.length) nouvellePage();
+    }
+  }
+  page.notes = pageNotes;
+  return { pages, titrePages };
+}
+
+// Une page A4 : texte, notes au bas de la zone de texte, pied de page (sauf couverture).
+function memPageHtml(corps, notes, numero) {
+  const pied = numero > 1 ? `<div style="position:absolute;left:0;right:0;bottom:${12 * MEM_PX}px;text-align:center;${MEM_FONTE}font-size:9pt;">${esc(memTexteArrierePlan())} – Page ${numero}</div>` : "";
+  return `<div class="mempage" style="position:relative;width:${MEM_PAGE.w}px;height:${MEM_PAGE.h}px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);margin:0 auto 18px;overflow:hidden;box-sizing:border-box;">
+    <div style="position:absolute;left:${MEM_PAGE.ml}px;top:${MEM_PAGE.mt}px;width:${MEM_PAGE.cw}px;height:${MEM_PAGE.ch}px;overflow:hidden;">${corps}</div>
+    ${notes ? `<div style="position:absolute;left:${MEM_PAGE.ml}px;bottom:${MEM_PAGE.mb}px;width:${MEM_PAGE.cw}px;">${notes}</div>` : ""}${pied}</div>`;
+}
+// Couverture : positions de la maquette (établissement en haut, UE et titre au centre, auteurs et promotion, référent et date en bas).
+function memCouvertureCorps() {
+  const m = MEM.data, g = groupeCourant() || {}, mm = v => v * MEM_PX;
+  const ligne = (haut, html, style) => `<div style="position:absolute;left:0;right:0;top:${mm(haut)}px;text-align:center;${MEM_FONTE}${style}">${html}</div>`;
+  const hauteurLigne = 14 * 1.5 * 0.3528;
+  const titreHaut = 110 + (m.ue ? 2 * hauteurLigne : 0);
+  return ligne(48, "INSTITUT DE FORMATION EN SOINS INFIRMIERS<br>SAINT-NAZAIRE", "font-size:14pt;line-height:1.5;")
+    + (m.ue ? ligne(110, esc(m.ue), "font-size:14pt;line-height:1.5;") : "")
+    + ligne(titreHaut, `<b>${esc((m.titre || "TITRE DU TRAVAIL").toUpperCase())}</b>`, "font-size:14pt;line-height:1.5;")
+    + ligne(176, esc(m.auteurs || "NOM – Prénom de l’étudiant(e)") + "<br>" + esc(memPromoMaquette(g.promo)), "font-size:12pt;line-height:1.5;")
+    + `<div style="position:absolute;left:0;top:${mm(262)}px;${MEM_FONTE}font-size:12pt;line-height:1.5;">Référent pédagogique : ${esc(m.referent || "")}<br>Date : ${esc(memDateFr(m.date_rendu))}</div>`;
+}
+
+// Aperçu complet : couverture, pages du sommaire (numéros de page calculés), puis le corps paginé.
 function memApercuHtml() {
   const m = MEM.data; if (!m) return "";
-  const notes = [];
-  const corps = m.blocs.map(b => {
-    const t = memInline(b.texte, notes);
-    if (b.type === "titre1") return `<h2 class="mh1">${t}</h2>`;
-    if (b.type === "titre2") return `<h3 class="mh2">${t}</h3>`;
-    if (b.type === "citation") return `<blockquote class="mcit">${t}</blockquote>`;
-    if (b.type === "reference") return `<p class="mref">${t}</p>`;
-    return `<p class="mpar">${t}</p>`;
-  }).join("");
-  // Notes de bas de page (corps 10) au bas de la feuille, numérotées comme les appels.
-  const liste = notes.length ? `<ol class="mnotes" style="font-size:10pt;line-height:1.2;margin:18px 0 0;padding:6px 0 0 18px;border-top:1px solid #000;list-style:decimal">${notes.map(n => `<li>${memInline(n)}</li>`).join("")}</ol>` : "";
-  // Sommaire automatique : titres de chapitre et sous-titres, dans l'ordre (sans numéros de page dans l'aperçu).
-  const som = memSommaire(m.blocs);
-  const sommaire = som.length ? `<section class="memsommaire" style="margin-bottom:24px"><div class="mh1">Sommaire</div>${som.map(s => `<div style="padding-left:${(s.niveau - 1) * 18}px;margin:4px 0">${esc(s.texte)}</div>`).join("")}</section>` : "";
-  // L'aperçu montre une seule feuille de contenu : la pagination exacte se fait à l'export.
-  return memCouvertureHtml() + sommaire + `<section class="memcontenu">${corps || '<p class="meta">Le contenu apparaîtra ici.</p>'}${liste}${memPiedHtml(2)}</section>`;
+  const som = memSommaire(m.blocs), pagesSom = Math.ceil(som.length / 30);
+  const corps = memPagination(m.blocs);
+  const premiere = 2 + pagesSom;   // numéro de la première page du corps (couverture = 1)
+  const html = [memPageHtml(memCouvertureCorps(), "", 1)];
+  for (let p = 0; p < pagesSom; p++) {
+    const lignes = som.slice(p * 30, p * 30 + 30).map((s, k) => {
+      const pg = corps.titrePages[p * 30 + k] + premiere;
+      return `<div style="display:flex;align-items:baseline;margin:0 0 2.5mm ${(s.niveau - 1) * 6}mm;${MEM_FONTE}font-size:${s.niveau === 1 ? 12 : 11}pt;${s.niveau === 1 ? "font-weight:bold;" : ""}">`
+        + `<span>${esc(s.texte)}</span><span style="flex:1;border-bottom:1px dotted #000;margin:0 2mm;"></span><span>${pg}</span></div>`;
+    }).join("");
+    html.push(memPageHtml((p === 0 ? `<div style="${MEM_FONTE}font-size:16pt;font-weight:bold;text-align:center;margin-bottom:8mm;">Sommaire</div>` : "") + lignes, "", 2 + p));
+  }
+  corps.pages.forEach((pg, k) => html.push(memPageHtml(pg.corps.join(""), memNotesBloc(pg.notes), premiere + k)));
+  return `<div class="memzoom">${html.join("")}</div>`;
 }
+// Réduit les pages pour qu'elles tiennent dans la largeur de l'aperçu (sans réduire en dessous de la taille réelle).
+function memZoomApercu() {
+  const zone = $("mem_apercu"), z = zone && zone.querySelector(".memzoom");
+  if (!z) return;
+  const largeur = zone.clientWidth - 16;
+  // Zone cachée (largeur nulle) : taille réelle, recalculée au prochain affichage.
+  z.style.zoom = largeur > 0 ? Math.max(0.3, Math.min(1, largeur / MEM_PAGE.w)) : 1;
+}
+window.addEventListener("resize", memZoomApercu);
 
 // Texte d'un bloc sans notes ni marques de mise en forme.
 function memTextePlain(texte) {
@@ -244,7 +338,7 @@ function memControleHtml() {
 }
 
 function memRafraichirApercu() {
-  if ($("mem_apercu")) $("mem_apercu").innerHTML = memApercuHtml();
+  if ($("mem_apercu")) { $("mem_apercu").innerHTML = memApercuHtml(); memZoomApercu(); }
   if ($("mem_controle")) $("mem_controle").innerHTML = memControleHtml();
   if ($("mem_pied")) $("mem_pied").placeholder = memPiedDefaut();
 }
