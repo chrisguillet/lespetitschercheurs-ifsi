@@ -75,10 +75,10 @@ function renderRetro() {
     const cle = isoJour(d), el = entreesDuJour(toutes.filter(j => j.statut !== "fait"), cle).filter(j => k === 0 || debutJalon(j) === cle || !estPlage(j) || k === 0);
     if (el.length) venir.push([cle, el, k]);
   }
-  const item = j => `<button type="button" class="ritem" data-jour="${esc(j.echeance)}" style="--t:${typeEntree(j).c}"><i></i><span><b>${esc(typeEntree(j).ico)} ${esc(j.titre)}</b><small>${j.heure ? esc(j.heure) + " · " : ""}${esc(typeEntree(j).lib)}</small></span></button>`;
+  const item = j => `<button type="button" class="ritem" data-jour="${esc(j.echeance)}" style="--t:${typeEntree(j).c}"><i></i><span><b>${esc(typeEntree(j).ico)} ${esc(j.titre)}</b>${pastPers(j)}<small>${j.heure ? esc(j.heure) + " · " : ""}${esc(typeEntree(j).lib)}</small></span></button>`;
   const side = `<aside class="rp-side">
     <div class="rcard"><div class="rtit">Avancement</div>${trav.length ? `<div class="rprog"><b>${faits}</b> / ${trav.length} <span class="meta">tâches et échéances faites</span></div><div class="barre" aria-hidden="true"><i style="width:${Math.round(100 * faits / trav.length)}%"></i></div>` : '<div class="meta">Aucune tâche pour l’instant.</div>'}</div>
-    ${retard.length ? `<div class="rcard retard"><div class="rtit">⚠ En retard (${retard.length})</div>${retard.slice(0, 5).map(j => `<button type="button" class="ritem" data-jour="${esc(j.echeance)}" style="--t:#d33"><i></i><span><b>${esc(j.titre)}</b><small>retard de ${-ecartJours(j.echeance)} j · ${esc(fmtD(j.echeance))}</small></span></button>`).join("")}${retard.length > 5 ? `<div class="meta">+ ${retard.length - 5} autre(s)</div>` : ""}</div>` : ""}
+    ${retard.length ? `<div class="rcard retard"><div class="rtit">⚠ En retard (${retard.length})</div>${retard.slice(0, 5).map(j => `<button type="button" class="ritem" data-jour="${esc(j.echeance)}" style="--t:#d33"><i></i><span><b>${esc(j.titre)}</b>${pastPers(j)}<small>retard de ${-ecartJours(j.echeance)} j · ${esc(fmtD(j.echeance))}</small></span></button>`).join("")}${retard.length > 5 ? `<div class="meta">+ ${retard.length - 5} autre(s)</div>` : ""}</div>` : ""}
     <div class="rcard"><div class="rtit">À venir · 14 jours</div>${venir.length ? venir.slice(0, 7).map(([cle, el, k]) => `<div class="rjour"><div class="rjd">${k === 0 ? "Aujourd’hui" : k === 1 ? "Demain" : esc(JOUR_LONG(cle))}</div>${el.slice(0, 4).map(item).join("")}</div>`).join("") : '<div class="meta">Rien de prévu dans les deux prochaines semaines.</div>'}</div>
   </aside>`;
 
@@ -97,7 +97,7 @@ function lignesJour(cle) {
   const el = entreesDuJour(jalonsAll.filter(j => j.groupe_id === g.id), cle);
   const cr = reunionsAll.filter(r => r.groupe_id === g.id && r.date === cle);
   const ligne = j => `<div class="rrow ${j.statut === "fait" ? "fait" : ""}" style="--t:${typeEntree(j).c}"><i></i>
-      <div class="rtxt"><div><b>${esc(typeEntree(j).ico)} ${esc(j.titre)}</b> <span class="meta">${esc(typeEntree(j).lib)}${j.heure ? " · " + esc(j.heure) : ""}${estPlage(j) ? " · " + esc(fmtDatesJalon(j)) : ""}</span></div>
+      <div class="rtxt"><div><b>${esc(typeEntree(j).ico)} ${esc(j.titre)}</b>${pastPers(j)} <span class="meta">${esc(typeEntree(j).lib)}${j.heure ? " · " + esc(j.heure) : ""}${estPlage(j) ? " · " + esc(fmtDatesJalon(j)) : ""}</span></div>
         ${j.par ? `<div class="meta"><span class="dot" style="background:${esc(j.par_couleur || "#888")}"></span> ${esc(j.par)}</div>` : ""}
         <div class="meta">${esc(STATUT_JALON[j.statut] || j.statut)} ${delaiJalon(j)}${j.note ? " · " + esc(j.note) : ""}</div></div>
       ${j.modifiable ? `<div class="ract"><button type="button" class="btn sm sec" data-rpf="${esc(j.id)}" title="${j.statut === "fait" ? "Remettre à faire" : "Marquer comme fait"}">${j.statut === "fait" ? "↩" : "✓"}</button><button type="button" class="btn sm sec" data-rped="${esc(j.id)}">Modifier</button><button type="button" class="btn sm sec del" data-rpdel="${esc(j.id)}" aria-label="Supprimer">🗑</button></div>` : ""}</div>`;
@@ -123,6 +123,8 @@ const rafraichirRetro = () => { if (tab === "suivi") renderRetro(); if (RP.jour)
 
 /* ----- Saisie d'une entrée ----- */
 
+// Pastilles des personnes assignées à une entrée (couleur de chacune).
+const pastPers = j => (j.personnes || []).map(p => `<span class="ppers" style="--c:${esc(p.couleur)}" title="${esc(p.prenom)}"></span>`).join("");
 const ALERTES_RP = [["", "Aucune"], ["0", "Le jour même"], ["1", "1 jour avant"], ["3", "3 jours avant"], ["7", "1 semaine avant"], ["14", "2 semaines avant"]];
 function ouvrirEntree(id, cleDefaut) {
   if (!$("rpform")) return;
@@ -140,6 +142,7 @@ function ouvrirEntree(id, cleDefaut) {
       <div><label for="e_heure">Heure (facultative)</label><input id="e_heure" type="time" value="${esc(j.heure || "")}"></div>
       <div><label for="e_statut">Statut</label><select id="e_statut">${Object.keys(STATUT_JALON).map(k => `<option value="${k}" ${j.statut === k ? "selected" : ""}>${esc(STATUT_JALON[k])}</option>`).join("")}</select></div>
       <div><label for="e_alerte">Alerte dans l’outil</label><select id="e_alerte">${ale.map(a => `<option value="${esc(a[0])}" ${a[0] === al ? "selected" : ""}>${esc(a[1])}</option>`).join("")}</select></div>
+      <div style="grid-column:1/-1"><label>Personnes concernées <span class="meta">(une pastille de leur couleur sur l’entrée)</span></label><div class="grow">${(groupeCourant() || {}).membres ? (groupeCourant().membres).map(m => `<label class="chk"><input type="checkbox" data-epers="${esc(m.pid)}" ${(j.personnes || []).some(p => p.pid === m.pid) ? "checked" : ""}> ${esc(m.prenom)}</label>`).join("") : ""}</div></div>
       <div style="grid-column:1/-1"><label for="e_note">Note</label><input id="e_note" maxlength="500" value="${esc(j.note || "")}"></div></div>
     <div class="meta">L’alerte apparaît dans la cloche 🔔 des membres du groupe, tant que l’entrée n’est pas « Fait ». Chacun peut la reporter.</div>
     <div class="savebar"><div id="eerr" class="err" role="alert"></div><button class="btn" id="esave" type="button">Enregistrer</button> <button class="btn sec" id="ecancel" type="button">Annuler</button></div>`;
@@ -159,7 +162,7 @@ async function enregistrerEntree() {
   if (!date) { $("eerr").textContent = "Indiquez la date."; return; }
   if (fin && fin < date) { $("eerr").textContent = "La date de fin doit suivre la date de début."; return; }
   const data = { titre: $("e_titre").value, type: RP.type, debut: fin && fin !== date ? date : "", echeance: fin && fin !== date ? fin : date, heure: $("e_heure").value,
-    statut: $("e_statut").value, alerte_jours: $("e_alerte").value, note: $("e_note").value };
+    statut: $("e_statut").value, alerte_jours: $("e_alerte").value, note: $("e_note").value, personnes: [...document.querySelectorAll("[data-epers]:checked")].map(c => c.dataset.epers) };
   $("esave").disabled = true;
   try {
     const res = await enCours("Enregistrement…", () => api("jalon_save", { groupe_id: g.id, id: f.id || undefined, data }));
@@ -230,7 +233,7 @@ function apercuJour(cle, ancre) {
   const cr = reunionsAll.filter(r => mes.has(r.groupe_id) && r.date === cle);
   const p = document.createElement("div");
   p.className = "mcpop"; p.setAttribute("role", "dialog"); p.setAttribute("aria-label", JOUR_LONG(cle));
-  const ligne = j => `<div class="mcl" style="--t:${typeEntree(j).c}"><i></i><span><b>${esc(typeEntree(j).ico)} ${esc(j.titre)}</b><small>${esc(typeEntree(j).lib)}${j.heure ? " · " + esc(j.heure) : ""}${groupes.length > 1 ? " · " + esc(nomGroupe(j.groupe_id)) : ""}</small></span></div>`;
+  const ligne = j => `<div class="mcl" style="--t:${typeEntree(j).c}"><i></i><span><b>${esc(typeEntree(j).ico)} ${esc(j.titre)}</b>${pastPers(j)}<small>${esc(typeEntree(j).lib)}${j.heure ? " · " + esc(j.heure) : ""}${groupes.length > 1 ? " · " + esc(nomGroupe(j.groupe_id)) : ""}</small></span></div>`;
   p.innerHTML = `<div class="mcph"><b>${esc(JOUR_LONG(cle).replace(/^./, c => c.toUpperCase()))}</b><button type="button" class="btn sm sec" data-mcx="1" aria-label="Fermer">✕</button></div>
     ${el.length ? el.map(ligne).join("") : '<div class="meta">Rien de prévu ce jour-là.</div>'}${cr.length ? `<div class="meta" style="margin-top:4px">📝 ${cr.length} compte${cr.length > 1 ? "s" : ""} rendu${cr.length > 1 ? "s" : ""} de réunion</div>` : ""}
     <div class="mcpf"><button type="button" class="btn sm" data-mcgo="${esc(cle)}">Ouvrir dans le rétroplanning</button></div>`;

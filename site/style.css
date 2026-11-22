@@ -940,3 +940,6 @@ header #sub select{padding:5px 26px 5px 10px}
 /* Logo de l'en-tête : l'image entière (pas de recadrage), réduite à la hauteur disponible */
 header .brand .logo{aspect-ratio:1402 / 1122;width:auto;background:#fff url(qocot.webp) center / contain no-repeat;min-height:62px;max-height:96px;padding:2px}
 @media (max-width:640px){header .brand .logo{min-height:46px;max-height:56px}}
+
+/* Personnes assignées à une entrée du rétroplanning : une pastille de leur couleur */
+.ppers{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);margin-left:3px;vertical-align:middle;box-shadow:0 0 0 1.5px var(--card)}

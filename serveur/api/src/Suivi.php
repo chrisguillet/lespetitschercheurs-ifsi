@@ -75,12 +75,37 @@ final class Suivi
         $valeurs = array_map(static fn (string $k): mixed => self::valeurSql($k, $d[$k]), $def['champs']);
         $colonnes = implode(', ', array_map(static fn (string $k): string => "`$k`", $def['champs']));
         if ($identifiant === '') {
+            $identifiant = Ids::uuid();
             $pdo->prepare("INSERT INTO `$table` (id, groupe_id, cree_par, cree_le, $colonnes) VALUES (?, ?, ?, ?, " . Lectures::marques(count($valeurs)) . ')')
-                ->execute([Ids::uuid(), $gid, $uid, $now, ...$valeurs]);
-            return;
+                ->execute([$identifiant, $gid, $uid, $now, ...$valeurs]);
+        } else {
+            $sets = implode(', ', array_map(static fn (string $k): string => "`$k` = ?", $def['champs']));
+            $pdo->prepare("UPDATE `$table` SET $sets, modifie_le = ?, modifie_par = ? WHERE id = ?")->execute([...$valeurs, $now, $uid, $identifiant]);
         }
-        $sets = implode(', ', array_map(static fn (string $k): string => "`$k` = ?", $def['champs']));
-        $pdo->prepare("UPDATE `$table` SET $sets, modifie_le = ?, modifie_par = ? WHERE id = ?")->execute([...$valeurs, $now, $uid, $identifiant]);
+        if ($type === 'jalon' && is_array($data['personnes'] ?? null)) {
+            self::personnesDuJalon($pdo, $gid, $identifiant, $data['personnes']);
+        }
+    }
+
+    /**
+     * Remplace les personnes assignées à un jalon. Chaque personne doit être membre du groupe ; on reçoit leurs identifiants publics.
+     *
+     * @param array<mixed> $pids
+     */
+    private static function personnesDuJalon(\PDO $pdo, string $gid, string $jalonId, array $pids): void
+    {
+        $ids = [];
+        foreach (array_slice(array_values(array_unique(array_filter($pids, 'is_string'))), 0, 30) as $pid) {
+            $u = Utilisateurs::parPid($pdo, $pid);
+            if ($u === null || $u->id === null || !Membres::estMembre($pdo, $gid, $u->id)) {
+                throw new Erreur('invalid', 'Une personne choisie ne fait pas partie de ce groupe');
+            }
+            $ids[] = $u->id;
+        }
+        $pdo->prepare('DELETE FROM jalons_personnes WHERE jalon_id = ?')->execute([$jalonId]);
+        foreach ($ids as $id) {
+            $pdo->prepare('INSERT INTO jalons_personnes (jalon_id, utilisateur_id) VALUES (?, ?)')->execute([$jalonId, $id]);
+        }
     }
 
     /** Les étudiantes du groupe modifient et suppriment ; un administrateur du groupe peut aussi supprimer (modération). */
@@ -118,6 +143,19 @@ final class Suivi
                              WHERE t.groupe_id IN (" . Lectures::marques(count($gids)) . ') ORDER BY t.cree_le, t.id');
         $st->execute($gids);
         $etudiant = $c->droits()->estEtudiant();
+        // Personnes assignées aux jalons (seulement celles qui sont encore membres du groupe).
+        $assignes = [];
+        if ($type === 'jalon') {
+            $sa = $pdo->prepare("SELECT jp.jalon_id, u.pid, u.prenom, u.nom, u.pseudo, u.couleur, m.groupe_id
+                                 FROM jalons_personnes jp JOIN jalons j ON j.id = jp.jalon_id
+                                 JOIN utilisateurs u ON u.id = jp.utilisateur_id
+                                 JOIN membres m ON m.utilisateur_id = jp.utilisateur_id AND m.groupe_id = j.groupe_id
+                                 WHERE j.groupe_id IN (" . Lectures::marques(count($gids)) . ') ORDER BY u.prenom');
+            $sa->execute($gids);
+            foreach ($sa->fetchAll() as $p) {
+                $assignes[(string) $p['jalon_id']][] = ['pid' => (string) $p['pid'], 'prenom' => Utilisateur::nomAffiche((string) $p['prenom'], (string) $p['nom'], $p['pseudo'] === null ? null : (string) $p['pseudo']), 'couleur' => (string) $p['couleur']];
+            }
+        }
         $out = [];
         foreach ($st->fetchAll() as $r) {
             $o = [
@@ -130,6 +168,9 @@ final class Suivi
             ];
             foreach ($def['champs'] as $k) {
                 $o[$k] = $r[$k] === null ? '' : (string) $r[$k];
+            }
+            if ($type === 'jalon') {
+                $o['personnes'] = $assignes[(string) $r['id']] ?? [];
             }
             $out[] = $o;
         }
