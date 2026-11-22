@@ -48,6 +48,7 @@ function memDessiner() {
           <div><label for="mem_titre">Titre du travail</label><input id="mem_titre" maxlength="200" value="${esc(m.titre)}" ${ecrit ? "" : "disabled"}></div>
           <div><label for="mem_ue">UE et intitulé</label><input id="mem_ue" maxlength="200" value="${esc(m.ue)}" ${ecrit ? "" : "disabled"}></div>
           <div><label for="mem_ref">Référent pédagogique</label><input id="mem_ref" maxlength="120" value="${esc(m.referent)}" ${ecrit ? "" : "disabled"}></div>
+          <div style="grid-column:1/-1"><label for="mem_auteurs">Auteur(s) de la couverture <span class="meta">(NOM – Prénom, séparés par ;)</span></label><input id="mem_auteurs" maxlength="300" value="${esc(m.auteurs)}" placeholder="ex. Dupont – Ana ; Martin – Ben" ${ecrit ? "" : "disabled"}></div>
           <div><label for="mem_date">Date de rendu</label><input id="mem_date" type="date" value="${esc(m.date_rendu)}" ${ecrit ? "" : "disabled"}></div>
         </div>
         <div id="mem_msg" class="meta" role="status">${esc(MEM.msg)}</div>
@@ -74,10 +75,29 @@ function memBlocHtml(b, i, ecrit) {
   </div>`;
 }
 
+// Promotion au format de la maquette : « Promo 24-27 » -> « PROMOTION 2024-2027 ».
+function memPromoMaquette(promo) {
+  const m = /(\d{2})\s*-\s*(\d{2})/.exec(promo || "");
+  return m ? "PROMOTION 20" + m[1] + "-20" + m[2] : String(promo || "").toUpperCase();
+}
+// Page de couverture selon le modèle : établissement en haut, UE et titre au centre, auteurs et promotion, référent et date en bas.
+function memCouvertureHtml() {
+  const m = MEM.data, g = groupeCourant() || {};
+  return `<section class="memcouv">
+    <div class="memcouv-haut">INSTITUT DE FORMATION EN SOINS INFIRMIERS<br>SAINT-NAZAIRE</div>
+    <div class="memcouv-centre">${m.ue ? esc(m.ue) + "<br>" : ""}<b>${esc(m.titre || "TITRE DU TRAVAIL").toUpperCase()}</b></div>
+    <div class="memcouv-auteurs">${esc(m.auteurs || "NOM – Prénom de l’étudiant(e)")}<br>${esc(memPromoMaquette(g.promo))}</div>
+    <div class="memcouv-bas">Référent pédagogique : ${esc(m.referent)}<br>Date : ${esc(m.date_rendu ? fmtD(m.date_rendu) : "")}</div>
+  </section>`;
+}
+// Pied de page de la maquette, sur chaque page sauf la couverture.
+function memPiedHtml(page) {
+  const m = MEM.data, g = groupeCourant() || {};
+  return `<footer class="mempied">IFSI GAVY – SAINT-NAZAIRE – ${esc(m.ue || "UE")} – ${esc(m.titre || "Titre du document")} – ${esc(memPromoMaquette(g.promo))} – ${esc(m.auteurs || "NOM Prénom")} – ${esc(m.date_rendu ? fmtD(m.date_rendu) : "Date")} – Page ${page}</footer>`;
+}
 function memApercuHtml() {
   const m = MEM.data; if (!m) return "";
-  const page = `<div class="memcouv">${esc(m.ue)}<br>${esc(m.titre)}<br>${esc(m.referent)}</div>`;
-  return page + m.blocs.map(b => {
+  const corps = m.blocs.map(b => {
     const t = memInline(b.texte);
     if (b.type === "titre1") return `<h2 class="mh1">${t}</h2>`;
     if (b.type === "titre2") return `<h3 class="mh2">${t}</h3>`;
@@ -85,6 +105,8 @@ function memApercuHtml() {
     if (b.type === "reference") return `<p class="mref">${t}</p>`;
     return `<p class="mpar">${t}</p>`;
   }).join("");
+  // L'aperçu montre une seule feuille de contenu : la pagination exacte se fait à l'export.
+  return memCouvertureHtml() + `<section class="memcontenu">${corps || '<p class="meta">Le contenu apparaîtra ici.</p>'}${memPiedHtml(2)}</section>`;
 }
 
 // Contrôles automatiques : ce qui se vérifie sur le contenu. Les marges, la police et l’interligne sont fixés par la feuille d’aperçu.
@@ -98,6 +120,7 @@ function memControleHtml() {
     ${ok(!!m.titre, "Titre du travail renseigné")}
     ${ok(!!m.ue, "UE et intitulé renseignés")}
     ${ok(!!m.referent, "Référent pédagogique renseigné")}
+    ${ok(!!m.auteurs, "Auteur(s) de la couverture renseigné(s)")}
     ${ok(!!m.date_rendu, "Date de rendu renseignée")}
     ${ok(titres > 0, "Au moins un titre de chapitre")}
     ${ok(vides === 0, vides ? vides + " bloc(s) vide(s) à compléter ou supprimer" : "Aucun bloc vide")}
@@ -124,7 +147,7 @@ async function memSauverBloc(bid, data) {
 
 // Mémorise l'en-tête (titre, UE, référent, date).
 async function memSauverEntete() {
-  const data = { titre: $("mem_titre").value, ue: $("mem_ue").value, referent: $("mem_ref").value, date_rendu: $("mem_date").value };
+  const data = { titre: $("mem_titre").value, ue: $("mem_ue").value, referent: $("mem_ref").value, auteurs: $("mem_auteurs").value, date_rendu: $("mem_date").value };
   try {
     const res = await api("memoire_entete", { groupe_id: MEM.gid, data });
     MEM.data = res.memoire; MEM.msg = "En-tête enregistré."; memRafraichirApercu();
@@ -140,7 +163,7 @@ async function memStructure(appel) {
 
 $("memoirebox")?.addEventListener("change", e => {
   const t = e.target;
-  if (t.closest && t.closest("#mem_titre, #mem_ue, #mem_ref, #mem_date")) return memSauverEntete();
+  if (t.closest && t.closest("#mem_titre, #mem_ue, #mem_ref, #mem_auteurs, #mem_date")) return memSauverEntete();
   const bloc = t.closest && t.closest("[data-bid]");
   if (!bloc) return;
   const bid = bloc.dataset.bid, b = MEM.data.blocs.find(x => x.id === bid); if (!b) return;

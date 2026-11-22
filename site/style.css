@@ -983,3 +983,12 @@ header .brand .logo{margin:2px 0}
 .memfeuille .mref{padding-left:1.25cm;text-indent:-1.25cm;font-size:12pt}
 .memfeuille b{font-weight:700}
 @media (max-width:900px){.memlayout{grid-template-columns:1fr}}
+
+/* Mémoire : couverture et pied de page conformes au modèle */
+.memfeuille .memcouv{display:flex;flex-direction:column;justify-content:space-between;min-height:24cm;text-align:center;font-size:12pt;padding:0;margin:0 0 30px;text-align:center;font-weight:400}
+.memfeuille .memcouv-haut{font-size:14pt;line-height:1.5}
+.memfeuille .memcouv-centre{font-size:14pt;line-height:1.5;text-transform:none}
+.memfeuille .memcouv-auteurs{line-height:1.5}
+.memfeuille .memcouv-bas{text-align:left;font-size:12pt;line-height:1.5}
+.memfeuille .memcontenu{border-top:1px dashed var(--bd);padding-top:12px}
+.memfeuille .mempied{font-size:9pt;text-align:center;margin-top:24px;border-top:1px solid #999;padding-top:4px}

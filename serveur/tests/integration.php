@@ -1051,6 +1051,7 @@ verifie('visio : un lien non https est refusé', $err(appel('a1@ci.test', 'jalon
 $m0 = appel('a1@ci.test', 'memoire_get', ['groupe_id' => $alpha]);
 verifie('mémoire : vide au départ, modifiable par une membre', ($m0['memoire']['blocs'] ?? ['x']) === [] && ($m0['memoire']['modifiable'] ?? false) === true);
 $e = appel('a1@ci.test', 'memoire_entete', ['groupe_id' => $alpha, 'data' => ['titre' => 'Autonomie', 'ue' => 'UE 6.1', 'referent' => 'Mme K.', 'date_rendu' => '2027-01-15']]);
+$e = appel('a1@ci.test', 'memoire_entete', ['groupe_id' => $alpha, 'data' => ['titre' => 'Autonomie', 'ue' => 'UE 6.1', 'referent' => 'Mme K.', 'auteurs' => 'Dupont – Ana ; Martin – Ben', 'date_rendu' => '2027-01-15']]);
 verifie('mémoire : en-tête enregistré', ($e['memoire']['titre'] ?? '') === 'Autonomie' && ($e['memoire']['date_rendu'] ?? '') === '2027-01-15');
 $b1 = appel('a1@ci.test', 'memoire_bloc', ['groupe_id' => $alpha, 'data' => ['type' => 'titre1', 'texte' => 'Introduction']]);
 $b2 = appel('a2@ci.test', 'memoire_bloc', ['groupe_id' => $alpha, 'data' => ['type' => 'paragraphe', 'texte' => 'Le texte d\'une autre membre.']]);

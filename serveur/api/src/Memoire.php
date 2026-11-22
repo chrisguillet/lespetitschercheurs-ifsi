@@ -38,7 +38,7 @@ final class Memoire
         $pdo = $c->db->principale();
         $st = $pdo->prepare('SELECT titre, ue, referent, date_rendu, modifie_le FROM memoires WHERE groupe_id = ?');
         $st->execute([$gid]);
-        $en = $st->fetch() ?: ['titre' => '', 'ue' => '', 'referent' => '', 'date_rendu' => '', 'modifie_le' => null];
+        $en = $st->fetch() ?: ['titre' => '', 'ue' => '', 'referent' => '', 'auteurs' => '', 'date_rendu' => '', 'modifie_le' => null];
         $st = $pdo->prepare(
             'SELECT b.id, b.ordre, b.type, b.texte, b.modifie_le, u.prenom, u.nom, u.pseudo
              FROM memoire_blocs b LEFT JOIN utilisateurs u ON u.id = b.auteur_id WHERE b.groupe_id = ? ORDER BY b.ordre, b.id'
@@ -52,7 +52,7 @@ final class Memoire
         }
         return [
             'groupe_id' => $gid,
-            'titre' => (string) $en['titre'], 'ue' => (string) $en['ue'], 'referent' => (string) $en['referent'], 'date_rendu' => (string) $en['date_rendu'],
+            'titre' => (string) $en['titre'], 'ue' => (string) $en['ue'], 'referent' => (string) $en['referent'], 'auteurs' => (string) $en['auteurs'], 'date_rendu' => (string) $en['date_rendu'],
             'modifie_le' => Temps::iso($en['modifie_le'] === null ? null : (string) $en['modifie_le']),
             'blocs' => $blocs,
             'modifiable' => $c->droits()->estEtudiant() && Membres::estMembre($pdo, $gid, (int) $c->user->id),
@@ -67,7 +67,7 @@ final class Memoire
             throw new Erreur('invalid', 'Données manquantes');
         }
         $t = [];
-        foreach (['titre' => 200, 'ue' => 200, 'referent' => 120] as $k => $max) {
+        foreach (['titre' => 200, 'ue' => 200, 'referent' => 120, 'auteurs' => 300] as $k => $max) {
             $v = is_scalar($data[$k] ?? null) ? trim((string) $data[$k]) : '';
             if (mb_strlen($v) > $max) {
                 throw new Erreur('invalid', "Champ « $k » trop long ($max caractères maximum)");
@@ -79,9 +79,9 @@ final class Memoire
             throw new Erreur('invalid', 'Date de rendu invalide');
         }
         $now = Temps::maintenant();
-        $pdo->prepare('INSERT INTO memoires (groupe_id, titre, ue, referent, date_rendu, modifie_le, modifie_par) VALUES (?, ?, ?, ?, ?, ?, ?)
-                       ON DUPLICATE KEY UPDATE titre = VALUES(titre), ue = VALUES(ue), referent = VALUES(referent), date_rendu = VALUES(date_rendu), modifie_le = VALUES(modifie_le), modifie_par = VALUES(modifie_par)')
-            ->execute([$gid, $t['titre'], $t['ue'], $t['referent'], $date, $now, $c->user->id]);
+        $pdo->prepare('INSERT INTO memoires (groupe_id, titre, ue, referent, auteurs, date_rendu, modifie_le, modifie_par) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                       ON DUPLICATE KEY UPDATE titre = VALUES(titre), ue = VALUES(ue), referent = VALUES(referent), auteurs = VALUES(auteurs), date_rendu = VALUES(date_rendu), modifie_le = VALUES(modifie_le), modifie_par = VALUES(modifie_par)')
+            ->execute([$gid, $t['titre'], $t['ue'], $t['referent'], $t['auteurs'], $date, $now, $c->user->id]);
     }
 
     /** Ajoute (sans id) ou modifie (avec id) un bloc. @param array<string,mixed> $data */
