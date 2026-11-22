@@ -1,5 +1,6 @@
-/* Mémoire partagé par le groupe : éditeur structuré (titres, paragraphes, citations, références APA), aperçu et contrôle des normes.
-   Mise en forme saisie avec des marques simples : **gras** et *italique*. Script classique : portée globale partagée avec js/.
+/* Mémoire partagé par le groupe : éditeur structuré (titres, paragraphes, citations, références APA, notes de bas de page), aperçu et contrôle des normes.
+   Mise en forme saisie avec des marques simples : **gras** et *italique* ; note de bas de page : ^[texte de la note].
+   Script classique : portée globale partagée avec js/.
    Normes de la maquette « Consignes de rédaction et de présentation d’un travail écrit » (IFSI Saint-Nazaire). */
 "use strict";
 /* ---------- Mémoire ---------- */
@@ -9,9 +10,21 @@ const MEM_TYPES = { titre1: "Titre de chapitre", titre2: "Sous-titre", paragraph
 // Marges de la maquette, en cm : gauche (reliure), droite, haut, bas.
 const MEM_MARGES = { g: 3, d: 2.5, h: 2.5, b: 3 };
 
-// Texte saisi (marques **gras** et *italique*) -> HTML sûr pour l'aperçu.
-function memInline(texte) {
-  return esc(texte || "").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\*([^*]+)\*/g, "<i>$1</i>");
+// Découpe un texte saisi : morceaux de texte ({texte}) et notes de bas de page ({note}), dans l'ordre.
+function memMorceaux(texte) {
+  return String(texte || "").split(/(\^\[[^\[\]]*\])/).filter(Boolean).map(p => {
+    const n = /^\^\[([^\[\]]*)\]$/.exec(p);
+    return n ? { note: n[1] } : { texte: p };
+  });
+}
+// Texte saisi (marques **gras** et *italique*) -> HTML sûr pour l'aperçu. Les notes sont numérotées dans la liste `notes`.
+function memInline(texte, notes) {
+  return memMorceaux(texte).map(m => {
+    if (m.note === undefined) return esc(m.texte).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\*([^*]+)\*/g, "<i>$1</i>");
+    if (!notes) return esc(m.note);
+    notes.push(m.note);
+    return "<sup>" + notes.length + "</sup>";
+  }).join("");
 }
 // HTML d'une référence APA (italique en <i>) -> marques de saisie.
 function memDepuisHtml(html) {
@@ -43,7 +56,7 @@ function memDessiner() {
     <div class="memedit">
       <div class="card">
         <h2 style="font-size:16px;margin:0 0 8px">🎓 Mémoire du groupe</h2>
-        <div class="meta">Le mémoire est partagé par le groupe : chaque bloc garde l’auteur de sa dernière modification. Mise en forme : <b>**gras**</b>, <i>*italique*</i>.</div>
+        <div class="meta">Le mémoire est partagé par le groupe : chaque bloc garde l’auteur de sa dernière modification. Mise en forme : <b>**gras**</b>, <i>*italique*</i> ; note de bas de page : <b>^[texte de la note]</b>.</div>
         <div class="memen">
           <div><label for="mem_titre">Titre du travail</label><input id="mem_titre" maxlength="200" value="${esc(m.titre)}" ${ecrit ? "" : "disabled"}></div>
           <div><label for="mem_ue">UE et intitulé</label><input id="mem_ue" maxlength="200" value="${esc(m.ue)}" ${ecrit ? "" : "disabled"}></div>
@@ -57,6 +70,7 @@ function memDessiner() {
       ${ecrit ? `<div class="card memajout"><b>Ajouter :</b>
         ${["titre1", "titre2", "paragraphe", "citation"].map(t => `<button type="button" class="btn sm sec" data-mem-new="${t}">＋ ${esc(MEM_TYPES[t])}</button>`).join(" ")}
         ${refs.length ? `<button type="button" class="btn sm sec" id="mem_refbtn">＋ Référence APA</button>` : ""}
+        <button type="button" class="btn sm sec" data-mem-note title="Insère ^[ ] à la place du curseur, dans le bloc en cours">＋ Note de bas de page</button>
         <div id="mem_refs" class="hidden">${refs.map(i => `<button type="button" class="memref" data-mem-ref="${esc(i.id)}">${esc(i.titre)} <span class="meta">${esc(i.auteur || "")}</span></button>`).join("")}</div></div>` : '<div class="card meta">Lecture seule : seules les membres du groupe modifient le mémoire.</div>'}
       <div class="memblocs">${m.blocs.length ? m.blocs.map((b, i) => memBlocHtml(b, i, ecrit)).join("") : '<div class="card empty">Le mémoire est vide. Commencez par un titre de chapitre.</div>'}</div>
     </div>
@@ -98,16 +112,19 @@ function memPiedHtml(page) {
 }
 function memApercuHtml() {
   const m = MEM.data; if (!m) return "";
+  const notes = [];
   const corps = m.blocs.map(b => {
-    const t = memInline(b.texte);
+    const t = memInline(b.texte, notes);
     if (b.type === "titre1") return `<h2 class="mh1">${t}</h2>`;
     if (b.type === "titre2") return `<h3 class="mh2">${t}</h3>`;
     if (b.type === "citation") return `<blockquote class="mcit">${t}</blockquote>`;
     if (b.type === "reference") return `<p class="mref">${t}</p>`;
     return `<p class="mpar">${t}</p>`;
   }).join("");
+  // Notes de bas de page (corps 10) au bas de la feuille, numérotées comme les appels.
+  const liste = notes.length ? `<ol class="mnotes" style="font-size:10pt;line-height:1.2;margin:18px 0 0;padding:6px 0 0 18px;border-top:1px solid #000;list-style:decimal">${notes.map(n => `<li>${memInline(n)}</li>`).join("")}</ol>` : "";
   // L'aperçu montre une seule feuille de contenu : la pagination exacte se fait à l'export.
-  return memCouvertureHtml() + `<section class="memcontenu">${corps || '<p class="meta">Le contenu apparaîtra ici.</p>'}${memPiedHtml(2)}</section>`;
+  return memCouvertureHtml() + `<section class="memcontenu">${corps || '<p class="meta">Le contenu apparaîtra ici.</p>'}${liste}${memPiedHtml(2)}</section>`;
 }
 
 // Contrôles automatiques : ce qui se vérifie sur le contenu. Les marges, la police et l’interligne sont fixés par la feuille d’aperçu.
@@ -117,6 +134,7 @@ function memControleHtml() {
   const ok = (c, txt) => `<li class="${c ? "okk" : "ko"}">${c ? "✅" : "⚠️"} ${esc(txt)}</li>`;
   const titres = m.blocs.filter(b => b.type === "titre1").length;
   const vides = m.blocs.filter(b => !b.texte.trim()).length;
+  const notes = m.blocs.reduce((n, b) => n + memMorceaux(b.texte).filter(x => x.note !== undefined).length, 0);
   return `<ul class="memcheck">
     ${ok(!!m.titre, "Titre du travail renseigné")}
     ${ok(!!m.ue, "UE et intitulé renseignés")}
@@ -126,7 +144,7 @@ function memControleHtml() {
     ${ok(titres > 0, "Au moins un titre de chapitre")}
     ${ok(vides === 0, vides ? vides + " bloc(s) vide(s) à compléter ou supprimer" : "Aucun bloc vide")}
     ${ok(m.blocs.some(b => b.type === "reference"), "Références bibliographiques ajoutées (APA 7e)")}
-    <li class="info">📝 ${mots} mot${mots > 1 ? "s" : ""}</li>
+    <li class="info">📝 ${mots} mot${mots > 1 ? "s" : ""} · ${notes} note${notes > 1 ? "s" : ""} de bas de page</li>
   </ul>
   <div class="meta">Marges : gauche ${MEM_MARGES.g} cm, droite ${MEM_MARGES.d} cm, haut ${MEM_MARGES.h} cm, bas ${MEM_MARGES.b} cm. Times New Roman noir : corps 12, titres 16 et 14, interligne 1,5, texte justifié, notes de bas de page en 10.</div>`;
 }
@@ -162,6 +180,21 @@ async function memStructure(appel) {
   catch (e) { if (e.code === "unauthorized") return sessionError(e); alert("Action impossible : " + e.message); }
 }
 
+// Insère ^[ ] à la place du curseur dans le bloc en cours d’écriture ; le curseur se place dans la note.
+function memInsererNote() {
+  const t = document.activeElement;
+  if (!t || !t.matches || !t.matches(".memtxt")) {
+    MEM.msg = "Placez le curseur dans un bloc de texte, puis ajoutez la note.";
+    if ($("mem_msg")) $("mem_msg").textContent = MEM.msg;
+    return;
+  }
+  const debut = t.selectionStart, fin = t.selectionEnd, sel = t.value.slice(debut, fin);
+  t.value = t.value.slice(0, debut) + "^[" + sel + "]" + t.value.slice(fin);
+  t.selectionStart = t.selectionEnd = debut + 2 + sel.length;
+  t.dispatchEvent(new Event("input", { bubbles: true }));
+  t.focus();
+}
+
 $("memoirebox")?.addEventListener("change", e => {
   const t = e.target;
   if (t.closest && t.closest("#mem_titre, #mem_ue, #mem_ref, #mem_auteurs, #mem_date")) return memSauverEntete();
@@ -187,8 +220,14 @@ $("memoirebox")?.addEventListener("focusout", e => {
   if (b) memSauverBloc(b.id, { type: b.type, texte: t.value });
 });
 
+// Le bouton de note ne doit pas prendre le curseur au bloc de texte.
+$("memoirebox")?.addEventListener("mousedown", e => {
+  if (e.target.closest && e.target.closest("[data-mem-note]")) e.preventDefault();
+});
+
 $("memoirebox")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
+  if (b.hasAttribute("data-mem-note")) return memInsererNote();
   if (b.id === "mem_refbtn") { $("mem_refs").classList.toggle("hidden"); return; }
   if (b.dataset.memExp) return b.dataset.memExp === "pdf" ? memPdf() : memExporter(b.dataset.memExp);
   if (b.dataset.memNew) return memStructure(() => api("memoire_bloc", { groupe_id: MEM.gid, data: { type: b.dataset.memNew, texte: "" } }));
@@ -231,11 +270,13 @@ function memTexteArrierePlan() {
 }
 
 // PDF aux normes : A4, marges 3 cm (gauche), 2,5 cm (droite), 2,5 cm (haut), 3 cm (bas) ; Times ; corps 12, titres 16 et 14 ; interligne 1,5 ; justifié.
+// Notes de bas de page en corps 10, numérotées dans l’ordre du texte, posées au bas de la page où se trouve leur appel.
 function memPdf() {
   if (!window.jspdf) { alert("Module PDF non chargé."); return; }
   const m = MEM.data, g = groupeCourant() || {};
   const doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
   const W = 210, H = 297, ML = 30, MR = 25, MT = 25, MB = 30, LARG = W - ML - MR, PT = 0.3528, ESP = 1.5;
+  const TN = 10, LN = TN * 1.2 * PT;   // notes : corps 10, interligne simple
   const police = (gras, italique) => doc.setFont("times", gras && italique ? "bolditalic" : gras ? "bold" : italique ? "italic" : "normal");
   const centre = (t, y, taille, gras) => { police(gras, false); doc.setFontSize(taille); doc.text(String(t), W / 2, y, { align: "center" }); };
   // Couverture (page 1, sans pied de page)
@@ -250,38 +291,88 @@ function memPdf() {
   doc.text("Date : " + memDateFr(m.date_rendu), ML, 262 + 12 * ESP * PT);
 
   // Mise en page du texte : mots avec leur style, retrait de la première ligne et retrait des suivantes, justification.
-  let y = MT;
-  const saut = () => { doc.addPage(); y = MT; };
+  let y = MT, noteNum = 0, notesPage = [], hNotesPage = 0;
   const mot = (t, gras, italique, taille) => { police(gras, italique); doc.setFontSize(taille); return doc.getTextWidth(t); };
+  // Hauteur réservée au bas de page pour des notes (filet + espace), 0 s’il n’y en a pas.
+  const espaceNotes = h => (h > 0 ? h + 6 : 0);
   const mots = texte => {
     const out = [];
-    String(texte || "").split(/(\*\*[^*]+\*\*|\*[^*]+\*)/).filter(Boolean).forEach(p => {
-      let gras = false, ital = false, t = p;
-      if (p.startsWith("**") && p.endsWith("**") && p.length > 4) { gras = true; t = p.slice(2, -2); }
-      else if (p.startsWith("*") && p.endsWith("*") && p.length > 2) { ital = true; t = p.slice(1, -1); }
-      t.split(/\s+/).filter(Boolean).forEach(w => out.push({ t: w, gras, ital }));
+    memMorceaux(texte).forEach(p => {
+      if (p.note !== undefined) { noteNum++; out.push({ t: String(noteNum), sup: true, note: p.note }); return; }
+      String(p.texte).split(/(\*\*[^*]+\*\*|\*[^*]+\*)/).filter(Boolean).forEach(q => {
+        let gras = false, ital = false, t = q;
+        if (q.startsWith("**") && q.endsWith("**") && q.length > 4) { gras = true; t = q.slice(2, -2); }
+        else if (q.startsWith("*") && q.endsWith("*") && q.length > 2) { ital = true; t = q.slice(1, -1); }
+        t.split(/\s+/).filter(Boolean).forEach(w => out.push({ t: w, gras, ital }));
+      });
     });
     return out;
   };
+  // Lignes d’une note (retrait de 4 mm pour le numéro).
+  const lignesNote = texte => {
+    const sp = mot(" ", false, false, TN), dispo = LARG - 4;
+    const ws = [];
+    String(texte || "").split(/(\*\*[^*]+\*\*|\*[^*]+\*)/).filter(Boolean).forEach(q => {
+      let gras = false, ital = false, t = q;
+      if (q.startsWith("**") && q.endsWith("**") && q.length > 4) { gras = true; t = q.slice(2, -2); }
+      else if (q.startsWith("*") && q.endsWith("*") && q.length > 2) { ital = true; t = q.slice(1, -1); }
+      t.split(/\s+/).filter(Boolean).forEach(w => ws.push({ t: w, gras, ital, l: mot(w, gras, ital, TN) }));
+    });
+    const lignes = []; let cur = [], larg = 0;
+    ws.forEach(w => {
+      if (cur.length && larg + sp + w.l > dispo) { lignes.push(cur); cur = []; larg = 0; }
+      larg += (cur.length ? sp : 0) + w.l; cur.push(w);
+    });
+    if (cur.length) lignes.push(cur);
+    return lignes.length ? lignes : [[]];
+  };
+  const hauteurNote = texte => lignesNote(texte).length * LN;
+  // Dessine les notes de la page en cours, au bas de la zone de texte, puis vide la liste.
+  const dessinerNotes = () => {
+    if (!notesPage.length) return;
+    let yn = H - MB - hNotesPage;
+    doc.setLineWidth(0.2); doc.line(ML, yn - 3, ML + 50, yn - 3);
+    const sp = mot(" ", false, false, TN);
+    notesPage.forEach(n => {
+      lignesNote(n.texte).forEach((l, k) => {
+        if (k === 0) { police(false, false); doc.setFontSize(TN * 0.6); doc.text(n.num, ML, yn + LN * 0.7 - 1.2); }
+        let x = ML + 4;
+        l.forEach(w => { police(w.gras, w.ital); doc.setFontSize(TN); doc.text(w.t, x, yn + LN * 0.7); x += w.l + sp; });
+        yn += LN;
+      });
+    });
+    notesPage = []; hNotesPage = 0;
+  };
+  const saut = () => { dessinerNotes(); doc.addPage(); y = MT; };
   const paragraphe = (texte, taille, gras, opt) => {
     const lh = taille * ESP * PT, sp = mot(" ", false, false, taille);
-    const ws = mots(texte).map(w => ({ ...w, l: mot(w.t, gras || w.gras, w.ital, taille) }));
+    const ws = mots(texte).map(w => ({ ...w, l: w.sup ? mot(w.t, false, false, taille * 0.6) : mot(w.t, gras || w.gras, w.ital, taille) }));
     const lignes = []; let cur = [], larg = 0;
     const gauche = i => (i === 0 ? opt.premiere : opt.suite);
     ws.forEach(w => {
-      const i = lignes.length, dispo = LARG - opt.retrait - gauche(i);
-      if (cur.length && larg + sp + w.l > dispo) { lignes.push(cur); cur = []; larg = 0; }
+      let dispo = LARG - opt.retrait - gauche(lignes.length);
+      if (cur.length && larg + sp + w.l > dispo) { lignes.push(cur); cur = []; larg = 0; dispo = LARG - opt.retrait - gauche(lignes.length); }
       larg += (cur.length ? sp : 0) + w.l; cur.push(w);
     });
     if (cur.length) lignes.push(cur);
     if (opt.avant) y += opt.avant;
     lignes.forEach((l, i) => {
-      if (y + lh > H - MB) saut();
+      // Les notes appelées sur cette ligne doivent tenir sur la page : sinon la ligne passe à la page suivante.
+      const notesLigne = l.filter(w => w.sup);
+      const hN = notesLigne.reduce((s, w) => s + hauteurNote(w.note), 0);
+      if (y + taille * ESP * PT > H - MB - espaceNotes(hNotesPage + hN)) saut();
+      const lh = taille * ESP * PT;
+      notesLigne.forEach(w => notesPage.push({ num: w.t, texte: w.note }));
+      hNotesPage += hN;
       const x0 = ML + opt.retrait + gauche(i), dispo = LARG - opt.retrait - gauche(i);
       const somme = l.reduce((n, w) => n + w.l, 0);
       const extra = opt.justifie && i < lignes.length - 1 && l.length > 1 ? (dispo - somme) / (l.length - 1) : 0;
       let x = x0;
-      l.forEach((w, k) => { police(gras || w.gras, w.ital); doc.setFontSize(taille); doc.text(w.t, x, y + lh * 0.7); x += w.l + sp + extra; });
+      l.forEach(w => {
+        if (w.sup) { police(false, false); doc.setFontSize(taille * 0.6); doc.text(w.t, x, y + lh * 0.7 - 1.2); }
+        else { police(gras || w.gras, w.ital); doc.setFontSize(taille); doc.text(w.t, x, y + lh * 0.7); }
+        x += w.l + sp + extra;
+      });
       y += lh;
     });
     y += opt.apres || 0;
@@ -295,6 +386,7 @@ function memPdf() {
     else if (b.type === "reference") paragraphe(b.texte, 12, false, { retrait: 0, premiere: 0, suite: 12.5, justifie: true, apres: 2 });
     else paragraphe(b.texte, 12, false, { retrait: 0, premiere: 12.5, suite: 0, justifie: true, apres: 2 });
   });
+  dessinerNotes();
 
   // Pied de page sur toutes les pages sauf la couverture ; numéro de page = rang de la page (couverture = 1)
   const total = doc.getNumberOfPages();

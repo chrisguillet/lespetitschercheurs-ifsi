@@ -8,6 +8,7 @@ namespace Lpc;
  * Un fichier DOCX ou ODT est une archive ZIP de fichiers XML : l'archive est écrite ici sans extension (en mode « stocké »),
  * ce qui évite toute dépendance supplémentaire chez l'hébergeur.
  * Marges : gauche 3 cm, droite 2,5 cm, haut 2,5 cm, bas 3 cm. Times New Roman noir, corps 12, titres 16 et 14, interligne 1,5, justifié.
+ * Notes de bas de page : saisies ^[texte] ; corps 10, numérotées dans l'ordre du document.
  */
 final class MemoireExport
 {
@@ -53,17 +54,61 @@ final class MemoireExport
         return $out;
     }
 
+    /**
+     * Découpe un texte saisi en morceaux : notes de bas de page ^[texte] et texte ordinaire.
+     * @return list<array{0:string,1:string}> ['n', texte de la note] ou ['t', texte]
+     */
+    public static function morceaux(string $texte): array
+    {
+        $out = [];
+        foreach (preg_split('/(\^\[[^\[\]]*\])/u', $texte, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [] as $p) {
+            if (preg_match('/^\^\[([^\[\]]*)\]$/u', $p, $m) === 1) {
+                $out[] = ['n', $m[1]];
+            } else {
+                $out[] = ['t', $p];
+            }
+        }
+        return $out;
+    }
+
     // ---------- DOCX ----------
 
-    /** Paragraphe Word : style, alignement, retrait, et runs (gras, italique). @param list<array{0:string,1:bool,2:bool}> $segs */
-    private static function pDocx(string $style, array $segs, string $jc = 'both', string $extra = ''): string
+    /** Runs Word à partir de segments gras/italique. @param list<array{0:string,1:bool,2:bool}> $segs */
+    private static function runsDocx(array $segs): string
     {
         $runs = '';
         foreach ($segs as [$t, $g, $i]) {
             $rpr = ($g ? '<w:b/>' : '') . ($i ? '<w:i/>' : '');
             $runs .= '<w:r>' . ($rpr !== '' ? "<w:rPr>$rpr</w:rPr>" : '') . '<w:t xml:space="preserve">' . self::x($t) . '</w:t></w:r>';
         }
+        return $runs;
+    }
+
+    /** Texte saisi -> runs Word ; chaque note ^[…] devient un appel de note numéroté ; $notes reçoit les textes des notes. @param list<string> $notes */
+    private static function rDocx(string $texte, array &$notes): string
+    {
+        $xml = '';
+        foreach (self::morceaux($texte) as [$k, $v]) {
+            if ($k === 'n') {
+                $notes[] = $v;
+                $xml .= '<w:r><w:rPr><w:rStyle w:val="NoteRef"/></w:rPr><w:footnoteReference w:id="' . count($notes) . '"/></w:r>';
+            } else {
+                $xml .= self::runsDocx(self::segments($v));
+            }
+        }
+        return $xml;
+    }
+
+    /** Paragraphe Word à partir de runs déjà écrits. */
+    private static function pDocxXml(string $style, string $runs, string $jc = 'both', string $extra = ''): string
+    {
         return '<w:p><w:pPr><w:pStyle w:val="' . $style . '"/>' . $extra . '<w:jc w:val="' . $jc . '"/></w:pPr>' . $runs . '</w:p>';
+    }
+
+    /** Paragraphe Word : style, alignement, retrait, et runs (gras, italique). @param list<array{0:string,1:bool,2:bool}> $segs */
+    private static function pDocx(string $style, array $segs, string $jc = 'both', string $extra = ''): string
+    {
+        return self::pDocxXml($style, self::runsDocx($segs), $jc, $extra);
     }
 
     /**
@@ -93,14 +138,15 @@ final class MemoireExport
         $couv .= '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 
         $corps = '';
+        $notes = [];
         foreach ($blocs as $b) {
-            $segs = self::segments($b['texte']);
+            $runs = self::rDocx($b['texte'], $notes);
             $corps .= match ($b['type']) {
-                'titre1' => self::pDocx('Titre1', $segs, 'left'),
-                'titre2' => self::pDocx('Titre2', $segs, 'left'),
-                'citation' => self::pDocx('Citation', $segs),
-                'reference' => self::pDocx('Reference', $segs),
-                default => self::pDocx('Corps', $segs),
+                'titre1' => self::pDocxXml('Titre1', $runs, 'left'),
+                'titre2' => self::pDocxXml('Titre2', $runs, 'left'),
+                'citation' => self::pDocxXml('Citation', $runs),
+                'reference' => self::pDocxXml('Reference', $runs),
+                default => self::pDocxXml('Corps', $runs),
             };
         }
         $sect = '<w:sectPr><w:footerReference w:type="default" r:id="rIdPied"/><w:footerReference w:type="first" r:id="rIdPiedVide"/>'
@@ -108,6 +154,15 @@ final class MemoireExport
         $doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
             . '<w:body>' . $couv . $corps . $sect . '</w:body></w:document>';
+        // Notes de bas de page : séparateurs (ids -1 et 0) puis une note par appel (id = rang de l'appel).
+        $fn = '<w:footnote w:type="separator" w:id="-1"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:separator/></w:r></w:p></w:footnote>'
+            . '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
+        foreach ($notes as $n => $texte) {
+            $fn .= '<w:footnote w:id="' . ($n + 1) . '"><w:p><w:pPr><w:pStyle w:val="Note"/><w:jc w:val="both"/></w:pPr>'
+                . '<w:r><w:rPr><w:rStyle w:val="NoteRef"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r>'
+                . self::runsDocx(self::segments($texte)) . '</w:p></w:footnote>';
+        }
+        $notesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' . $fn . '</w:footnotes>';
         $pied = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:pStyle w:val="Pied"/><w:jc w:val="center"/></w:pPr>'
             . '<w:r><w:t xml:space="preserve">' . self::x($entete['nom_pied']) . ' – Page </w:t></w:r>'
             . '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>2</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>';
@@ -123,17 +178,21 @@ final class MemoireExport
             . '<w:style w:type="paragraph" w:styleId="Reference"><w:name w:val="Référence"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="709" w:hanging="709"/><w:jc w:val="both"/></w:pPr></w:style>'
             . '<w:style w:type="paragraph" w:styleId="Couverture"><w:name w:val="Couverture"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:line="360" w:lineRule="auto"/></w:pPr><w:rPr><w:sz w:val="28"/></w:rPr></w:style>'
             . '<w:style w:type="paragraph" w:styleId="Pied"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:line="240" w:lineRule="auto" w:after="0"/></w:pPr><w:rPr><w:sz w:val="18"/></w:rPr></w:style>'
+            . '<w:style w:type="paragraph" w:styleId="Note"><w:name w:val="footnote text"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="60" w:line="240" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr><w:rPr><w:sz w:val="20"/></w:rPr></w:style>'
+            . '<w:style w:type="character" w:styleId="NoteRef"><w:name w:val="footnote reference"/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>'
             . '</w:styles>';
         $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             . '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
             . '<Relationship Id="rIdPied" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>'
-            . '<Relationship Id="rIdPiedVide" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer2.xml"/></Relationships>';
+            . '<Relationship Id="rIdPiedVide" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer2.xml"/>'
+            . '<Relationship Id="rIdNotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/></Relationships>';
         $types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
             . '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
             . '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
             . '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
-            . '<Override PartName="/word/footer2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>';
+            . '<Override PartName="/word/footer2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
+            . '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/></Types>';
         $racine = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
         return self::zip([
@@ -142,6 +201,7 @@ final class MemoireExport
             'word/document.xml' => $doc,
             'word/_rels/document.xml.rels' => $rels,
             'word/styles.xml' => $styles,
+            'word/footnotes.xml' => $notesXml,
             'word/footer1.xml' => $pied,
             'word/footer2.xml' => $piedVide,
         ]);
@@ -149,8 +209,8 @@ final class MemoireExport
 
     // ---------- ODT ----------
 
-    /** @param list<array{0:string,1:bool,2:bool}> $segs */
-    private static function pOdt(string $style, array $segs): string
+    /** Texte stylé OpenDocument (suite de spans gras/italique). @param list<array{0:string,1:bool,2:bool}> $segs */
+    private static function spans(array $segs): string
     {
         $out = '';
         foreach ($segs as [$t, $g, $i]) {
@@ -158,7 +218,35 @@ final class MemoireExport
             $txt = self::x($t);
             $out .= $s !== '' ? '<text:span text:style-name="' . $s . '">' . $txt . '</text:span>' : $txt;
         }
-        return '<text:p text:style-name="' . $style . '">' . $out . '</text:p>';
+        return $out;
+    }
+
+    /** @param list<array{0:string,1:bool,2:bool}> $segs */
+    private static function pOdt(string $style, array $segs): string
+    {
+        return self::pOdtXml($style, self::spans($segs));
+    }
+
+    private static function pOdtXml(string $style, string $runs): string
+    {
+        return '<text:p text:style-name="' . $style . '">' . $runs . '</text:p>';
+    }
+
+    /** Texte saisi -> OpenDocument ; chaque note ^[…] devient une note de bas de page (text:note), numérotée ; $notes compte les notes. @param list<string> $notes */
+    private static function rOdt(string $texte, array &$notes): string
+    {
+        $xml = '';
+        foreach (self::morceaux($texte) as [$k, $v]) {
+            if ($k === 'n') {
+                $notes[] = $v;
+                $n = count($notes);
+                $xml .= '<text:note text:id="ftn' . $n . '" text:note-class="footnote"><text:note-citation><text:span text:style-name="T-SUP">' . $n . '</text:span></text:note-citation>'
+                    . '<text:note-body><text:p text:style-name="Note">' . self::spans(self::segments($v)) . '</text:p></text:note-body></text:note>';
+            } else {
+                $xml .= self::spans(self::segments($v));
+            }
+        }
+        return $xml;
     }
 
     /**
@@ -180,14 +268,15 @@ final class MemoireExport
             . self::pOdt('CouvGauche', [['Date : ' . $entete['date'], false, false]])
             . '<text:p text:style-name="Saut"/>';
         $corps = '';
+        $notes = [];
         foreach ($blocs as $b) {
-            $segs = self::segments($b['texte']);
+            $runs = self::rOdt($b['texte'], $notes);
             $corps .= match ($b['type']) {
-                'titre1' => self::pOdt('Titre1', $segs),
-                'titre2' => self::pOdt('Titre2', $segs),
-                'citation' => self::pOdt('Citation', $segs),
-                'reference' => self::pOdt('Reference', $segs),
-                default => self::pOdt('Corps', $segs),
+                'titre1' => self::pOdtXml('Titre1', $runs),
+                'titre2' => self::pOdtXml('Titre2', $runs),
+                'citation' => self::pOdtXml('Citation', $runs),
+                'reference' => self::pOdtXml('Reference', $runs),
+                default => self::pOdtXml('Corps', $runs),
             };
         }
         $entete_xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -196,6 +285,7 @@ final class MemoireExport
             . '<style:style style:name="T-G" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>'
             . '<style:style style:name="T-I" style:family="text"><style:text-properties fo:font-style="italic"/></style:style>'
             . '<style:style style:name="T-GI" style:family="text"><style:text-properties fo:font-weight="bold" fo:font-style="italic"/></style:style>'
+            . '<style:style style:name="T-SUP" style:family="text"><style:text-properties style:text-position="super 58%"/></style:style>'
             . '</office:automatic-styles><office:body><office:text>' . $couv . $corps . '</office:text></office:body></office:document-content>';
         $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" office:version="1.2">'
@@ -207,10 +297,12 @@ final class MemoireExport
             . '<style:style style:name="Titre2" style:family="paragraph" style:display-name="Titre 2"><style:paragraph-properties fo:text-align="start" fo:margin-top="0.4cm" fo:margin-bottom="0.2cm" fo:keep-with-next="always"/><style:text-properties fo:font-size="14pt" fo:font-weight="bold"/></style:style>'
             . '<style:style style:name="Citation" style:family="paragraph"><style:paragraph-properties fo:margin-left="1.5cm" fo:margin-right="1.5cm"/></style:style>'
             . '<style:style style:name="Reference" style:family="paragraph"><style:paragraph-properties fo:margin-left="1.25cm" fo:text-indent="-1.25cm"/></style:style>'
+            . '<style:style style:name="Note" style:family="paragraph" style:display-name="Note"><style:paragraph-properties fo:text-align="justify" fo:line-height="100%" fo:margin-bottom="0.1cm"/><style:text-properties fo:font-size="10pt"/></style:style>'
             . '<style:style style:name="Couv" style:family="paragraph"><style:paragraph-properties fo:text-align="center" fo:line-height="150%"/><style:text-properties fo:font-size="14pt"/></style:style>'
             . '<style:style style:name="CouvGras" style:family="paragraph"><style:paragraph-properties fo:text-align="center"/><style:text-properties fo:font-size="14pt" fo:font-weight="bold"/></style:style>'
             . '<style:style style:name="CouvGauche" style:family="paragraph"><style:paragraph-properties fo:text-align="start"/></style:style>'
             . '<style:style style:name="CouvDebut" style:family="paragraph" style:master-page-name="Couverture"><style:paragraph-properties fo:text-align="center"/></style:style><style:style style:name="Saut" style:family="paragraph" style:master-page-name="Standard"><style:paragraph-properties fo:break-before="page"/></style:style>'
+            . '<text:notes-configuration text:note-class="footnote" style:num-format="1" text:start-value="0" text:footnotes-position="page" text:start-numbering-at="document"/>'
             . '</office:styles><office:automatic-styles>'
             . '<style:page-layout style:name="PL1"><style:page-layout-properties fo:page-width="21cm" fo:page-height="29.7cm" fo:margin-top="2.5cm" fo:margin-bottom="3cm" fo:margin-left="3cm" fo:margin-right="2.5cm"/>'
             . '<style:header-style/><style:footer-style><style:header-footer-properties fo:min-height="0.5cm" fo:margin-top="0.4cm"/></style:footer-style></style:page-layout>'

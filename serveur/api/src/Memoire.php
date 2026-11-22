@@ -99,6 +99,13 @@ final class Memoire
         if (mb_strlen($texte) > self::TEXTE_MAX) {
             throw new Erreur('invalid', 'Bloc trop long (' . self::TEXTE_MAX . ' caractères maximum)');
         }
+        // Notes de bas de page : ^[texte], fermées et non vides (une note ne contient ni crochet ni autre note).
+        if (preg_match_all('/\^\[[^\[\]]*\]/u', $texte) !== substr_count($texte, '^[')) {
+            throw new Erreur('invalid', 'Note de bas de page mal fermée : écrivez ^[texte de la note]');
+        }
+        if (preg_match('/\^\[\s*\]/u', $texte) === 1) {
+            throw new Erreur('invalid', 'Note de bas de page vide');
+        }
         $now = Temps::maintenant();
         $identifiant = is_string($id) ? $id : '';
         if ($identifiant === '') {
