@@ -24,7 +24,7 @@ final class Outils
     public static function reunionFichierAjouter(Contexte $c, array $req): array
     {
         SuiviPieces::ajouter($c, self::texte($req['reunion_id'] ?? null), $req['nom'] ?? null, $req['contenu'] ?? null);
-        return ['ok' => true] + Donnees::choisies($c, ['reunions']);
+        return ['ok' => true] + Donnees::choisies($c, ['reunions', 'jalons']);
     }
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
@@ -37,35 +37,35 @@ final class Outils
     public static function reunionFichierSupprimer(Contexte $c, array $req): array
     {
         SuiviPieces::supprimer($c, self::texte($req['id'] ?? null));
-        return ['ok' => true] + Donnees::choisies($c, ['reunions']);
+        return ['ok' => true] + Donnees::choisies($c, ['reunions', 'jalons']);
     }
 
     /** Tâche d'un compte rendu. @param array<string,mixed> $req @return array<string,mixed> */
     public static function tacheSave(Contexte $c, array $req): array
     {
         SuiviTaches::enregistrerTache($c, self::texte($req['reunion_id'] ?? null), $req['id'] ?? null, $req['data'] ?? null);
-        return ['ok' => true] + Donnees::choisies($c, ['reunions']);
+        return ['ok' => true] + Donnees::choisies($c, ['reunions', 'jalons']);
     }
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function tacheDelete(Contexte $c, array $req): array
     {
         SuiviTaches::supprimerTache($c, $req['id'] ?? null);
-        return ['ok' => true] + Donnees::choisies($c, ['reunions']);
+        return ['ok' => true] + Donnees::choisies($c, ['reunions', 'jalons']);
     }
 
     /** Lien posé sur une tâche (tache_id) ou directement sur le compte rendu. @param array<string,mixed> $req @return array<string,mixed> */
     public static function lienSave(Contexte $c, array $req): array
     {
         SuiviTaches::enregistrerLien($c, self::texte($req['reunion_id'] ?? null), $req['tache_id'] ?? null, $req['id'] ?? null, $req['data'] ?? null);
-        return ['ok' => true] + Donnees::choisies($c, ['reunions']);
+        return ['ok' => true] + Donnees::choisies($c, ['reunions', 'jalons']);
     }
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function lienDelete(Contexte $c, array $req): array
     {
         SuiviTaches::supprimerLien($c, $req['id'] ?? null);
-        return ['ok' => true] + Donnees::choisies($c, ['reunions']);
+        return ['ok' => true] + Donnees::choisies($c, ['reunions', 'jalons']);
     }
 
     /** @param array<string,mixed> $req @return array<string,mixed> */

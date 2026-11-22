@@ -41,7 +41,7 @@ function reunionDetailHtml(x) {
     ${String(x.suite || "").trim() ? `<div class="sect"><b>Étapes (ancien format)</b><div style="white-space:pre-wrap">${esc(x.suite)}</div></div>` : ""}
     <div class="sect"><b>Tâches pour la suite</b>
       ${taches.length ? `<ul class="crtaches">${taches.map(t => tacheHtml(t, x, membres, ecrit)).join("")}</ul>` : '<div class="meta">Aucune tâche pour l’instant.</div>'}
-      ${ecrit ? `<div class="tools"><input id="tn_${esc(x.id)}" maxlength="300" placeholder="Nouvelle tâche (ex. chercher deux articles sur …)" style="flex:1"><button type="button" class="btn sm sec" data-tnew="${esc(x.id)}">＋ Tâche</button></div>` : ""}
+      ${ecrit ? `<button type="button" class="btn sm sec" data-tf-open="${esc(x.id)}">＋ Ajouter une tâche</button><div id="tf_${esc(x.id)}"></div>` : ""}
     </div>
     <div class="sect"><b>Liens de la réunion</b> <span class="meta">(un article, une fiche ou un bloc du mémoire, et pourquoi)</span>
       ${liens.length ? liensHtml(liens, ecrit) : '<div class="meta">Aucun lien pour l’instant.</div>'}
@@ -119,7 +119,10 @@ async function enregistrerLien(zone) {
   const cible_type = zone.querySelector("[data-lt]").value;
   if (enAttente) {
     const choix = zone.querySelector("[data-li]").selectedOptions[0];
-    crEnAttente.liens.push({ cible_type, cible_id: cible, description, libelle: choix ? choix.textContent : cible });
+    const lien = { cible_type, cible_id: cible, description, libelle: choix ? choix.textContent : cible };
+    // « p<i> » désigne la tâche en attente d'indice i ; sinon le lien est sur le compte rendu.
+    if (zone.dataset.tid && zone.dataset.tid[0] === "p") crEnAttente.taches[Number(zone.dataset.tid.slice(1))].liens.push(lien);
+    else crEnAttente.liens.push(lien);
     zone.innerHTML = "";
     crAttenteRafraichir();
     return;
@@ -196,23 +199,48 @@ let crEnAttente = { taches: [], liens: [], fichiers: [] };
 
 function crAttenteReinit() { crEnAttente = { taches: [], liens: [], fichiers: [] }; }
 
+// Formulaire « Ajouter une tâche » : texte, échéance, personnes, puis Ajouter ou Annuler. rid vide = nouveau compte rendu.
+function tacheFormHtml(rid) {
+  const membres = (groupeCourant() || {}).membres || [];
+  return `<div class="card crtform" data-rid="${esc(rid)}" style="margin-top:8px">
+    <div class="grid"><div><label>Tâche</label><input data-tf-texte maxlength="300" placeholder="ex. chercher deux articles sur l’autonomie"></div>
+    <div><label>Échéance <span class="meta">(facultative : la tâche apparaît alors dans le calendrier)</span></label><input type="date" data-tf-echeance></div></div>
+    <div><label>Personnes concernées</label><select data-tf-pers multiple size="3">${membres.map(x => `<option value="${esc(x.pid)}">${esc(x.prenom)}</option>`).join("")}</select></div>
+    <div class="savebar"><div class="err" data-tf-err role="alert"></div><button type="button" class="btn sm" data-tf-ok>Ajouter</button> <button type="button" class="btn sm sec" data-tf-cancel>Annuler</button></div></div>`;
+}
+
+// Valide le formulaire : sur un compte rendu existant la tâche est enregistrée tout de suite ; sur un nouveau elle attend l'enregistrement.
+async function validerTacheForm(form) {
+  const err = form.querySelector("[data-tf-err]");
+  const texte = form.querySelector("[data-tf-texte]").value.trim();
+  if (!texte) { err.textContent = "Indiquez la tâche."; return; }
+  const echeance = form.querySelector("[data-tf-echeance]").value;
+  const personnes = [...form.querySelector("[data-tf-pers]").selectedOptions].map(o => o.value);
+  const rid = form.dataset.rid;
+  if (rid === "") { crEnAttente.taches.push({ texte, personnes, echeance, liens: [] }); crAttenteRafraichir(); return; }
+  await enregistrerTache(rid, "", { texte, fait: false, personnes, echeance });
+}
+
 // Zone « Étapes, liens et pièces jointes » du formulaire de compte rendu.
 function crAttenteRafraichir() {
   const z = $("cr_attente"); if (!z) return;
   const m = crEnAttente, membres = (groupeCourant() || {}).membres || [];
-  const retrait = (cle, i) => `<button type="button" class="btn sm sec del" data-ca-del="${cle}:${i}" aria-label="Retirer">✕</button>`;
+  const retrait = cle => `<button type="button" class="btn sm sec del" data-ca-del="${cle}" aria-label="Retirer">✕</button>`;
   z.innerHTML = `<div class="sect"><b>Étapes pour la suite</b> <span class="meta">(facultatif, ajoutées au compte rendu à l’enregistrement)</span>
-    ${m.taches.length ? `<ul class="crtaches">${m.taches.map((t, i) => `<li>${esc(t.texte)} ${t.echeance ? `<span class="meta">📅 ${esc(fmtD(t.echeance))}</span> ` : ""}${t.personnes.length ? `<span class="meta">— ${esc(t.personnes.map(p => ((membres.find(x => x.pid === p) || {}).prenom || "")).join(", "))}</span>` : ""} ${retrait("tache", i)}</li>`).join("")}</ul>` : ""}
-    <div class="tools"><input id="ca_tache" maxlength="300" placeholder="Nouvelle tâche" style="flex:1"><input type="date" id="ca_echeance" title="Échéance facultative : la tâche apparaît alors dans le calendrier" aria-label="Échéance"><select id="ca_pers" multiple size="3" aria-label="Personnes concernées">${membres.map(x => `<option value="${esc(x.pid)}">${esc(x.prenom)}</option>`).join("")}</select><button type="button" class="btn sm sec" data-ca-tache>＋ Tâche</button></div></div>
-    <div class="sect"><b>Liens</b> <span class="meta">(un article, une fiche ou un bloc du mémoire, et pourquoi)</span>
-      ${m.liens.length ? `<ul class="crliens">${m.liens.map((l, i) => `<li>🔗 <b>${esc(l.libelle)}</b> — ${esc(l.description)} ${retrait("lien", i)}</li>`).join("")}</ul>` : ""}
+    ${m.taches.length ? `<ul class="crtaches">${m.taches.map((t, i) => `<li>${esc(t.texte)} ${t.echeance ? `<span class="meta">📅 ${esc(fmtD(t.echeance))}</span> ` : ""}${t.personnes.length ? `<span class="meta">— ${esc(t.personnes.map(p => ((membres.find(x => x.pid === p) || {}).prenom || "")).join(", "))}</span> ` : ""}
+      <button type="button" class="btn sm sec" data-lnew="p${i}" data-rid="" title="Lier un article, une fiche ou un bloc du mémoire">🔗 Lier</button> ${retrait("tache:" + i)}
+      ${t.liens.map((l, j) => `<div class="crliens">🔗 <b>${esc(l.libelle)}</b> — ${esc(l.description)} ${retrait("tlien:" + i + ":" + j)}</div>`).join("")}
+      <div id="lf__p${i}"></div></li>`).join("")}</ul>` : ""}
+    <button type="button" class="btn sm sec" data-tf-open="">＋ Ajouter une tâche</button><div id="tf_"></div></div>
+    <div class="sect"><b>Liens de la réunion</b> <span class="meta">(un article, une fiche ou un bloc du mémoire, et pourquoi)</span>
+      ${m.liens.length ? `<ul class="crliens">${m.liens.map((l, i) => `<li>🔗 <b>${esc(l.libelle)}</b> — ${esc(l.description)} ${retrait("lien:" + i)}</li>`).join("")}</ul>` : ""}
       <button type="button" class="btn sm sec" data-lnew="" data-rid="">🔗 Ajouter un lien</button><div id="lf__"></div></div>
     <div class="sect"><b>Pièces jointes</b> <span class="meta">(${m.fichiers.length}/${CR_PIECES_MAX})</span>
-      ${m.fichiers.length ? `<ul class="crpieces">${m.fichiers.map((f, i) => `<li>📎 ${esc(f.nom)} ${retrait("fichier", i)}</li>`).join("")}</ul>` : ""}
+      ${m.fichiers.length ? `<ul class="crpieces">${m.fichiers.map((f, i) => `<li>📎 ${esc(f.nom)} ${retrait("fichier:" + i)}</li>`).join("")}</ul>` : ""}
       ${m.fichiers.length < CR_PIECES_MAX ? `<button type="button" class="btn sm sec" data-ca-file>＋ Joindre un fichier</button><input type="file" hidden id="ca_file" accept="application/pdf,image/png,image/jpeg">` : ""}</div>`;
 }
 
-// Enregistre le compte rendu, puis ses étapes, liens et pièces jointes saisis avec lui.
+// Enregistre le compte rendu, puis ses tâches (avec leurs liens), ses liens et ses pièces jointes saisis avec lui.
 async function enregistrerCompteRendu(id, gid, errId) {
   const data = Object.assign(Object.fromEntries(["date", "titre", "participants", "vu", "attendu"].map(k => [k, $("r_" + k).value])), { suite: (reunionsAll.find(r => r.id === id) || {}).suite || "" });
   const avant = new Set(reunionsAll.map(r => r.id));
@@ -222,9 +250,25 @@ async function enregistrerCompteRendu(id, gid, errId) {
       let res = await api("reunion_save", { groupe_id: gid, id: id || undefined, data });
       const rid = id || ((res.reunions || []).find(r => !avant.has(r.id)) || {}).id;
       if (!rid) throw new Error("compte rendu introuvable après enregistrement");
+      // Une tâche nouvelle est celle du compte rendu qui n'existait pas avant l'envoi.
+      const connues = new Set(((reunionsAll.find(r => r.id === rid) || {}).taches || []).map(t => t.id));
+      const trouver = texte => {
+        const r = (res.reunions || []).find(x => x.id === rid);
+        const t = ((r && r.taches) || []).find(x => !connues.has(x.id) && x.texte === texte);
+        if (t) connues.add(t.id);
+        return t ? t.id : "";
+      };
       for (const t of crEnAttente.taches) {
-        try { res = await api("tache_save", { groupe_id: gid, reunion_id: rid, data: { texte: t.texte, fait: false, personnes: t.personnes, echeance: t.echeance || "" } }); }
-        catch (e) { erreurs.push("tâche « " + t.texte + " » : " + e.message); }
+        try {
+          res = await api("tache_save", { groupe_id: gid, reunion_id: rid, data: { texte: t.texte, fait: false, personnes: t.personnes, echeance: t.echeance || "" } });
+          const tid = trouver(t.texte);
+          for (const l of t.liens) {
+            try {
+              if (!tid) throw new Error("tâche introuvable");
+              res = await api("lien_save", { groupe_id: gid, reunion_id: rid, tache_id: tid, data: { cible_type: l.cible_type, cible_id: l.cible_id, description: l.description } });
+            } catch (e) { erreurs.push("lien « " + l.libelle + " » : " + e.message); }
+          }
+        } catch (e) { erreurs.push("tâche « " + t.texte + " » : " + e.message); }
       }
       for (const l of crEnAttente.liens) {
         try { res = await api("lien_save", { groupe_id: gid, reunion_id: rid, data: { cible_type: l.cible_type, cible_id: l.cible_id, description: l.description } }); }
@@ -243,33 +287,27 @@ async function enregistrerCompteRendu(id, gid, errId) {
     if (e.code === "unauthorized") sessionError(e); else $(errId).textContent = "Enregistrement impossible : " + e.message;
   }
 }
-
 // Gestes sur le détail des comptes rendus (délégation sur l'onglet Suivi).
 $("suivi")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   const d = b.dataset;
-  if (d.tnew !== undefined) {
-    const i = $("tn_" + d.tnew), texte = i ? i.value.trim() : "";
-    if (!texte) return;
-    return enregistrerTache(d.tnew, "", { texte, fait: false, personnes: [] });
+  if (d.tfOpen !== undefined) {
+    const z = $("tf_" + d.tfOpen);
+    if (z) z.innerHTML = tacheFormHtml(d.tfOpen);
+    return;
   }
+  if (d.tfCancel !== undefined) { const f = b.closest(".crtform"); if (f) f.parentElement.innerHTML = ""; return; }
+  if (d.tfOk !== undefined) return validerTacheForm(b.closest(".crtform"));
   if (d.tdel !== undefined) { if (!confirm("Supprimer cette tâche et ses liens ?")) return; return supprimerTache(d.tdel); }
   if (d.tpers !== undefined) { const p = $("tp_" + d.tpers); if (p) p.classList.toggle("hidden"); return; }
   if (d.lnew !== undefined) return ouvrirLienForm(d.rid, d.lnew);
   if (d.lcancel !== undefined) { const z = b.closest(".crlform"); if (z) z.parentElement.innerHTML = ""; return; }
   if (d.lsave !== undefined) return enregistrerLien(b.closest(".crlform"));
   if (d.ldel !== undefined) { if (!confirm("Retirer ce lien ?")) return; return supprimerLien(d.ldel); }
-  if (d.caTache !== undefined) {
-    const texte = ($("ca_tache").value || "").trim();
-    if (!texte) return;
-    const personnes = [...$("ca_pers").selectedOptions].map(o => o.value);
-    const echeance = ($("ca_echeance").value || "");
-    crEnAttente.taches.push({ texte, personnes, echeance });
-    return crAttenteRafraichir();
-  }
   if (d.caDel !== undefined) {
-    const [cle, i] = d.caDel.split(":"), liste = cle === "tache" ? crEnAttente.taches : cle === "lien" ? crEnAttente.liens : crEnAttente.fichiers;
-    liste.splice(Number(i), 1);
+    const [cle, i, j] = d.caDel.split(":");
+    if (cle === "tlien") crEnAttente.taches[Number(i)].liens.splice(Number(j), 1);
+    else (cle === "tache" ? crEnAttente.taches : cle === "lien" ? crEnAttente.liens : crEnAttente.fichiers).splice(Number(i), 1);
     return crAttenteRafraichir();
   }
   if (d.caFile !== undefined) { const i = $("ca_file"); if (i) i.click(); return; }

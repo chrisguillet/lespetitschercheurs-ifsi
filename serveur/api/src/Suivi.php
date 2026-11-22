@@ -144,8 +144,11 @@ final class Suivi
         $def = self::TYPES[$type];
         $table = $def['table'];
         $pdo = $c->db->principale();
-        $st = $pdo->prepare("SELECT t.*, u.prenom, u.nom AS u_nom, u.pseudo, u.couleur AS u_couleur, m.prenom AS m_prenom, m.nom AS m_nom, m.pseudo AS m_pseudo
-                             FROM `$table` t LEFT JOIN utilisateurs u ON u.id = t.cree_par LEFT JOIN utilisateurs m ON m.id = t.modifie_par
+        // Un jalon issu d'une tâche connaît son compte rendu (aperçu et édition depuis le calendrier).
+        $selTache = $type === 'jalon' ? 'tk.reunion_id AS reunion_id, ' : '';
+        $jointure = $type === 'jalon' ? 'LEFT JOIN taches tk ON tk.id = t.tache_id' : '';
+        $st = $pdo->prepare("SELECT t.*, $selTache u.prenom, u.nom AS u_nom, u.pseudo, u.couleur AS u_couleur, m.prenom AS m_prenom, m.nom AS m_nom, m.pseudo AS m_pseudo
+                             FROM `$table` t $jointure LEFT JOIN utilisateurs u ON u.id = t.cree_par LEFT JOIN utilisateurs m ON m.id = t.modifie_par
                              WHERE t.groupe_id IN (" . Lectures::marques(count($gids)) . ') ORDER BY t.cree_le, t.id');
         $st->execute($gids);
         $etudiant = $c->droits()->estEtudiant();
@@ -178,6 +181,7 @@ final class Suivi
             if ($type === 'jalon') {
                 $o['personnes'] = $assignes[(string) $r['id']] ?? [];
                 $o['tache_id'] = $r['tache_id'] === null ? '' : (string) $r['tache_id'];
+                $o['reunion_id'] = $r['reunion_id'] === null ? '' : (string) $r['reunion_id'];
             }
             $out[] = $o;
         }
