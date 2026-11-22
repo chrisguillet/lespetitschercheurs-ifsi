@@ -178,6 +178,22 @@ final class Outils
         return ['ok' => true, 'scores' => \Lpc\Jeux::pourClient($c)];
     }
 
+    /** Comptes de test du bac à sable (administrateur général). @param array<string,mixed> $req @return array<string,mixed> */
+    public static function bacSableEtat(Contexte $c, array $req): array
+    {
+        return ['ok' => true] + \Lpc\BacASable::etat($c);
+    }
+
+    /** Recrée le bac à sable : comptes de test, structure et données d'exemple. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function bacSableReinit(Contexte $c, array $req): array
+    {
+        \Lpc\BacASable::reinitialiser($c);
+        $pdo = $c->db->principale();
+        $pdo->prepare('INSERT INTO journal_admin (acteur_id, action, cible, detail, cree_le) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$c->user->id, 'bac_sable_reinit', 'bac_a_sable', '', \Lpc\Temps::maintenant()]);
+        return ['ok' => true] + \Lpc\BacASable::etat($c);
+    }
+
     /** Propose (ou modifie) une lecture à une promo : formateurs et administrateurs. @param array<string,mixed> $req @return array<string,mixed> */
     public static function suggestionSave(Contexte $c, array $req): array
     {

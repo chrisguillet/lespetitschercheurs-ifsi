@@ -181,7 +181,7 @@ final class Donnees
         }
         $pdo = $c->db->principale();
         if ($d->estAdmin()) {
-            return (int) $pdo->query("SELECT COUNT(*) FROM utilisateurs WHERE statut = 'en_attente'")->fetchColumn();
+            return (int) $pdo->query("SELECT COUNT(*) FROM utilisateurs WHERE statut = 'en_attente' AND test = 0")->fetchColumn();
         }
         $promos = $d->promosAdministrees() ?? [];
         if ($promos === []) {

@@ -40,7 +40,7 @@ final class Routeur
         'nom_demande', 'nom_demandes', 'nom_decision',
         'invitation_create', 'invitation_list', 'invitation_revoke',
         'attribution_add', 'attribution_remove', 'feedback_status', 'doi_lookup', 'doublons_list', 'article_merge', 'doublons_ignore', 'chat_regles', 'chat_regle_set',
-        'jeux_scores', 'jeu_score', 'suggestion_save', 'suggestion_delete', 'suggestion_vues',
+        'jeux_scores', 'jeu_score', 'suggestion_save', 'suggestion_delete', 'suggestion_vues', 'bac_sable_etat', 'bac_sable_reinit',
     ];
 
     /** @var array<string,callable(Contexte,array<string,mixed>):array<string,mixed>> */
@@ -67,6 +67,8 @@ final class Routeur
             'suggestion_save' => [Outils::class, 'suggestionSave'],
             'suggestion_delete' => [Outils::class, 'suggestionDelete'],
             'suggestion_vues' => [Outils::class, 'suggestionVues'],
+            'bac_sable_etat' => [Outils::class, 'bacSableEtat'],
+            'bac_sable_reinit' => [Outils::class, 'bacSableReinit'],
             'article_merge' => [Outils::class, 'articleMerge'],
             'doublons_ignore' => [Outils::class, 'doublonsIgnore'],
             'etab_create' => [Structure::class, 'etabCreate'],
@@ -154,8 +156,8 @@ final class Routeur
         }
 
         $user = $this->auth->authentifier($req['token'] ?? null, $action);
-        // « Voir en tant que » : l'administrateur général consulte l'application comme le ferait une autre personne (champ « as » = son identifiant public).
-        // Lecture seule : seules init et list sont permises ; ni présence, ni notes, ni chat. Chaque ouverture est inscrite au journal.
+        // Bac à sable : l'administrateur général essaie l'application avec un COMPTE DE TEST (champ « as » = son identifiant public), jamais avec celui d'une vraie personne.
+        // Ces comptes fictifs vivent dans un établissement à part ; on peut y agir normalement (ni présence, ni chat). Chaque ouverture est inscrite au journal.
         $vueComme = null;
         $as = $req['as'] ?? null;
         if (is_string($as) && $as !== '') {
@@ -163,12 +165,9 @@ final class Routeur
             if (!$reel->droits()->estAdmin()) {
                 throw new Erreur('forbidden', 'Réservé à l’administrateur général');
             }
-            if (!in_array($action, ['init', 'list'], true)) {
-                throw new Erreur('forbidden', 'Vue « en tant que » : lecture seule');
-            }
             $cible = Utilisateurs::parPid($this->db->principale(), $as);
-            if ($cible === null || $cible->statut !== 'actif' || $cible->id === $user->id) {
-                throw new Erreur('not_found', 'Personne introuvable ou inactive');
+            if ($cible === null || $cible->statut !== 'actif' || $cible->id === $user->id || $cible->id === null || !BacASable::estTest($this->db->principale(), $cible->id)) {
+                throw new Erreur('not_found', 'Compte de test introuvable : seuls les comptes du bac à sable peuvent être utilisés');
             }
             if ($action === 'init') {
                 $this->db->principale()->prepare('INSERT INTO journal_admin (acteur_id, action, cible, detail, cree_le) VALUES (?, ?, ?, ?, ?)')

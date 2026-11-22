@@ -1494,17 +1494,34 @@ verifie('profil : couleur invalide refusée', $err(appel('a1@ci.test', 'profile_
 $jl = appel('a1@ci.test', 'list')['jalons'] ?? [];
 verifie('rétroplanning : couleur de la personne qui a créé l\'entrée', $jl !== [] && preg_match('/^#[0-9a-f]{6}$/i', (string) ($jl[0]['par_couleur'] ?? '')) === 1);
 
+// ---------- Bac à sable : comptes de test par rôle, jamais ceux de vraies personnes ----------
 $pidA1 = (string) valeur($pdo, "SELECT pid FROM utilisateurs WHERE email = 'a1@ci.test'");
-$pdo->prepare("UPDATE utilisateurs SET derniere_connexion = '2020-01-01 00:00:00' WHERE email = 'a1@ci.test'")->execute();
-$vc = appel($admin, 'init', ['as' => $pidA1]);
-verifie('voir en tant que : l\'administrateur voit l\'application comme la personne', ($vc['ok'] ?? false) === true && ($vc['me']['role'] ?? '') === 'etudiant' && ($vc['vue_en_tant_que']['pid'] ?? '') === $pidA1 && ($vc['me']['prenom'] ?? '') === 'Ana T.');
-verifie('voir en tant que : la dernière connexion de la personne n\'est pas modifiée', valeur($pdo, "SELECT derniere_connexion FROM utilisateurs WHERE email = 'a1@ci.test'") === '2020-01-01 00:00:00');
-verifie('voir en tant que : liste de rafraîchissement permise', (appel($admin, 'list', ['as' => $pidA1])['vue_en_tant_que']['pid'] ?? '') === $pidA1);
-verifie('voir en tant que : lecture seule', $err(appel($admin, 'add', ['as' => $pidA1, 'data' => ['titre' => 'x']])) === 'forbidden' && $err(appel($admin, 'notes_list', ['as' => $pidA1])) === 'forbidden'
-    && $err(appel($admin, 'chat_list', ['as' => $pidA1] + $salon('groupe'))) === 'forbidden');
-verifie('voir en tant que : réservé à l\'administrateur général', $err(appel('a2@ci.test', 'init', ['as' => $pidA1])) === 'forbidden' && $err(appel('ap@ci.test', 'init', ['as' => $pidA1])) === 'forbidden');
-verifie('voir en tant que : personne inconnue', $err(appel($admin, 'init', ['as' => 'inconnu00000'])) === 'not_found');
-verifie('voir en tant que : journalisé', (int) valeur($pdo, "SELECT COUNT(*) FROM journal_admin WHERE action = 'voir_en_tant_que'") === 1);
+$bs = appel($admin, 'bac_sable_reinit');
+$pidDe = static fn (array $r, string $role): string => (string) (array_values(array_filter($r['personas'] ?? [], static fn (array $p): bool => $p['role'] === $role))[0]['pid'] ?? '');
+verifie('bac à sable : créé avec un compte de test par rôle', ($bs['ok'] ?? false) === true && count($bs['personas'] ?? []) === 7 && ($bs['existe'] ?? false) === true);
+verifie('bac à sable : réservé à l\'administrateur général', $err(appel('ap@ci.test', 'bac_sable_reinit')) === 'forbidden' && $err(appel('a1@ci.test', 'bac_sable_etat')) === 'forbidden');
+verifie('bac à sable : données d\'exemple créées par les comptes de test', (int) valeur($pdo, 'SELECT COUNT(*) FROM analyses a JOIN utilisateurs u ON u.id = a.utilisateur_id WHERE u.test = 1') >= 4
+    && (int) valeur($pdo, "SELECT COUNT(*) FROM suggestions s JOIN promos p ON p.id = s.promo_id JOIN etablissements e ON e.id = p.etablissement_id WHERE e.test = 1") === 1);
+$pidAna = $pidDe($bs, 'Étudiante · groupe 1');
+$vc = appel($admin, 'init', ['as' => $pidAna]);
+verifie('bac à sable : l\'administrateur agit comme le compte de test', ($vc['ok'] ?? false) === true && ($vc['me']['role'] ?? '') === 'etudiant' && ($vc['vue_en_tant_que']['pid'] ?? '') === $pidAna);
+verifie('bac à sable : jamais le compte d\'une vraie personne', $err(appel($admin, 'init', ['as' => $pidA1])) === 'not_found' && $err(appel($admin, 'init', ['as' => 'inconnu00000'])) === 'not_found');
+verifie('bac à sable : réservé à l\'administrateur général (usurpation)', $err(appel('a2@ci.test', 'init', ['as' => $pidAna])) === 'forbidden' && $err(appel('ap@ci.test', 'init', ['as' => $pidAna])) === 'forbidden');
+$avant = count(appel($admin, 'list', ['as' => $pidAna])['lectures'] ?? []);
+$r = appel($admin, 'add', ['as' => $pidAna, 'data' => ['titre' => 'Essai dans le bac à sable', 'statut' => 'À lire']]);
+verifie('bac à sable : on peut agir (écrire) avec un compte de test', ($r['ok'] ?? false) === true && count($r['lectures'] ?? []) === $avant + 1);
+$pidAp = $pidDe($bs, 'Administratrice de promo');
+verifie('bac à sable : un compte administrateur de test voit la demande d\'accès fictive', array_filter(appel($admin, 'admin_list', ['as' => $pidAp])['acces'] ?? [], static fn (array $a): bool => str_contains((string) $a['email'], 'bac-a-sable') && $a['statut'] === 'en_attente') !== []);
+verifie('bac à sable : invisible des vraies listes', array_filter(appel($admin, 'admin_list')['acces'] ?? [], static fn (array $a): bool => str_contains((string) $a['email'], 'bac-a-sable')) === []
+    && !str_contains(json_encode(appel('inconnue@ci.test', 'onboarding')) ?: '', 'Bac à sable'));
+verifie('bac à sable : journalisé', (int) valeur($pdo, "SELECT COUNT(*) FROM journal_admin WHERE action = 'voir_en_tant_que'") >= 1 && (int) valeur($pdo, "SELECT COUNT(*) FROM journal_admin WHERE action = 'bac_sable_reinit'") === 1);
+appel($admin, 'bac_sable_reinit');
+verifie('bac à sable : remis à zéro sans doublon ni reste', (int) valeur($pdo, 'SELECT COUNT(*) FROM etablissements WHERE test = 1') === 1 && (int) valeur($pdo, 'SELECT COUNT(*) FROM utilisateurs WHERE test = 1') === 8
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM analyses a JOIN utilisateurs u ON u.id = a.utilisateur_id WHERE u.test = 1 AND a.article_id IN (SELECT id FROM articles WHERE titre = ?)', ['Essai dans le bac à sable']) === 0);
+// On nettoie : la suite des tests ne doit pas voir le bac à sable.
+$pdo->exec('DELETE FROM articles WHERE groupe_id IN (SELECT g.id FROM groupes g JOIN promos p ON p.id = g.promo_id JOIN etablissements e ON e.id = p.etablissement_id WHERE e.test = 1)');
+$pdo->exec('DELETE FROM etablissements WHERE test = 1');
+$pdo->exec('DELETE FROM utilisateurs WHERE test = 1');
 
 // ---------- Suppressions en cascade ----------
 $art = Ids::uuid();

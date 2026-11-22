@@ -99,11 +99,11 @@ final class Acces
     {
         $pdo = $c->db->principale();
         $promos = [];
-        foreach ($pdo->query('SELECT id, etablissement_id, nom FROM promos ORDER BY nom')->fetchAll() as $p) {
+        foreach ($pdo->query('SELECT p.id, p.etablissement_id, p.nom FROM promos p JOIN etablissements e ON e.id = p.etablissement_id WHERE e.test = 0 ORDER BY p.nom')->fetchAll() as $p) {
             $promos[(string) $p['etablissement_id']][] = ['id' => (string) $p['id'], 'nom' => (string) $p['nom']];
         }
         $structure = [];
-        foreach ($pdo->query('SELECT id, nom FROM etablissements ORDER BY nom')->fetchAll() as $e) {
+        foreach ($pdo->query('SELECT id, nom FROM etablissements WHERE test = 0 ORDER BY nom')->fetchAll() as $e) {
             $structure[] = ['id' => (string) $e['id'], 'nom' => (string) $e['nom'], 'promos' => $promos[(string) $e['id']] ?? []];
         }
         $demande = ['prenom' => $u->prenom, 'nom' => $u->nom, 'promo_id' => '', 'promo' => '', 'role' => ''];
@@ -402,7 +402,7 @@ final class Acces
         $etabs = $d->etablissementsAdministres();
 
         if ($promos === null) {
-            $where = '1 = 1';
+            $where = 'u.test = 0';   // l'administrateur général ne voit pas les comptes fictifs du bac à sable dans ses listes
             $params = [];
         } else {
             $parties = [];

@@ -69,7 +69,7 @@ const isSuper = () => !!me && me.role === "admin";                              
 
 /* ---------- API ---------- */
 
-// « Voir en tant que » (administrateur général) : identifiant public de la personne consultée, gardé le temps de l'onglet.
+// Bac à sable (administrateur général) : identifiant public du compte de test utilisé, gardé le temps de l’onglet.
 let VUE_AS = null;
 const asDemande = () => { try { return sessionStorage.getItem("lpc_as") || undefined; } catch (e) { return undefined; } };
 
@@ -345,9 +345,9 @@ async function boot() {
     startPolling();
     if (me.consentement === false && !VUE_AS) demanderConsentement(me.consent_version);
   } catch (e) {
-    if (asDemande() && e.code !== "unauthorized" && e.code !== "network") {   // « voir en tant que » impossible : on revient à sa propre vue
+    if (asDemande() && e.code !== "unauthorized" && e.code !== "network") {   // compte de test inutilisable : on revient à sa propre vue
       try { sessionStorage.removeItem("lpc_as"); } catch (x) { /* ignoré */ }
-      showGate("Vue « en tant que » impossible (" + e.message + "). Rechargez la page pour revenir à votre compte.");
+      showGate("Compte de test inutilisable (" + e.message + "). Rechargez la page pour revenir à votre compte.");
     } else if (e.code === "unauthorized") sessionError(e);
     else if (e.code === "pending") { showGate(e.message + MSG_ATTENTE, true); afficherAccueil(); programmerNouvelEssai(); }
     else if (e.code === "forbidden") {   // accès refusé : le jeton est oublié, la reconnexion automatique coupée, pour pouvoir changer de compte

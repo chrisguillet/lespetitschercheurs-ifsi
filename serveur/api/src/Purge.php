@@ -24,7 +24,7 @@ final class Purge
         $limite = (new \DateTimeImmutable('@' . $maintenant))->modify('-' . $mois . ' months')->format('Y-m-d H:i:s');
         $st = $pdo->prepare(
             "SELECT u.id, u.email FROM utilisateurs u
-             WHERE u.email <> ? AND COALESCE(u.derniere_connexion, u.demande_le, u.cree_le) < ?
+             WHERE u.test = 0 AND u.email <> ? AND COALESCE(u.derniere_connexion, u.demande_le, u.cree_le) < ?
                AND NOT EXISTS (SELECT 1 FROM attributions a WHERE a.utilisateur_id = u.id AND a.role IN ('admin', 'admin_site', 'admin_promo'))
              ORDER BY u.id"
         );

@@ -12,7 +12,7 @@ const EMOJIS = ["😀", "😃", "😄", "😁", "😅", "😂", "🤣", "🙂", 
 const chatActif = () => !!(CFG && CFG.CHAT_ACTIF);
 // Le chat n'est proposé qu'aux membres du groupe : un administrateur qui consulte un groupe sans en faire partie ne le voit pas.
 const chatGroupe = () => {
-  if (!me || !chatActif() || VUE_AS) return null;   // pas de chat en mode « voir en tant que »
+  if (!me || !chatActif() || VUE_AS) return null;   // pas de chat dans le bac à sable
   const g = groupeCourant();
   return g && g.chat !== false && (g.membres || []).some(m => m.moi) ? g : null;   // chat désactivé par l'administration : le bouton disparaît
 };

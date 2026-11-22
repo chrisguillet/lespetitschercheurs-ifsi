@@ -221,35 +221,42 @@ $("adminbox").addEventListener("change", async e => {
   }
 });
 
-/* ----- Voir en tant que (administrateur général, lecture seule) ----- */
+/* ----- Bac à sable : essayer l'application avec un compte de test par rôle (administrateur général) ----- */
+// Jamais le compte d'une vraie personne : ces comptes sont fictifs, dans un établissement à part, et on y agit normalement.
 function bandeauAs(nom) {
   document.getElementById("asbar")?.remove();
   const b = document.createElement("div");
   b.id = "asbar"; b.className = "asbar"; b.setAttribute("role", "status");
-  b.innerHTML = `<span>👁 Vue en tant que <b>${esc(nom)}</b> · lecture seule : rien ne peut être modifié, ses notes et son chat ne sont pas affichés.</span><button type="button" class="btn sm" id="asquit">Quitter cette vue</button>`;
+  b.innerHTML = `<span>🧪 Bac à sable · vous agissez comme <b>${esc(nom)}</b> (compte de test fictif). Rien de réel n’est touché ; ni notes, ni chat dans ce mode.</span><button type="button" class="btn sm" id="asquit">Quitter le bac à sable</button>`;
   document.body.prepend(b);
   document.body.classList.add("avec-asbar");
   $("asquit").onclick = () => { try { sessionStorage.removeItem("lpc_as"); } catch (e) { /* ignoré */ } location.reload(); };
 }
 
 async function ouvrirChoixAs() {
-  let liste;
-  try { liste = (await api("admin_list")).acces || []; } catch (e) { if (e.code === "unauthorized") return sessionError(e); alert("Liste indisponible : " + e.message); return; }
-  const actifs = liste.filter(a => a.statut === "actif" && a.pid && a.email !== me.email).sort((a, b) => String(a.prenom).localeCompare(String(b.prenom), "fr"));
-  const lib = a => `${a.prenom} — ${(a.attributions || []).map(r => (ROLES_LIB[r.role] || r.role) + (r.perimetre ? " (" + r.perimetre + ")" : "")).join(", ") || a.role}`;
   document.getElementById("asmodal")?.remove();
   const m = document.createElement("div");
   m.id = "asmodal"; m.className = "modal"; m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
-  m.innerHTML = `<div class="modalbox" style="max-width:560px"><div class="modalhead"><div><h2>👁 Voir en tant que…</h2></div><button class="btn sm sec" id="asclose" type="button">✕ Fermer</button></div>
-    <div class="cmbox" style="padding:14px 18px 18px">
-      <div class="meta">L’application s’affiche comme la verrait la personne choisie (rôle, groupes, onglets, droits). <b>Lecture seule</b> : aucune modification n’est possible, ses notes personnelles et ses messages de chat ne sont pas affichés, sa dernière connexion n’est pas modifiée. L’accès est inscrit au journal d’administration.</div>
-      ${actifs.length ? `<label for="assel">Personne</label><select id="assel">${actifs.map(a => `<option value="${esc(a.pid)}">${esc(lib(a))}</option>`).join("")}</select>
-      <div class="savebar"><button class="btn" id="asok" type="button">Voir l’application comme cette personne</button> <button class="btn sec" id="ascancel" type="button">Annuler</button></div>` : '<div class="meta">Aucune autre personne active.</div>'}
-    </div></div>`;
+  m.innerHTML = '<div class="modalbox" style="max-width:560px"><div class="modalhead"><div><h2>🧪 Bac à sable</h2></div><button class="btn sm sec" id="asclose" type="button">✕ Fermer</button></div><div class="cmbox" id="asbody" style="padding:14px 18px 18px"><div class="meta">Chargement…</div></div></div>';
   document.body.appendChild(m);
   const fermer = () => m.remove();
   m.addEventListener("click", e => { if (e.target === m) fermer(); });
   $("asclose").onclick = fermer;
-  if ($("ascancel")) $("ascancel").onclick = fermer;
-  if ($("asok")) $("asok").onclick = () => { try { sessionStorage.setItem("lpc_as", $("assel").value); } catch (e) { alert("Impossible de mémoriser le choix dans ce navigateur."); return; } location.reload(); };
+  const afficher = etat => {
+    const p = etat.personas || [];
+    $("asbody").innerHTML = `<div class="meta">Essayez l’application avec chaque rôle <b>sans prendre le compte d’une vraie personne</b> : des comptes fictifs (administrateurs, formateur, étudiants) dans un établissement à part, avec quelques lectures d’exemple. Vous pouvez y agir normalement ; les vraies personnes ne voient rien de tout cela.</div>
+      ${p.length ? `<label for="assel">Compte de test</label><select id="assel">${p.map(x => `<option value="${esc(x.pid)}">${esc(x.nom)} — ${esc(x.role)}</option>`).join("")}</select>
+        <div class="savebar"><button class="btn" id="asok" type="button">Essayer avec ce compte</button> <button class="btn sec" id="asreinit" type="button">↺ Remettre le bac à sable à zéro</button></div>`
+      : `<div class="note">Le bac à sable n’existe pas encore.</div><div class="savebar"><button class="btn" id="asreinit" type="button">Créer le bac à sable</button></div>`}
+      <div id="aserr" class="err" role="alert"></div>`;
+    if ($("asok")) $("asok").onclick = () => { try { sessionStorage.setItem("lpc_as", $("assel").value); } catch (e) { alert("Impossible de mémoriser le choix dans ce navigateur."); return; } location.reload(); };
+    $("asreinit").onclick = async () => {
+      if (p.length && !confirm("Remettre le bac à sable à zéro ? Tout ce qui a été fait avec les comptes de test est supprimé et les données d’exemple sont recréées.")) return;
+      $("asreinit").disabled = true;
+      try { afficher(await enCours("Préparation du bac à sable…", () => api("bac_sable_reinit"))); }
+      catch (e) { if (e.code === "unauthorized") return sessionError(e); $("aserr").textContent = "Impossible : " + e.message; $("asreinit").disabled = false; }
+    };
+  };
+  try { afficher(await api("bac_sable_etat")); }
+  catch (e) { if (e.code === "unauthorized") return sessionError(e); $("asbody").innerHTML = '<div class="err">Indisponible : ' + esc(e.message) + "</div>"; }
 }

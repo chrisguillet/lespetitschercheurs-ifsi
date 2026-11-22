@@ -36,7 +36,7 @@ function renderMe() {
     <div class="colpop right acctpop">
       <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
       <div class="acctgrp"><button type="button" class="acctitem" id="profilbtn">👤 Mon profil</button><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button><button type="button" class="acctitem" id="mydatabtn" title="Télécharger tout ce que l’application garde sur vous (droit d’accès)">📦 Télécharger mes données</button></div>
-      ${isSuper() && !VUE_AS ? '<div class="acctgrp"><button type="button" class="acctitem" id="asbtn" title="Consulter l’application comme une autre personne (lecture seule)">👁 Voir en tant que…</button></div>' : ""}
+      ${isSuper() && !VUE_AS ? '<div class="acctgrp"><button type="button" class="acctitem" id="asbtn" title="Essayer l’application avec un compte de test fictif, sans prendre le compte d’une vraie personne">🧪 Bac à sable (tester un rôle)</button></div>' : ""}
       ${window.LydiaJeux ? `<div class="acctgrp"><button type="button" class="acctitem" id="jeuxbtn">🎮 Pause ludique</button></div>` : ""}
       <div class="acctgrp"><button type="button" class="acctitem danger" id="logout">⎋ Se déconnecter</button></div>
     </div></details>`;
