@@ -609,7 +609,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   const GAUCHE_D = ["ArrowLeft", "q", "Q", "a", "A"], DROITE_D = ["ArrowRight", "d", "D"], SAUT_TOUCHES = ["ArrowUp", "z", "Z", "w", "W"];
 
   // Dossier patient : chemise cartonnée avec onglet, feuilles qui dépassent et bandeau rouge.
-  function dossier(ctx, x, y, rot) {
+  function dessinDossier(ctx, x, y, rot) {
     ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
     ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#8a93a3"; ctx.lineWidth = 1;
     ctx.fillRect(-12, -17, 22, 10); ctx.strokeRect(-12, -17, 22, 10);                    // feuilles qui dépassent
@@ -867,7 +867,7 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
         }
       }
       s.items.forEach(it => {
-        if (it.type === "dossier") dossier(ctx, it.x, it.y, it.rot);
+        if (it.type === "dossier") dessinDossier(ctx, it.x, it.y, it.rot);
         else emoji(ctx, it.e, it.x - (it.type === "sandwich" ? 15 : 12), it.y + (it.type === "sandwich" ? 12 : 10), it.type === "sandwich" ? 30 : 24);
       });
       if (b && b.alerte <= 0) brancard(ctx, b.x, SOLD, b.dir);
