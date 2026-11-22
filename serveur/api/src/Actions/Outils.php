@@ -104,6 +104,25 @@ final class Outils
         return self::retirer($c, 'terme', $req, ['termes']);
     }
 
+    /** Règle de la charte de fonctionnement du groupe. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function regleSave(Contexte $c, array $req): array
+    {
+        return self::sauver($c, 'regle', $req, ['regles']);
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function regleDelete(Contexte $c, array $req): array
+    {
+        return self::retirer($c, 'regle', $req, ['regles']);
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function regleMove(Contexte $c, array $req): array
+    {
+        Suivi::deplacerRegle($c, $req['id'] ?? null, $req['sens'] ?? null);
+        return ['ok' => true] + Donnees::choisies($c, ['regles']);
+    }
+
     // ---------- Pièces jointes ----------
 
     /** @param array<string,mixed> $req @return array<string,mixed> */

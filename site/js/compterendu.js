@@ -64,7 +64,7 @@ function ouvrirCompteRendu(id, type = "reunion") {
   if (!$("crmodal")) return;
   CR.ouvert = true; CR.id = id; CR.type = type; CR.focus = document.activeElement;
   const html = crPageCourante(); if (!html) return fermerCompteRendu();
-  $("crtitle").textContent = type === "fiche" ? "📄 Aperçu de la fiche de lecture" : type === "synthese" ? "📄 Aperçu de la synthèse" : "📄 Aperçu du compte rendu";
+  $("crtitle").textContent = type === "fiche" ? "📄 Aperçu de la fiche de lecture" : type === "synthese" ? "📄 Aperçu de la synthèse" : type === "charte" ? "📄 Aperçu de la charte" : "📄 Aperçu du compte rendu";
   $("crbody").innerHTML = html;
   $("crmodal").classList.remove("hidden"); document.body.classList.add("modalopen");
   $("crprint").focus();
@@ -136,7 +136,7 @@ async function pdfCompteRendu() {
 
 $("crclose")?.addEventListener("click", fermerCompteRendu);
 $("crprint")?.addEventListener("click", imprimerCompteRendu);
-$("crpdf")?.addEventListener("click", () => CR.type === "fiche" ? exportFichePdf(CR.id) : CR.type === "synthese" ? pdfSynthese() : pdfCompteRendu());
+$("crpdf")?.addEventListener("click", () => CR.type === "fiche" ? exportFichePdf(CR.id) : CR.type === "synthese" ? pdfSynthese() : CR.type === "charte" ? pdfCharte() : pdfCompteRendu());
 $("crmodal")?.addEventListener("click", e => { if (e.target === $("crmodal")) fermerCompteRendu(); });
 $("crmodal")?.addEventListener("keydown", e => { if (e.key === "Escape") fermerCompteRendu(); });
 
@@ -157,6 +157,7 @@ function fichePage(i) {
 }
 function crPageCourante() {
   if (CR.type === "synthese") return synthesePage();
+  if (CR.type === "charte") return chartePage();
   if (CR.type === "fiche") { const i = ficheDeApercu(); return i ? fichePage(i) : ""; }
   const r = crReunion(); return r ? crPage(r) : "";
 }

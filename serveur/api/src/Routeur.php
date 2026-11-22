@@ -24,7 +24,7 @@ final class Routeur
     public const ACTIONS = [
         'init', 'list', 'add', 'history_get', 'update', 'article_update', 'file_add', 'file_get', 'file_delete',
         'feedback_list', 'feedback_save', 'reunion_save', 'reunion_delete', 'jalon_save', 'jalon_delete',
-        'terme_save', 'terme_delete', 'article_vote', 'article_cancel', 'delete',
+        'terme_save', 'terme_delete', 'regle_save', 'regle_delete', 'regle_move', 'article_vote', 'article_cancel', 'delete',
         'reunion_fichier_ajouter', 'reunion_fichier_lire', 'reunion_fichier_supprimer', 'tache_save', 'tache_delete', 'lien_save', 'lien_delete',
         'comment_add', 'comment_update', 'comment_delete', 'comments_read', 'comments_unread', 'bye',
         'notes_list', 'note_save', 'note_delete', 'chat_list', 'chat_send', 'chat_delete',
@@ -113,6 +113,9 @@ final class Routeur
             'lien_delete' => [Outils::class, 'lienDelete'],
             'terme_save' => [Outils::class, 'termeSave'],
             'terme_delete' => [Outils::class, 'termeDelete'],
+            'regle_save' => [Outils::class, 'regleSave'],
+            'regle_delete' => [Outils::class, 'regleDelete'],
+            'regle_move' => [Outils::class, 'regleMove'],
             'file_add' => [Outils::class, 'fileAdd'],
             'file_get' => [Outils::class, 'fileGet'],
             'file_delete' => [Outils::class, 'fileDelete'],

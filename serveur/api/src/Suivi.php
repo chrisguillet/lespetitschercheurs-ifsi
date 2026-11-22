@@ -17,7 +17,10 @@ final class Suivi
         'reunion' => ['table' => 'reunions', 'champs' => ['date', 'titre', 'participants', 'vu', 'attendu', 'suite']],
         'jalon' => ['table' => 'jalons', 'champs' => ['titre', 'type', 'echeance', 'heure', 'statut', 'note', 'visio', 'debut', 'alerte_jours']],
         'terme' => ['table' => 'glossaire', 'champs' => ['mot', 'definition', 'reference', 'type', 'auteur', 'annee', 'titre_source', 'editeur', 'page', 'lien']],
+        'regle' => ['table' => 'regles', 'champs' => ['titre', 'description']],
     ];
+    /** Charte de fonctionnement : nombre maximal de règles par groupe. */
+    public const REGLES_MAX = 50;
     private const DATES = ['date', 'echeance', 'debut'];
     private const TITRE_MAX = 200;
 
@@ -84,6 +87,17 @@ final class Suivi
             $identifiant = Ids::uuid();
             $pdo->prepare("INSERT INTO `$table` (id, groupe_id, cree_par, cree_le, $colonnes) VALUES (?, ?, ?, ?, " . Lectures::marques(count($valeurs)) . ')')
                 ->execute([$identifiant, $gid, $uid, $now, ...$valeurs]);
+            if ($type === 'regle') {
+                // Nouvelle règle : à la fin de la charte, dans la limite du nombre de règles.
+                $st = $pdo->prepare('SELECT COUNT(*), COALESCE(MAX(ordre), 0) FROM regles WHERE groupe_id = ? AND id <> ?');
+                $st->execute([$gid, $identifiant]);
+                [$nb, $max] = $st->fetch(\PDO::FETCH_NUM);
+                if ((int) $nb >= self::REGLES_MAX) {
+                    $pdo->prepare('DELETE FROM regles WHERE id = ?')->execute([$identifiant]);
+                    throw new Erreur('limit', 'La charte compte déjà ' . self::REGLES_MAX . ' règles : regroupez-en avant d’en ajouter');
+                }
+                $pdo->prepare('UPDATE regles SET ordre = ? WHERE id = ?')->execute([(int) $max + 1, $identifiant]);
+            }
         } else {
             $sets = implode(', ', array_map(static fn (string $k): string => "`$k` = ?", $def['champs']));
             $pdo->prepare("UPDATE `$table` SET $sets, modifie_le = ?, modifie_par = ? WHERE id = ?")->execute([...$valeurs, $now, $uid, $identifiant]);
@@ -152,7 +166,7 @@ final class Suivi
         $jointure = $type === 'jalon' ? 'LEFT JOIN taches tk ON tk.id = t.tache_id' : '';
         $st = $pdo->prepare("SELECT t.*, $selTache u.prenom, u.nom AS u_nom, u.pseudo, u.couleur AS u_couleur, m.prenom AS m_prenom, m.nom AS m_nom, m.pseudo AS m_pseudo
                              FROM `$table` t $jointure LEFT JOIN utilisateurs u ON u.id = t.cree_par LEFT JOIN utilisateurs m ON m.id = t.modifie_par
-                             WHERE t.groupe_id IN (" . Lectures::marques(count($gids)) . ') ORDER BY t.cree_le, t.id');
+                             WHERE t.groupe_id IN (" . Lectures::marques(count($gids)) . ') ORDER BY ' . ($type === 'regle' ? 't.ordre, ' : '') . 't.cree_le, t.id');
         $st->execute($gids);
         $etudiant = $c->droits()->estEtudiant();
         // Personnes assignées aux jalons (seulement celles qui sont encore membres du groupe).
@@ -186,6 +200,9 @@ final class Suivi
                 $o['tache_id'] = $r['tache_id'] === null ? '' : (string) $r['tache_id'];
                 $o['reunion_id'] = $r['reunion_id'] === null ? '' : (string) $r['reunion_id'];
             }
+            if ($type === 'regle') {
+                $o['ordre'] = (int) $r['ordre'];
+            }
             $out[] = $o;
         }
         if ($type === 'reunion') {
@@ -213,6 +230,11 @@ final class Suivi
             }
             if ($d['titre'] === '' && $d['vu'] === '' && $d['attendu'] === '' && $d['suite'] === '') {
                 throw new Erreur('invalid', 'Renseignez au moins un titre ou un compte rendu');
+            }
+            self::titre($d['titre']);
+        } elseif ($type === 'regle') {
+            if ($d['titre'] === '') {
+                throw new Erreur('invalid', 'Donnez un titre à la règle');
             }
             self::titre($d['titre']);
         } elseif ($type === 'terme') {
@@ -271,6 +293,39 @@ final class Suivi
             if ($d['alerte_jours'] !== '' && (preg_match('/^\d{1,3}$/', $d['alerte_jours']) !== 1 || (int) $d['alerte_jours'] > 365)) {
                 throw new Erreur('invalid', 'Alerte : nombre de jours entre 0 et 365');
             }
+        }
+    }
+
+    /** Monte (sens -1) ou descend (sens 1) une règle de la charte : elle échange sa place avec sa voisine. */
+    public static function deplacerRegle(Contexte $c, mixed $id, mixed $sens): void
+    {
+        Lectures::exigerEtudiant($c);
+        $pdo = $c->db->principale();
+        $st = $pdo->prepare('SELECT id, groupe_id, ordre FROM regles WHERE id = ?');
+        $st->execute([is_string($id) ? $id : '']);
+        $r = $st->fetch();
+        if ($r === false) {
+            throw new Erreur('not_found', 'Règle introuvable');
+        }
+        if (!Membres::estMembre($pdo, (string) $r['groupe_id'], (int) $c->user->id)) {
+            throw new Erreur('forbidden', 'Vous ne faites pas partie de ce groupe');
+        }
+        if ($sens !== 1 && $sens !== -1) {
+            throw new Erreur('invalid', 'Sens de déplacement invalide');
+        }
+        // Ordre actuel, renuméroté 1..n (les ordres égaux ou manquants sont ainsi remis d'aplomb), puis échange avec la voisine.
+        $st = $pdo->prepare('SELECT id FROM regles WHERE groupe_id = ? ORDER BY ordre, cree_le, id');
+        $st->execute([$r['groupe_id']]);
+        $ids = array_map('strval', $st->fetchAll(\PDO::FETCH_COLUMN));
+        $i = array_search((string) $r['id'], $ids, true);
+        $j = $i + $sens;
+        if ($i === false || $j < 0 || $j >= count($ids)) {
+            return;   // déjà en tête ou en fin de charte
+        }
+        [$ids[$i], $ids[$j]] = [$ids[$j], $ids[$i]];
+        $maj = $pdo->prepare('UPDATE regles SET ordre = ? WHERE id = ?');
+        foreach ($ids as $k => $rid) {
+            $maj->execute([$k + 1, $rid]);
         }
     }
 

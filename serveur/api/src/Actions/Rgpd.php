@@ -101,6 +101,7 @@ final class Rgpd
             'retours_sur_l_outil' => $lignes('SELECT type, texte, contexte, jour, cree_le, statut FROM feedback WHERE auteur_id = ?', [$id]),
             'propositions_de_correction' => $lignes('SELECT article_id, valeurs, statut, cree_le, clos_le FROM propositions WHERE propose_par = ?', [$id]),
             'termes_du_glossaire_crees' => $lignes('SELECT mot, definition, reference, cree_le FROM glossaire WHERE cree_par = ?', [$id]),
+            'regles_de_charte_creees' => $lignes('SELECT titre, description, cree_le FROM regles WHERE cree_par = ?', [$id]),
             'reunions_creees' => $lignes('SELECT date, titre, participants, vu, attendu, suite, cree_le FROM reunions WHERE cree_par = ?', [$id]),
             'jalons_crees' => $lignes('SELECT titre, type, debut, echeance, heure, statut, note, cree_le FROM jalons WHERE cree_par = ?', [$id]),
             'historique_de_mes_fiches' => $lignes('SELECT cible, cible_id, avant, modifie_le FROM historique WHERE proprietaire = ?', [$id]),

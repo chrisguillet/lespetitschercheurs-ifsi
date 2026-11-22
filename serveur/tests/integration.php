@@ -1220,6 +1220,33 @@ verifie('citation : lien hors http(s) refusé', $err(appel('a1@ci.test', 'terme_
 appel('a1@ci.test', 'terme_delete', ['id' => (string) ($citT['id'] ?? '')]);
 verifie('terme supprimé', (appel('a1@ci.test', 'terme_delete', ['id' => $tid])['termes'] ?? null) === []);
 
+// Charte de fonctionnement : règles du groupe (titre, description), dans l'ordre choisi par le groupe.
+$regleDe = static fn (array $r): array => array_values(array_filter($r['regles'] ?? [], static fn (array $x): bool => $x['groupe_id'] === $alpha));
+$r = appel('a1@ci.test', 'regle_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Ponctualité', 'description' => 'On arrive à l’heure aux réunions.']]);
+verifie('charte : règle créée, réponse partielle (regles)', ($r['ok'] ?? false) === true && !array_key_exists('reunions', $r) && ($regleDe($r)[0]['titre'] ?? '') === 'Ponctualité' && ($regleDe($r)[0]['modifiable'] ?? false) === true);
+$r1 = (string) ($regleDe($r)[0]['id'] ?? '');
+$r = appel('a2@ci.test', 'regle_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Bienveillance', 'description' => '']]);
+verifie('charte : une nouvelle règle va en fin de charte', array_column($regleDe($r), 'titre') === ['Ponctualité', 'Bienveillance']);
+$r2 = (string) ($regleDe($r)[1]['id'] ?? '');
+$r = appel('a2@ci.test', 'regle_move', ['id' => $r2, 'sens' => -1]);
+verifie('charte : une règle remonte', array_column($regleDe($r), 'titre') === ['Bienveillance', 'Ponctualité']);
+$r = appel('a2@ci.test', 'regle_move', ['id' => $r2, 'sens' => -1]);
+verifie('charte : déjà en tête, rien ne bouge', ($r['ok'] ?? false) === true && array_column($regleDe($r), 'titre') === ['Bienveillance', 'Ponctualité']);
+verifie('charte : sens invalide refusé', $err(appel('a2@ci.test', 'regle_move', ['id' => $r2, 'sens' => 3])) === 'invalid');
+$r = appel('a1@ci.test', 'regle_save', ['id' => $r1, 'data' => ['titre' => 'Ponctualité', 'description' => 'Prévenir en cas de retard.']]);
+verifie('charte : règle modifiée', (array_values(array_filter($regleDe($r), static fn (array $x): bool => $x['id'] === $r1))[0]['description'] ?? '') === 'Prévenir en cas de retard.');
+verifie('charte : titre obligatoire et borné', $err(appel('a1@ci.test', 'regle_save', ['groupe_id' => $alpha, 'data' => ['titre' => '', 'description' => 'x']])) === 'invalid'
+    && $err(appel('a1@ci.test', 'regle_save', ['groupe_id' => $alpha, 'data' => ['titre' => str_repeat('t', 201)]])) === 'invalid'
+    && $err(appel('a1@ci.test', 'regle_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Long', 'description' => str_repeat('d', 2501)]])) === 'invalid');
+verifie('charte : seul le groupe la rédige', $err(appel('a6@ci.test', 'regle_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Intrus']])) === 'forbidden'
+    && $err(appel('forma@ci.test', 'regle_save', ['groupe_id' => $alpha, 'data' => ['titre' => 'Formateur']])) === 'forbidden'
+    && $err(appel('a6@ci.test', 'regle_move', ['id' => $r1, 'sens' => 1])) === 'forbidden'
+    && $err(appel('a6@ci.test', 'regle_delete', ['id' => $r1])) === 'forbidden');
+$vueFormateur = $regleDe(appel('forma@ci.test', 'init'));
+verifie('charte : le formateur du groupe la lit sans la modifier', count($vueFormateur) === 2 && ($vueFormateur[0]['modifiable'] ?? true) === false);
+appel('a1@ci.test', 'regle_delete', ['id' => $r1]);
+verifie('charte : règles supprimées', $regleDe(appel('a2@ci.test', 'regle_delete', ['id' => $r2])) === []);
+
 // ---------- Lot D : notes privées ----------
 $note = ['titre' => 'Idées', 'date' => '2026-11-20', 'texte' => 'Penser aux entretiens', 'liens' => ['abc', 'abc', str_repeat('x', 65)],
     'etiquettes' => ['Méthode', 'méthode', '  Soins  ', 'x'], 'epingle' => true];
