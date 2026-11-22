@@ -95,6 +95,7 @@ final class Rgpd
             'commentaires' => $lignes('SELECT id, analyse_id, texte, portee, cree_le, modifie_le FROM commentaires WHERE auteur_id = ?', [$id]),
             'notes_personnelles' => $lignes('SELECT id, titre, date, texte, liens, etiquettes, epingle, cree_le, modifie_le FROM notes WHERE utilisateur_id = ?', [$id]),
             'fichiers_joints' => $lignes('SELECT nom, type, taille, cree_le AS depose_le FROM fichiers WHERE cree_par = ?', [$id]),
+            'blocs_du_memoire_ecrits' => $lignes('SELECT type, texte, modifie_le FROM memoire_blocs WHERE auteur_id = ?', [$id]),
             'suggestions_de_lecture' => $lignes('SELECT titre, auteur, parution, type, source, doi, lien, note, cree_le FROM suggestions WHERE propose_par = ?', [$id]),
             'scores_jeux' => $lignes('SELECT jeu, niveau, score, obtenu_le FROM scores_jeux WHERE utilisateur_id = ?', [$id]),
             'retours_sur_l_outil' => $lignes('SELECT type, texte, contexte, jour, cree_le, statut FROM feedback WHERE auteur_id = ?', [$id]),
