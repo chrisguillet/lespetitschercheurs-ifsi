@@ -52,6 +52,7 @@ function memDessiner() {
           <div><label for="mem_date">Date de rendu</label><input id="mem_date" type="date" value="${esc(m.date_rendu)}" ${ecrit ? "" : "disabled"}></div>
         </div>
         <div id="mem_msg" class="meta" role="status">${esc(MEM.msg)}</div>
+        <div class="memexp"><span class="meta">Exporter :</span> <button type="button" class="btn sm" data-mem-exp="pdf">⬇️ PDF</button> <button type="button" class="btn sm sec" data-mem-exp="docx">Word (DOCX)</button> <button type="button" class="btn sm sec" data-mem-exp="odt">OpenDocument (ODT)</button></div>
       </div>
       ${ecrit ? `<div class="card memajout"><b>Ajouter :</b>
         ${["titre1", "titre2", "paragraphe", "citation"].map(t => `<button type="button" class="btn sm sec" data-mem-new="${t}">＋ ${esc(MEM_TYPES[t])}</button>`).join(" ")}
@@ -189,6 +190,7 @@ $("memoirebox")?.addEventListener("focusout", e => {
 $("memoirebox")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.id === "mem_refbtn") { $("mem_refs").classList.toggle("hidden"); return; }
+  if (b.dataset.memExp) return b.dataset.memExp === "pdf" ? memPdf() : memExporter(b.dataset.memExp);
   if (b.dataset.memNew) return memStructure(() => api("memoire_bloc", { groupe_id: MEM.gid, data: { type: b.dataset.memNew, texte: "" } }));
   if (b.dataset.memRef) {
     const i = itemsAll.find(x => x.id === b.dataset.memRef); if (!i) return;
@@ -208,3 +210,106 @@ $("memoirebox")?.addEventListener("click", e => {
     return memStructure(() => api("memoire_ordre", { groupe_id: MEM.gid, ids }));
   }
 });
+
+/* ---------- Export : PDF (dans le navigateur), DOCX et ODT (sur le serveur) ---------- */
+
+// Nom de fichier de la maquette : NOM.Prénom_UE_Titre_AAAAMMJJ.ext (même règle que le serveur).
+function memNomFichier(ext) {
+  const id = me.identite || {}, m = MEM.data;
+  const nom = String(id.nom || me.prenom || "").toUpperCase(), prenom = id.prenom || me.prenom || "";
+  const ue = String(m.ue || ""), u = /UE\s*(\d+(?:\.\d+)?)/i.exec(ue);
+  const code = u ? "UE" + u[1] : (ue.trim() || "UE");
+  const net = s => String(s).replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+  const jour = m.date_rendu ? m.date_rendu.replace(/-/g, "") : new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  return `${net(nom)}.${net(prenom)}_${net(code)}_${net(m.titre || "").slice(0, 60)}_${jour}.${ext}`;
+}
+const memDateFr = d => (/^(\d{4})-(\d{2})-(\d{2})$/.exec(d || "") ? d.slice(8, 10) + "/" + d.slice(5, 7) + "/" + d.slice(0, 4) : "");
+// Pied de page : même texte que dans les fichiers Word et OpenDocument (le numéro de page est ajouté).
+function memTexteArrierePlan() {
+  const m = MEM.data, g = groupeCourant() || {};
+  return `IFSI GAVY – SAINT-NAZAIRE – ${m.ue || "UE"} – ${m.titre || ""} – ${memPromoMaquette(g.promo)} – ${m.auteurs || "NOM Prénom"} – ${memDateFr(m.date_rendu) || "Date"}`;
+}
+
+// PDF aux normes : A4, marges 3 cm (gauche), 2,5 cm (droite), 2,5 cm (haut), 3 cm (bas) ; Times ; corps 12, titres 16 et 14 ; interligne 1,5 ; justifié.
+function memPdf() {
+  if (!window.jspdf) { alert("Module PDF non chargé."); return; }
+  const m = MEM.data, g = groupeCourant() || {};
+  const doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, H = 297, ML = 30, MR = 25, MT = 25, MB = 30, LARG = W - ML - MR, PT = 0.3528, ESP = 1.5;
+  const police = (gras, italique) => doc.setFont("times", gras && italique ? "bolditalic" : gras ? "bold" : italique ? "italic" : "normal");
+  const centre = (t, y, taille, gras) => { police(gras, false); doc.setFontSize(taille); doc.text(String(t), W / 2, y, { align: "center" }); };
+  // Couverture (page 1, sans pied de page)
+  centre("INSTITUT DE FORMATION EN SOINS INFIRMIERS", 48, 14, false);
+  centre("SAINT-NAZAIRE", 48 + 14 * ESP * PT, 14, false);
+  if (m.ue) centre(m.ue, 110, 14, false);
+  centre((m.titre || "TITRE DU TRAVAIL").toUpperCase(), 110 + (m.ue ? 2 * 14 * ESP * PT : 0), 14, true);
+  centre(m.auteurs || "NOM – Prénom de l’étudiant(e)", 176, 12, false);
+  centre(memPromoMaquette(g.promo), 176 + 12 * ESP * PT, 12, false);
+  police(false, false); doc.setFontSize(12);
+  doc.text("Référent pédagogique : " + (m.referent || ""), ML, 262);
+  doc.text("Date : " + memDateFr(m.date_rendu), ML, 262 + 12 * ESP * PT);
+
+  // Mise en page du texte : mots avec leur style, retrait de la première ligne et retrait des suivantes, justification.
+  let y = MT;
+  const saut = () => { doc.addPage(); y = MT; };
+  const mot = (t, gras, italique, taille) => { police(gras, italique); doc.setFontSize(taille); return doc.getTextWidth(t); };
+  const mots = texte => {
+    const out = [];
+    String(texte || "").split(/(\*\*[^*]+\*\*|\*[^*]+\*)/).filter(Boolean).forEach(p => {
+      let gras = false, ital = false, t = p;
+      if (p.startsWith("**") && p.endsWith("**") && p.length > 4) { gras = true; t = p.slice(2, -2); }
+      else if (p.startsWith("*") && p.endsWith("*") && p.length > 2) { ital = true; t = p.slice(1, -1); }
+      t.split(/\s+/).filter(Boolean).forEach(w => out.push({ t: w, gras, ital }));
+    });
+    return out;
+  };
+  const paragraphe = (texte, taille, gras, opt) => {
+    const lh = taille * ESP * PT, sp = mot(" ", false, false, taille);
+    const ws = mots(texte).map(w => ({ ...w, l: mot(w.t, gras || w.gras, w.ital, taille) }));
+    const lignes = []; let cur = [], larg = 0;
+    const gauche = i => (i === 0 ? opt.premiere : opt.suite);
+    ws.forEach(w => {
+      const i = lignes.length, dispo = LARG - opt.retrait - gauche(i);
+      if (cur.length && larg + sp + w.l > dispo) { lignes.push(cur); cur = []; larg = 0; }
+      larg += (cur.length ? sp : 0) + w.l; cur.push(w);
+    });
+    if (cur.length) lignes.push(cur);
+    if (opt.avant) y += opt.avant;
+    lignes.forEach((l, i) => {
+      if (y + lh > H - MB) saut();
+      const x0 = ML + opt.retrait + gauche(i), dispo = LARG - opt.retrait - gauche(i);
+      const somme = l.reduce((n, w) => n + w.l, 0);
+      const extra = opt.justifie && i < lignes.length - 1 && l.length > 1 ? (dispo - somme) / (l.length - 1) : 0;
+      let x = x0;
+      l.forEach((w, k) => { police(gras || w.gras, w.ital); doc.setFontSize(taille); doc.text(w.t, x, y + lh * 0.7); x += w.l + sp + extra; });
+      y += lh;
+    });
+    y += opt.apres || 0;
+  };
+
+  doc.addPage();
+  (m.blocs || []).forEach(b => {
+    if (b.type === "titre1") paragraphe(b.texte, 16, true, { retrait: 0, premiere: 0, suite: 0, avant: 6, apres: 3, justifie: false });
+    else if (b.type === "titre2") paragraphe(b.texte, 14, true, { retrait: 0, premiere: 0, suite: 0, avant: 4, apres: 2, justifie: false });
+    else if (b.type === "citation") paragraphe(b.texte, 12, false, { retrait: 15, premiere: 0, suite: 0, justifie: true, apres: 2 });
+    else if (b.type === "reference") paragraphe(b.texte, 12, false, { retrait: 0, premiere: 0, suite: 12.5, justifie: true, apres: 2 });
+    else paragraphe(b.texte, 12, false, { retrait: 0, premiere: 12.5, suite: 0, justifie: true, apres: 2 });
+  });
+
+  // Pied de page sur toutes les pages sauf la couverture ; numéro de page = rang de la page (couverture = 1)
+  const total = doc.getNumberOfPages();
+  for (let p = 2; p <= total; p++) {
+    doc.setPage(p); police(false, false); doc.setFontSize(9);
+    doc.text(memTexteArrierePlan() + " – Page " + p, W / 2, H - 14, { align: "center", maxWidth: LARG });
+  }
+  doc.save(memNomFichier("pdf"));
+}
+
+// DOCX ou ODT : fabriqué par le serveur, téléchargé ici.
+async function memExporter(format) {
+  try {
+    const r = await enCours("Préparation du fichier…", () => api("memoire_export", { groupe_id: MEM.gid, format }));
+    const octets = Uint8Array.from(atob(r.contenu), c => c.charCodeAt(0));
+    telecharger(new Blob([octets], { type: r.type }), r.nom);
+  } catch (e) { if (e.code === "unauthorized") sessionError(e); else alert("Export impossible : " + e.message); }
+}
