@@ -513,8 +513,9 @@ td.menuopen { z-index: 3 }
 table.inner tr.ficlic{cursor:pointer}
 table.inner tr.ficlic:hover td,table.inner tr.ficlic:hover + tr.fikw td,table.inner tr.fikw:hover td{background:color-mix(in srgb,var(--pri) 6%,var(--card))}
 table.inner tr.fikw{cursor:pointer}
-table.inner tr.fi.aveckw td{border-bottom:0}
-table.inner tr.fikw td.first{max-width:none;padding-top:0}
+table.inner tr.fi.aveckw td:not(.first){border-bottom:0}
+table.inner tr.fikw td{padding-top:0}
+.fiapercu{margin-top:8px}
 tr.fikw .kwzone{margin-top:0;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 14px}
 tr.fikw .kwhead{flex:0 0 auto}
 tr.fikw .kwbloc{display:flex;align-items:center;gap:6px}

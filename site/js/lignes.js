@@ -25,18 +25,19 @@ function fichesRow(g) {
    <tbody>${g.map(cells).join("")}</tbody></table></div></td></tr>`;
 }
 
-// Fiche de lecture : une ligne du tableau interne (textes tronqués), puis ses mots-clés sur toute la largeur.
-// Un clic sur la fiche ouvre son aperçu, avec les actions (commenter, modifier, PDF).
+// Fiche de lecture : une ligne du tableau interne (textes tronqués ; un clic la déplie), puis ses mots-clés,
+// qui commencent sous « Concepts » (la première colonne couvre les deux lignes). Le bouton « Aperçu » ouvre l'aperçu et ses actions.
 function cells(i) {
   const c = esc(i.couleur), k = cleArt(i);
-  const prog = stInfo(i.statut).cl;
-  const titre = `Aperçu de la fiche de ${esc(i.etudiant)}`;
+  const prog = stInfo(i.statut).cl, ouvert = openRows.has(i.id);
   const kw = motsCle(i);
-  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" data-apercu="1" tabindex="0" role="button" aria-label="${titre}" title="${titre}" class="fi ficlic ${prog} ${kw ? "aveckw" : ""}" style="--c:${c}"><td class="first"><span class="badge" style="--c:${c}" title="${esc(lieuDe(i))}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
-   <div class="meta">${i.modifie_par ? `Modifiée par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))} · ` : ""}saisie le ${esc(fmtD(i.ajoute))}</div></td>
+  return `<tr data-id="${esc(i.id)}" data-fa="${esc(k)}" tabindex="0" aria-expanded="${ouvert}" class="fi ficlic ${prog} ${kw ? "aveckw" : ""} ${ouvert ? "open" : ""}" style="--c:${c}"><td class="first"${kw ? ' rowspan="2"' : ""}><span class="chev" aria-hidden="true"></span><span class="badge" style="--c:${c}" title="${esc(lieuDe(i))}">${esc(i.etudiant)}</span>${badgeStatut(i, c)}${badgeGroupe(i)}${badgeNouveau(i)}${nbComm(i)}
+   <div class="meta">${i.modifie_par ? `Modifiée par ${esc(i.modifie_par)} le ${esc(fmtD(i.modifie_le))} · ` : ""}saisie le ${esc(fmtD(i.ajoute))}</div>
+   <div class="fiapercu"><button class="btn sm sec" data-fpdf="${esc(i.id)}" title="Aperçu de la fiche, avec ses actions (commenter, modifier, PDF)">👁 Aperçu</button></div>
+   <div class="rowacts">${actionsHtml(i, true)}</div></td>
    <td>${clampTxt(i.id, i.concepts)}</td><td>${clampTxt(i.id, i.objet)}</td><td>${clampTxt(i.id, i.opinion)}</td>
    <td>${clampTxt(i.id, i.controverse)}</td><td>${clampTxt(i.id, i.libre)}</td></tr>
-   ${kw ? `<tr class="fi fikw" data-id="${esc(i.id)}" data-apercu="1" style="--c:${c}"><td class="first" colspan="6">${kw}</td></tr>` : ""}`;
+   ${kw ? `<tr class="fi fikw" data-kwde="${esc(i.id)}" style="--c:${c}"><td colspan="5">${kw}</td></tr>` : ""}`;
 }
 
 // Couverture générée : couleur et pictogramme selon le type d'article (pas d'image externe).

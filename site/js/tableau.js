@@ -131,10 +131,10 @@ $("cmodal").addEventListener("mousedown", e => { if (e.target === $("cmodal")) f
 const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).length; const u = nbNonLus(i.id); return n ? `<span class="cn" title="${n} commentaire${n > 1 ? "s" : ""}${u ? ", " + u + " non lu" + (u > 1 ? "s" : "") : ""}">💬 ${n}</span>${u ? `<span class="new">${u} non lu${u > 1 ? "s" : ""}</span>` : ""}` : ""; };
 
 // Actions d'une fiche de lecture : la modifier (la sienne) et la commenter.
-function actionsHtml(i) {
+function actionsHtml(i, sansApercu) {
   const edit = canWrite() && i.mine && i.modifiable ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier ma fiche de lecture</button> <button class="btn sm sec" data-hist="lecture:${esc(i.id)}" title="Versions précédentes de ma fiche">🕘</button> ` : "";
   const n = comments.filter(x => x.lecture_id === i.id).length, u = nbNonLus(i.id);
-  return `${edit}<button class="btn sm sec" data-fpdf="${esc(i.id)}" title="Aperçu de la fiche, puis impression ou enregistrement en PDF">PDF</button> <button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n}${u ? ", " + u + " non lus" : ""})">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button>`;
+  return `${edit}${sansApercu ? "" : `<button class="btn sm sec" data-fpdf="${esc(i.id)}" title="Aperçu de la fiche, puis impression ou enregistrement en PDF">PDF</button> `}<button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n}${u ? ", " + u + " non lus" : ""})">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button>`;
 }
 
 // Actions du document : ajouter sa fiche de lecture, corriger la partie objective.
