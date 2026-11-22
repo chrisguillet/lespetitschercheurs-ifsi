@@ -50,14 +50,14 @@ function renderRetro() {
     const bandeaux = segs.filter(s => s.voie < MAX_VOIES).map(s => {
       const j = s.j, retard = estTravail(j) && j.statut !== "fait" && ecartJours(j.echeance) < 0;
       const jc = isoJour(new Date(RP.mois.a, RP.mois.m, 1 - decal + s.a));
-      return `<button type="button" class="rbi ${j.statut === "fait" ? "fait" : ""} ${retard ? "retard" : ""} ${s.avant ? "cg" : ""} ${s.apres ? "cd" : ""}" style="--t:${typeEntree(j).c};grid-column:${s.a - debutSem + 1} / ${s.b - debutSem + 2};grid-row:${s.voie + 2}" data-jour="${jc}" title="${esc(typeEntree(j).lib + " · " + libEntree(j) + " · " + fmtDatesJalon(j))}">${s.avant ? "◂ " : ""}${esc(typeEntree(j).ico)} ${esc(libEntree(j))}${s.apres ? " ▸" : ""}</button>`;
+      return `<button type="button" class="rbi ${j.statut === "fait" ? "fait" : ""} ${retard ? "retard" : ""} ${s.avant ? "cg" : ""} ${s.apres ? "cd" : ""}" style="--t:${typeEntree(j).c};grid-column:${s.a - debutSem + 1} / ${s.b - debutSem + 2};grid-row:${s.voie + 2}" data-jour="${jc}" title="${esc(typeEntree(j).lib + " · " + libEntree(j) + " · " + fmtDatesJalon(j))}">${s.avant ? "◂ " : ""}${pastPers(j)}${esc(typeEntree(j).ico)} ${esc(libEntree(j))}${s.apres ? " ▸" : ""}</button>`;
     }).join("");
     const cachees = segs.filter(s => s.voie >= MAX_VOIES).length;
     let jours = "";
     for (let n = debutSem; n <= finSem; n++) {
       const jour = new Date(RP.mois.a, RP.mois.m, 1 - decal + n), cle = isoJour(jour);
       const tous = entreesDuJour(liste, cle), simples = tous.filter(j => !estPlage(j));
-      const chips = simples.slice(0, 3).map(j => `<span class="rchip ${j.statut === "fait" ? "fait" : ""} ${estTravail(j) && j.statut !== "fait" && ecartJours(j.echeance) < 0 ? "retard" : ""}" style="--t:${typeEntree(j).c}" title="${esc(typeEntree(j).lib + " · " + libEntree(j))}">${esc(typeEntree(j).ico)} ${esc(libEntree(j))}</span>`).join("");
+      const chips = simples.slice(0, 3).map(j => `<span class="rchip ${j.statut === "fait" ? "fait" : ""} ${estTravail(j) && j.statut !== "fait" && ecartJours(j.echeance) < 0 ? "retard" : ""}" style="--t:${typeEntree(j).c}" title="${esc(typeEntree(j).lib + " · " + libEntree(j))}">${pastPers(j)}${esc(typeEntree(j).ico)} ${esc(libEntree(j))}</span>`).join("");
       jours += `<button type="button" class="rc ${jour.getMonth() !== RP.mois.m ? "hors" : ""} ${cle === auj ? "auj" : ""} ${tous.length ? "has" : ""} ${[0, 6].includes(jour.getDay()) ? "we" : ""}" data-jour="${cle}" style="--voies:${nbVoies}" aria-label="${esc(JOUR_LONG(cle))}${tous.length ? " : " + tous.length + " élément" + (tous.length > 1 ? "s" : "") : ""}">
         <span class="rcn">${jour.getDate()}</span>${chips}${simples.length > 3 ? `<span class="rcplus">+${simples.length - 3}</span>` : ""}${n === finSem && cachees ? `<span class="rcplus" title="Autres entrées sur plusieurs jours : cliquez sur un jour">+${cachees} période${cachees > 1 ? "s" : ""}</span>` : ""}</button>`;
     }
@@ -124,7 +124,9 @@ const rafraichirRetro = () => { if (tab === "suivi") renderRetro(); if (RP.jour)
 /* ----- Saisie d'une entrée ----- */
 
 // Pastilles des personnes assignées à une entrée (couleur de chacune).
-const pastPers = j => (j.personnes || []).map(p => `<span class="ppers" style="--c:${esc(p.couleur)}" title="${esc(p.prenom)}"></span>`).join("");
+// Pastilles des personnes assignées : rond de leur couleur avec leurs initiales.
+const initPers = s => String(s || "").trim().split(/s+/).map(w => w[0] || "").join("").slice(0, 2).toUpperCase();
+const pastPers = j => (j.personnes || []).map(p => `<span class="ppers" style="--c:${esc(p.couleur)}" title="${esc(p.prenom)}">${esc(initPers(p.prenom))}</span>`).join("");
 const ALERTES_RP = [["", "Aucune"], ["0", "Le jour même"], ["1", "1 jour avant"], ["3", "3 jours avant"], ["7", "1 semaine avant"], ["14", "2 semaines avant"]];
 function ouvrirEntree(id, cleDefaut) {
   if (!$("rpform")) return;

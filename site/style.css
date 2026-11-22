@@ -954,3 +954,7 @@ header .brand h1{white-space:nowrap}
 /* En-tête : la tuile du logo ne touche plus le cadre (marge en haut et en bas) */
 header .toprow{padding-top:6px;padding-bottom:14px}
 header .brand .logo{margin:2px 0}
+
+/* Pastilles des personnes assignées : rond de leur couleur avec leurs initiales (aussi sur le calendrier) */
+.ppers{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--c);color:#fff;font-size:9px;font-weight:700;line-height:1;margin:0 2px 0 0;vertical-align:middle;box-shadow:0 0 0 1.5px var(--card);flex:none}
+.rchip .ppers,.rbi .ppers{width:15px;height:15px;font-size:7.5px;margin-right:3px}
