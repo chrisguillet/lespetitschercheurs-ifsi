@@ -1162,7 +1162,12 @@ appel($admin, 'admin_erase', ['email' => 'jeux@ci.test', 'contributions' => 'ano
 verifie('effacement : les scores de jeux disparaissent avec le compte', (int) valeur($pdo, 'SELECT COUNT(*) FROM scores_jeux WHERE utilisateur_id = ?', [$js]) === 0);
 
 // ---------- Suggestions de lecture : un formateur propose un article à la promo, des groupes tagués sont alertés ----------
-$beta = $gid('Beta');
+// Un second groupe pour la promo (Beta a été supprimé plus haut) avec une étudiante qui n'est pas dans Alpha.
+$sb = creerUtilisateur($pdo, 'sugb@ci.test');
+Attributions::ajouter($pdo, $sb, 'etudiant', null, $pv);
+$beta = Ids::uuid();
+$pdo->prepare('INSERT INTO groupes (id, promo_id, nom, cree_le, cree_par) VALUES (?, ?, ?, ?, ?)')->execute([$beta, $pv, 'Sug', gmdate('Y-m-d H:i:s'), $B['ap']]);
+$pdo->prepare('INSERT INTO membres (groupe_id, utilisateur_id, ajoute_le) VALUES (?, ?, ?)')->execute([$beta, $sb, gmdate('Y-m-d H:i:s')]);
 $sg = static fn (string $email, string $action, array $req): array => appel($email, $action, $req);
 $liste = static fn (string $email): array => appel($email, 'init')['suggestions'] ?? [];
 $data = ['promo_id' => $pv, 'titre' => 'Prendre soin à l’hôpital', 'auteur' => 'Dupont', 'parution' => '2021', 'type' => 'Article scientifique', 'doi' => '10.1000/xyz', 'lien' => 'https://exemple.org/a', 'note' => 'À lire avant la réunion', 'groupes' => [$alpha]];
@@ -1178,7 +1183,7 @@ verifie('suggestion : créée par le formateur, qui voit ses tags ' . json_encod
 $l1 = $liste('a1@ci.test');
 verifie('suggestion : visible de toute la promo, avec alerte pour le groupe tagué ' . json_encode($l1), count($l1['liste'] ?? []) === 1 && ($l1['liste'][0]['nouveau'] ?? false) === true && ($l1['liste'][0]['alerte'] ?? false) === true && ($l1['alertes'] ?? 0) === 1);
 verifie('suggestion : le tag reste invisible des étudiantes', ($l1['liste'][0]['groupes'] ?? ['x']) === [] && ($l1['liste'][0]['modifiable'] ?? true) === false && ($l1['peut'] ?? ['x']) === []);
-$l4 = $liste('a4@ci.test');
+$l4 = $liste('sugb@ci.test');
 verifie('suggestion : un autre groupe la voit sans alerte', count($l4['liste'] ?? []) === 1 && ($l4['liste'][0]['nouveau'] ?? false) === true && ($l4['liste'][0]['alerte'] ?? true) === false && ($l4['alertes'] ?? 9) === 0);
 verifie('suggestion : hors promo, personne ne la voit', count($liste('simple@ci.test')['liste'] ?? []) === 0);
 $r = $sg('a1@ci.test', 'suggestion_vues', ['ids' => [$idS, 'inconnue']]);
@@ -1188,7 +1193,7 @@ verifie('suggestion : un autre formateur ne la modifie pas', $err($sg('formb@ci.
     && $err($sg('formb@ci.test', 'suggestion_delete', ['id' => $idS])) === 'forbidden');
 $r = $sg('forma@ci.test', 'suggestion_save', ['id' => $idS, 'data' => array_merge($data, ['titre' => 'Titre corrigé', 'groupes' => [$alpha, $beta]])]);
 verifie('suggestion : l’auteur la corrige et change les tags', ($r['suggestions']['liste'][0]['titre'] ?? '') === 'Titre corrigé' && count($r['suggestions']['liste'][0]['groupes'] ?? []) === 2);
-verifie('suggestion : le groupe nouvellement tagué est alerté', ($liste('a4@ci.test')['alertes'] ?? 0) === 1);
+verifie('suggestion : le groupe nouvellement tagué est alerté', ($liste('sugb@ci.test')['alertes'] ?? 0) === 1);
 verifie('suggestion : un administrateur de la promo peut la corriger', ($sg('ap@ci.test', 'suggestion_save', ['id' => $idS, 'data' => array_merge($data, ['titre' => 'Corrigé par l’admin'])])['ok'] ?? false) === true);
 verifie('suggestion : préremplissage par DOI permis aux formateurs', ($sg('forma@ci.test', 'doi_lookup', ['doi' => 'pas-un-doi'])['error'] ?? '') !== 'forbidden');
 $r = $sg('ap@ci.test', 'suggestion_delete', ['id' => $idS]);
@@ -1203,6 +1208,8 @@ foreach ([['formx@ci.test', 'anonymiser'], ['formy@ci.test', 'supprimer']] as [$
 verifie('effacement : la suggestion reste détachée (anonymisation) ou disparaît (suppression)', (int) valeur($pdo, "SELECT COUNT(*) FROM suggestions WHERE titre = 'De formx@ci.test' AND propose_par IS NULL") === 1
     && (int) valeur($pdo, "SELECT COUNT(*) FROM suggestions WHERE titre = 'De formy@ci.test'") === 0);
 $pdo->prepare("DELETE FROM suggestions")->execute();
+$pdo->prepare('DELETE FROM groupes WHERE id = ?')->execute([$beta]);   // on remet la promo comme avant ce bloc
+$pdo->prepare('DELETE FROM utilisateurs WHERE id = ?')->execute([$sb]);
 
 // ---------- Lot D : chat ----------
 $salon =static fn (string $type): array => ['groupe_id' => $alpha, 'type' => $type];
