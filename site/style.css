@@ -886,3 +886,5 @@ button.bl.lnk{text-decoration:none}
 .synth2 button.bl.lnk{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.25}
 .synth{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media (max-width:760px){.synth,.synth2{grid-template-columns:1fr}}
+.card.nuage{display:flex;flex-direction:column}
+.nuagebox{flex:1;min-height:200px;align-content:center;justify-content:center;gap:14px 26px;padding:12px 8px}

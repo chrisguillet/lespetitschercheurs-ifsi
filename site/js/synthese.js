@@ -48,9 +48,13 @@ function nuageMotsCles(listes, imprimable) {
   if (SV.mots === "liste") return `<div class="card nuage">${entete}${lignesBarres(c.slice(0, 15))}</div>`;
   const max = Math.max(...c.map(e => e[1])), min = Math.min(...c.map(e => e[1]));
   const COULEURS = ["#2f5fd0", "#7c3aed", "#0d9488", "#d97706", "#be185d", "#0369a1"];
-  const mots = c.slice().sort((a, b) => a[0].localeCompare(b[0], "fr")).map(([mot, n], i) => {
+  // Les mots les plus fréquents au centre, les rares sur les bords ; un léger décalage vertical propre à chaque mot donne l'allure d'un nuage.
+  const centre = [];
+  c.slice().sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr")).forEach((e, i) => { if (i % 2) centre.push(e); else centre.unshift(e); });
+  const mots = centre.map(([mot, n], i) => {
     const t = max === min ? 0.5 : Math.sqrt((n - min) / (max - min));
-    return `<button type="button" class="nuagemot" data-nuage="${esc(mot)}" style="font-size:${(12 + t * 17).toFixed(1)}px;color:${COULEURS[(i * 7 + mot.length) % COULEURS.length]};opacity:${(0.6 + t * 0.4).toFixed(2)}" title="${n} fiche${n > 1 ? "s" : ""} : cliquer pour filtrer le tableau">${esc(mot)}</button>`;
+    const h = [...mot].reduce((s, ch) => (s * 31 + ch.charCodeAt(0)) % 997, 7), dy = (h % 21) - 10;
+    return `<button type="button" class="nuagemot" data-nuage="${esc(mot)}" style="font-size:${(13 + t * 19).toFixed(1)}px;color:${COULEURS[(i * 7 + mot.length) % COULEURS.length]};opacity:${(0.62 + t * 0.38).toFixed(2)};transform:translateY(${dy}px)" title="${n} fiche${n > 1 ? "s" : ""} : cliquer pour filtrer le tableau">${esc(mot)}</button>`;
   }).join(" ");
   return `<div class="card nuage">${entete}<div class="nuagebox">${mots}</div></div>`;
 }
