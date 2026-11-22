@@ -158,7 +158,9 @@ final class Suggestions
         }
         $now = Temps::maintenant();
 
-        if ($identifiant === '') {
+        // Tout est contrôlé avant la première écriture : une erreur ne laisse jamais une suggestion à moitié créée.
+        $creation = $identifiant === '';
+        if ($creation) {
             $promo = is_string($data['promo_id'] ?? null) ? $data['promo_id'] : '';
             if (!in_array($promo, self::promosOuProposer($c), true)) {
                 throw new Erreur('forbidden', 'Seuls les formateurs et les administrateurs de la promo peuvent proposer une lecture');
@@ -168,30 +170,40 @@ final class Suggestions
             if ((int) $st->fetchColumn() >= self::MAX_PAR_PROMO) {
                 throw new Erreur('limit', 'Trop de suggestions dans cette promo : supprimez-en d’anciennes');
             }
-            $identifiant = Ids::uuid();
-            $pdo->prepare('INSERT INTO suggestions (id, promo_id, propose_par, titre, auteur, parution, type, source, doi, lien, note, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-                ->execute([$identifiant, $promo, $uid, $d['titre'], $d['auteur'], $d['parution'], $d['type'], $d['source'], $d['doi'], $d['lien'], $note, $now]);
         } else {
             $s = self::trouver($pdo, $identifiant);
             self::exigerModifiable($c, $s);
             $promo = (string) $s['promo_id'];
-            $pdo->prepare('UPDATE suggestions SET titre = ?, auteur = ?, parution = ?, type = ?, source = ?, doi = ?, lien = ?, note = ?, modifie_le = ? WHERE id = ?')
-                ->execute([$d['titre'], $d['auteur'], $d['parution'], $d['type'], $d['source'], $d['doi'], $d['lien'], $note, $now, $identifiant]);
         }
-
-        // Groupes tagués : de cette promo seulement ; les nouveaux tags alertent leurs membres, les retirés ne les alertent plus.
+        // Groupes tagués : de cette promo seulement.
         $tags = is_array($data['groupes'] ?? null) ? array_values(array_unique(array_filter($data['groupes'], 'is_string'))) : [];
         if ($tags !== []) {
             $st = $pdo->prepare('SELECT id FROM groupes WHERE promo_id = ? AND id IN (' . Lectures::marques(count($tags)) . ')');
             $st->execute([$promo, ...$tags]);
-            $valides = array_map('strval', $st->fetchAll(\PDO::FETCH_COLUMN));
-            if (count($valides) !== count($tags)) {
+            if (count($st->fetchAll(\PDO::FETCH_COLUMN)) !== count($tags)) {
                 throw new Erreur('invalid', 'Un des groupes ne fait pas partie de cette promo');
             }
         }
-        $pdo->prepare('DELETE FROM suggestions_groupes WHERE suggestion_id = ?')->execute([$identifiant]);
-        foreach ($tags as $g) {
-            $pdo->prepare('INSERT INTO suggestions_groupes (suggestion_id, groupe_id) VALUES (?, ?)')->execute([$identifiant, $g]);
+
+        $pdo->beginTransaction();
+        try {
+            if ($creation) {
+                $identifiant = Ids::uuid();
+                $pdo->prepare('INSERT INTO suggestions (id, promo_id, propose_par, titre, auteur, parution, type, source, doi, lien, note, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                    ->execute([$identifiant, $promo, $uid, $d['titre'], $d['auteur'], $d['parution'], $d['type'], $d['source'], $d['doi'], $d['lien'], $note, $now]);
+            } else {
+                $pdo->prepare('UPDATE suggestions SET titre = ?, auteur = ?, parution = ?, type = ?, source = ?, doi = ?, lien = ?, note = ?, modifie_le = ? WHERE id = ?')
+                    ->execute([$d['titre'], $d['auteur'], $d['parution'], $d['type'], $d['source'], $d['doi'], $d['lien'], $note, $now, $identifiant]);
+            }
+            // Les groupes ajoutés alertent leurs membres ; ceux qu'on retire ne les alertent plus.
+            $pdo->prepare('DELETE FROM suggestions_groupes WHERE suggestion_id = ?')->execute([$identifiant]);
+            foreach ($tags as $g) {
+                $pdo->prepare('INSERT INTO suggestions_groupes (suggestion_id, groupe_id) VALUES (?, ?)')->execute([$identifiant, $g]);
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
         }
     }
 

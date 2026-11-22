@@ -1170,6 +1170,7 @@ verifie('suggestion : une étudiante ne peut pas proposer', $err($sg('a1@ci.test
 verifie('suggestion : titre obligatoire', $err($sg('forma@ci.test', 'suggestion_save', ['data' => array_merge($data, ['titre' => '  '])])) === 'invalid');
 verifie('suggestion : lien contrôlé', $err($sg('forma@ci.test', 'suggestion_save', ['data' => array_merge($data, ['lien' => 'javascript:alert(1)'])])) === 'invalid');
 verifie('suggestion : groupe inconnu refusé', $err($sg('forma@ci.test', 'suggestion_save', ['data' => array_merge($data, ['groupes' => ['inconnu']])])) === 'invalid');
+verifie('suggestion : une saisie refusée ne laisse rien derrière elle', (int) valeur($pdo, 'SELECT COUNT(*) FROM suggestions') === 0);
 $r = $sg('forma@ci.test', 'suggestion_save', ['data' => $data]);
 $sug = $r['suggestions'] ?? [];
 $idS = (string) ($sug['liste'][0]['id'] ?? '');
