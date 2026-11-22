@@ -32,7 +32,7 @@ function renderCtx() {
   majLigneGroupe(g);
   $("tagline").classList.toggle("hidden", !!me);
   // Bandeau sous les onglets : seulement le choix « mon groupe / toute la promo » (l'administrateur voit toujours toute la promo, il n'en a pas besoin).
-  const avecVue = !["mine", "suivi", "glossaire", "admin", "home", "dash"].includes(tab) && !isSuper();   // groupe / promo n'a de sens que pour tableau, commentaires, biblio, synthèse
+  const avecVue = !["mine", "suivi", "glossaire", "admin", "home", "dash", "memoire"].includes(tab) && !isSuper();   // groupe / promo n'a de sens que pour tableau, commentaires, biblio, synthèse
   if (!g || !avecVue) { bar.classList.add("hidden"); bar.innerHTML = ""; ctxSig = ""; return; }
   bar.classList.remove("hidden");
   const sig = JSON.stringify([ctx.gid, ctx.vue, nonLusDe(g, "groupe"), nonLusDe(g, "promo")]);
