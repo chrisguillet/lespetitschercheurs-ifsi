@@ -337,7 +337,18 @@ function memControleHtml() {
   <div class="meta">Marges : gauche ${MEM_MARGES.g} cm, droite ${MEM_MARGES.d} cm, haut ${MEM_MARGES.h} cm, bas ${MEM_MARGES.b} cm. Times New Roman noir : corps 12, titres 16 et 14, interligne 1,5, texte justifié, notes de bas de page en 10.</div>`;
 }
 
+// Recalcul de l'aperçu : 2 s après la dernière frappe, et au plus 5 s après la première frappe d'une saisie continue.
+const MEM_DELAI_APERCU = 2000, MEM_DELAI_MAX = 5000;
+let memMinuteur = null, memPremiereFrappe = 0;
+function memPlanifierApercu() {
+  const maintenant = Date.now();
+  if (!memPremiereFrappe) memPremiereFrappe = maintenant;
+  clearTimeout(memMinuteur);
+  const attente = Math.max(0, Math.min(MEM_DELAI_APERCU, memPremiereFrappe + MEM_DELAI_MAX - maintenant));
+  memMinuteur = setTimeout(memRafraichirApercu, attente);
+}
 function memRafraichirApercu() {
+  clearTimeout(memMinuteur); memPremiereFrappe = 0;
   if ($("mem_apercu")) { $("mem_apercu").innerHTML = memApercuHtml(); memZoomApercu(); }
   if ($("mem_controle")) $("mem_controle").innerHTML = memControleHtml();
   if ($("mem_pied")) $("mem_pied").placeholder = memPiedDefaut();
@@ -397,7 +408,7 @@ $("memoirebox")?.addEventListener("input", e => {
   const t = e.target;
   if (t.matches && t.matches(".memtxt")) {
     const bloc = t.closest("[data-bid]"), b = MEM.data.blocs.find(x => x.id === bloc.dataset.bid);
-    if (b) { b.texte = t.value; memRafraichirApercu(); }
+    if (b) { b.texte = t.value; memPlanifierApercu(); }
   }
 });
 
