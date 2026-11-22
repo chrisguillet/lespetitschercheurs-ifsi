@@ -4,7 +4,7 @@
 "use strict";
 
 const CH = { ouvert: false, canal: "groupe", gid: "", msgs: [], total: 0, limite: 100, nouveaux: { groupe: 0, promo: 0 }, libreA: 0, err: "", envoi: false, tic: 0, creeA: false };
-const CHAT_MAX_CAR = 500, CHAT_SONDE_OUVERT = 15, CHAT_SONDE_FERME = 60;
+const CHAT_MAX_CAR = 500, CHAT_SONDE_ACTIF = 3, CHAT_SONDE_CALME = 8, CHAT_SONDE_FERME = 30, CHAT_ACTIVITE_MS = 120000;
 const EMOJIS = ["😀", "😃", "😄", "😁", "😅", "😂", "🤣", "🙂", "😉", "😊", "😍", "🥰", "😘", "😎", "🤔", "😬", "😴", "😢", "😭", "😡", "😮", "🙄", "🥳", "🤗",
   "👍", "👎", "👏", "🙌", "🙏", "💪", "👋", "🤝", "✌️", "👌", "❤️", "💙", "💜", "💚", "🔥", "✨", "🎉", "⭐", "✅", "❓", "💡", "📚", "📖", "📝", "☕", "🍀", "🌞", "🩺", "💉", "🏥"];
 
@@ -82,6 +82,9 @@ function chatRecu(j, canal, gid) {
   const bas = chatEnBas();
   CH.msgs = j.messages || []; CH.total = j.total || 0; CH.nouveaux = j.nouveaux || { groupe: 0, promo: 0 };
   CH.libreA = Date.now() + (j.restant || 0) * 1000; CH.err = "";
+  const dernier = CH.total + ":" + JSON.stringify(CH.msgs[CH.msgs.length - 1] || "");   // un nouveau message (ou une suppression) relance le rythme rapide
+  if (CH.dernier !== undefined && dernier !== CH.dernier) CH.activite = Date.now();
+  CH.dernier = dernier;
   if (CH.ouvert) chatMarquerVu();
   chatRendu(bas);
 }
@@ -120,7 +123,7 @@ function chatMajEnvoi() {
 
 function ouvrirChat() {
   creerChat();
-  CH.ouvert = true; $("chatpanel").classList.remove("hidden"); $("chatbtn").setAttribute("aria-expanded", "true"); $("chatbtn").classList.add("hidden");
+  CH.ouvert = true; CH.activite = Date.now(); $("chatpanel").classList.remove("hidden"); $("chatbtn").setAttribute("aria-expanded", "true"); $("chatbtn").classList.add("hidden");
   chatMarquerVu(); chatRendu(); chatCharger(); $("chtxt").focus();
 }
 function fermerChat(tout) {
@@ -143,6 +146,7 @@ async function chatEnvoyer() {
   try {
     const j = await api("chat_send", chatCorps({ texte: t, limite: 100 }));
     $("chtxt").value = ""; $("chemoji").classList.add("hidden"); $("chemo").setAttribute("aria-expanded", "false");
+    CH.activite = Date.now();
     CH.limite = 100; chatRecu(j, canal, gid);
   } catch (e) {
     CH.err = e.message || "Envoi impossible";
@@ -172,5 +176,6 @@ function chatTic() {
   if (CH.ouvert) chatMajEnvoi();
   if (document.hidden) return;
   CH.tic++;
-  if (CH.tic >= (CH.ouvert ? CHAT_SONDE_OUVERT : CHAT_SONDE_FERME)) { CH.tic = 0; chatCharger(); }
+  const seuil = CH.ouvert ? (Date.now() - (CH.activite || 0) < CHAT_ACTIVITE_MS ? CHAT_SONDE_ACTIF : CHAT_SONDE_CALME) : CHAT_SONDE_FERME;
+  if (CH.tic >= seuil) { CH.tic = 0; chatCharger(); }
 }

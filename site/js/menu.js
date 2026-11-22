@@ -64,13 +64,14 @@ function ouvrirChoixJeu() {
   const liste = LydiaJeux.liste.filter(j => !j.admin || isSuper());
   $("jeuchoixbody").innerHTML = liste.map(j => {
     const [icone, ...nom] = j.titre.split(" ");
-    return `<button type="button" class="jeucarte" data-jeu="${esc(j.id)}"><span class="jeuvign"><canvas width="640" height="260" aria-hidden="true"></canvas><span class="jeuicone" aria-hidden="true">${esc(icone)}</span></span><b>${esc(nom.join(" "))}</b><span class="meta">${esc(j.desc)}</span></button>`;
+    return `<button type="button" class="jeucarte" data-jeu="${esc(j.id)}"><span class="jeuvign"><canvas width="640" height="260" aria-hidden="true"></canvas><span class="jeuicone" aria-hidden="true">${esc(icone)}</span></span><b>${esc(nom.join(" "))}</b><span class="meta">${esc(j.desc)}</span><span class="meta jeurec" data-jrec="${esc(j.nom || j.id)}"></span></button>`;
   }).join("");
   $("jeuchoixbody").querySelectorAll(".jeucarte").forEach(b => {
     if (LydiaJeux.miniature(b.dataset.jeu, b.querySelector("canvas"))) b.querySelector(".jeuvign").classList.add("avecvue");
     b.onclick = () => { fermerChoixJeu(); ouvrirJeu(b.dataset.jeu); };
   });
   $("jeuchoix").classList.remove("hidden"); document.body.classList.add("modalopen");
+  chargerScoresJeux();
 }
 function fermerChoixJeu() { $("jeuchoix")?.classList.add("hidden"); if (!jeuOuvert) document.body.classList.remove("modalopen"); }
 $("jeuchoixclose")?.addEventListener("click", fermerChoixJeu);
@@ -197,3 +198,26 @@ function ongletMemorise() {
   } catch (e) { /* ignoré */ }
   return "";
 }
+
+// Meilleurs scores enregistrés sur le serveur (par jeu et par niveau) : fusionnés avec ceux de ce navigateur, et affichés sur les cartes du choix des jeux.
+let scoresJeux = [];
+function texteRecords(id) {
+  const l = scoresJeux.filter(s => s.jeu === id);
+  if (!l.length) return "";
+  const un = s => `${s.score}${s.niveau ? ` (${s.niveau} lits)` : ""} · ${fmtD(s.obtenu_le)}`;
+  return "🏆 Votre record : " + l.map(un).join(" ; ");
+}
+function majRecordsJeux() { document.querySelectorAll("[data-jrec]").forEach(e => { e.textContent = texteRecords(e.dataset.jrec); }); }
+async function chargerScoresJeux() {
+  if (!me || VUE_AS) return;
+  try {
+    const r = await api("jeux_scores");
+    scoresJeux = r.scores || [];
+    if (window.LydiaJeux) LydiaJeux.synchroniser(scoresJeux);
+    majRecordsJeux();
+  } catch (e) { /* les records locaux restent utilisables */ }
+}
+if (window.LydiaJeux) LydiaJeux.surFin = (jeu, niveau, score) => {
+  if (!me || VUE_AS) return;
+  api("jeu_score", { data: { jeu, niveau, score } }).then(r => { scoresJeux = r.scores || scoresJeux; majRecordsJeux(); }).catch(() => { /* le record reste local */ });
+};

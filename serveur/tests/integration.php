@@ -1132,6 +1132,35 @@ foreach (['ecartee', 'traitee', 'nouveau'] as $stt) {
 }
 verifie('retours : écartée, traitée, puis de nouveau non traité', ($s['feedbacks'][0]['statut'] ?? '') === 'nouveau');
 
+// ---------- Mini-jeux : meilleur score par personne, par jeu et par niveau ----------
+$sc = static fn (string $email, array $data): array => appel($email, 'jeu_score', ['data' => $data]);
+$meilleur = static fn (array $r, string $jeu, string $niveau): ?array => array_values(array_filter($r['scores'] ?? [], static fn (array $s): bool => $s['jeu'] === $jeu && $s['niveau'] === $niveau))[0] ?? null;
+$r = $sc('a1@ci.test', ['jeu' => 'seringue', 'score' => 10]);
+verifie('score : enregistré avec sa date', ($meilleur($r, 'seringue', '')['score'] ?? -1) === 10 && str_ends_with((string) ($meilleur($r, 'seringue', '')['obtenu_le'] ?? ''), 'Z'));
+$r = $sc('a1@ci.test', ['jeu' => 'seringue', 'score' => 4]);
+verifie('score : un moins bon score ne remplace pas le meilleur', ($meilleur($r, 'seringue', '')['score'] ?? -1) === 10);
+$pdo->prepare("UPDATE scores_jeux SET obtenu_le = '2026-01-01 10:00:00' WHERE utilisateur_id = ? AND jeu = 'seringue'")->execute([$B['a1']]);
+$r = $sc('a1@ci.test', ['jeu' => 'seringue', 'score' => 12]);
+verifie('score : un meilleur score le remplace, avec une nouvelle date', ($meilleur($r, 'seringue', '')['score'] ?? -1) === 12 && ($meilleur($r, 'seringue', '')['obtenu_le'] ?? '') > '2026-01-01T10:00:00Z');
+$sc('a1@ci.test', ['jeu' => 'urgences', 'niveau' => '3', 'score' => 5]);
+$r = $sc('a1@ci.test', ['jeu' => 'urgences', 'niveau' => '6', 'score' => 9]);
+verifie('score : un enregistrement par niveau de difficulté', ($meilleur($r, 'urgences', '3')['score'] ?? -1) === 5 && ($meilleur($r, 'urgences', '6')['score'] ?? -1) === 9 && count($r['scores']) === 3);
+verifie('score : jeu, niveau et valeur contrôlés', $err($sc('a1@ci.test', ['jeu' => 'zzz', 'score' => 1])) === 'invalid'
+    && $err($sc('a1@ci.test', ['jeu' => 'urgences', 'score' => 1])) === 'invalid'
+    && $err($sc('a1@ci.test', ['jeu' => 'urgences', 'niveau' => '4', 'score' => 1])) === 'invalid'
+    && $err($sc('a1@ci.test', ['jeu' => 'seringue', 'niveau' => '3', 'score' => 1])) === 'invalid'
+    && $err($sc('a1@ci.test', ['jeu' => 'seringue', 'score' => -1])) === 'invalid'
+    && $err($sc('a1@ci.test', ['jeu' => 'seringue', 'score' => 99999999])) === 'invalid'
+    && $err($sc('a1@ci.test', ['jeu' => 'seringue', 'score' => 'abc'])) === 'invalid');
+verifie('scores : chaque personne ne voit que les siens', count(appel('a1@ci.test', 'jeux_scores')['scores'] ?? []) === 3 && count(appel('a2@ci.test', 'jeux_scores')['scores'] ?? []) === 0);
+$exp = appel('a1@ci.test', 'mes_donnees')['export'] ?? [];
+verifie('export : les scores de jeux y figurent', count($exp['scores_jeux'] ?? []) === 3);
+$js = creerUtilisateur($pdo, 'jeux@ci.test');
+Attributions::ajouter($pdo, $js, 'etudiant', null, $pv);
+$sc('jeux@ci.test', ['jeu' => 'couloir', 'score' => 3]);
+appel($admin, 'admin_erase', ['email' => 'jeux@ci.test', 'contributions' => 'anonymiser']);
+verifie('effacement : les scores de jeux disparaissent avec le compte', (int) valeur($pdo, 'SELECT COUNT(*) FROM scores_jeux WHERE utilisateur_id = ?', [$js]) === 0);
+
 // ---------- Lot D : chat ----------
 $salon =static fn (string $type): array => ['groupe_id' => $alpha, 'type' => $type];
 $r = appel('a1@ci.test', 'chat_send', $salon('groupe') + ['texte' => "Bonjour\r\n\r\n\r\n\r\nà tous"]);

@@ -165,7 +165,20 @@ final class Outils
         return ['ok' => true, 'regles' => \Lpc\ChatRegles::pourAdmin($c)];
     }
 
-    /** Fixe une règle d'activation du chat : portée general, promo ou groupe ; valeur actif, inactif ou herite. @param array<string,mixed> $req @return array<string,mixed> */
+    /** Meilleurs scores de la personne aux mini-jeux. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function jeuxScores(Contexte $c, array $req): array
+    {
+        return ['ok' => true, 'scores' => pcjeux::pourclient($c)];
+    }
+
+    /** enregistre un score s'il bat le meilleur. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function jeuscore(contexte $c, array $req): array
+    {
+        pcjeux::enregistrer($c, $req['data'] ?? null);
+        return ['ok' => true, 'scores' => pcjeux::pourclient($c)];
+    }
+
+    /** fixe une règle d'activation du chat : portée general, promo ou groupe ; valeur actif, inactif ou herite. @param array<string,mixed> $req @return array<string,mixed> */
     public static function chatRegleSet(Contexte $c, array $req): array
     {
         $d = \Lpc\Valide::donnees($req);

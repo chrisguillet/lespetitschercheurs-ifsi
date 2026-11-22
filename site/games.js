@@ -624,7 +624,10 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
     const dt = Math.min(0.05, (t - actif.t0) / 1000); actif.t0 = t;
     if (actif.etat === "jeu") {
       actif.jeu.step(actif.s, dt);
-      if (actif.s.mort) { actif.etat = "fini"; record(actif.jeu.cle ? actif.jeu.cle(actif.s) : actif.jeu.nom, actif.s.score); if (actif.rej) actif.rej.style.display = "block"; }
+      if (actif.s.mort) {
+        actif.etat = "fini"; record(actif.jeu.cle ? actif.jeu.cle(actif.s) : actif.jeu.nom, actif.s.score);
+        // Le meilleur score est aussi gardé côté serveur (par jeu et par niveau) : l'application s'y abonne par LydiaJeux.surFin.
+        if (typeof root.LydiaJeux.surFin === "function") { try { root.LydiaJeux.surFin(actif.jeu.nom, actif.jeu.niveaux ? String(actif.jeu.niveau()) : "", actif.s.score); } catch (e) { /* ignoré */ } } if (actif.rej) actif.rej.style.display = "block"; }
     }
     dessiner();
     actif.raf = root.requestAnimationFrame(boucle);
@@ -719,9 +722,11 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   }
 
   root.LydiaJeux = {
-    liste: Object.keys(JEUX).map(k => ({ id: k, titre: JEUX[k].titre, desc: JEUX[k].desc || "", admin: !!JEUX[k].admin })),
+    liste: Object.keys(JEUX).map(k => ({ id: k, nom: JEUX[k].nom, titre: JEUX[k].titre, desc: JEUX[k].desc || "", admin: !!JEUX[k].admin })),
     miniature,
-    ouvrir, fermer, enCours: () => !!actif, record, avatar: () => avatar,
+    ouvrir, fermer, enCours: () => !!actif, record, avatar: () => avatar, surFin: null,
+    // Records enregistrés sur le serveur : on garde le meilleur entre eux et ceux de ce navigateur (la clé locale de « urgences » comprend le niveau).
+    synchroniser: scores => { (scores || []).forEach(x => record(x.jeu === "urgences" ? x.jeu + x.niveau : x.jeu, x.score)); },
     _test: { JEUX, SOINS, chevauche, appuyer, etat: () => actif && actif.etat, finir: () => { actif.etat = "fini"; actif.rej.style.display = "block"; } }
   };
 })(typeof window !== "undefined" ? window : globalThis);
