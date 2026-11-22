@@ -77,25 +77,6 @@ function carteNationalites(arts, imprimable) {
     <div class="cartelegende">${legende}${non}</div></div></div>`;
 }
 
-// ----- Chronologie : fiches saisies par semaine (26 dernières semaines au plus) -----
-function chronologieHtml() {
-  const lundi = d => { const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7)); return x.getTime(); };
-  const dates = items.map(i => Date.parse(i.ajoute)).filter(t => t > 0);
-  if (!dates.length) return { html: "", lignes: [] };
-  const sem = new Map();
-  dates.forEach(t => { const k = lundi(new Date(t)); sem.set(k, (sem.get(k) || 0) + 1); });
-  const fin = Math.max(...sem.keys()), SEM = 7 * 86400000;
-  const debut = Math.max(Math.min(...sem.keys()), fin - 25 * SEM);
-  const cols = [];
-  for (let t = debut; t <= fin; t += SEM) cols.push([t, sem.get(t) || 0]);
-  const max = Math.max(...cols.map(c => c[1])), total = cols.reduce((n, c) => n + c[1], 0);
-  const lib = t => { const d = new Date(t); return String(d.getUTCDate()).padStart(2, "0") + "/" + String(d.getUTCMonth() + 1).padStart(2, "0"); };
-  const pas = cols.length > 18 ? 4 : cols.length > 9 ? 2 : 1;
-  const html = `<div class="card chrono"><h3>Fiches saisies par semaine <span class="meta">(${total} sur ${cols.length} semaine${cols.length > 1 ? "s" : ""})</span></h3>
-    <div class="chbars">${cols.map(([t, n], i) => `<div class="chcol" title="Semaine du ${lib(t)} : ${n} fiche${n > 1 ? "s" : ""}"><span class="chn">${n || ""}</span><div class="chbw"><div class="chbar" style="height:${n ? Math.max(4, Math.round(n / max * 100)) : 0}%"></div></div><span class="chl">${i % pas === 0 ? lib(t) : ""}</span></div>`).join("")}</div></div>`;
-  return { html, lignes: cols.map(([t, n]) => ["Chronologie", "Semaine du " + lib(t), n]) };
-}
-
 // ----- Mots-clés qui vont ensemble : paires présentes dans une même fiche -----
 function pairesMotsCles(listes) {
   const paires = new Map(), noms = new Map();
@@ -124,22 +105,22 @@ function donneesSynthese(imprimable) {
   const kpi = (n, t) => `<div class="kpi"><b>${n}</b>${t}</div>`;
   const motsDe = i => (kwLang !== "en" ? motsListe(i.mots) : []).concat(kwLang !== "fr" ? motsListe(i.kw) : []);
   const listesMots = items.map(motsDe);
-  const ch = chronologieHtml(), pa = pairesMotsCles(listesMots);
+  const pa = pairesMotsCles(listesMots);
   const html = `<div class="kpis">${kpi(items.length, "lectures")}${kpi(items.filter(i => i.statut === "Terminée").length, "terminées")}${kpi(items.filter(i => i.statut === "En cours").length, "en cours")}${items.some(i => i.statut === "À lire") ? kpi(items.filter(i => i.statut === "À lire").length, "à lire") : ""}${kpi(comments.length, "commentaires")}</div>
    <div class="synth2">${nuageMotsCles(listesMots, imprimable)}${carteNationalites(arts, imprimable)}</div>
-   <div class="synth2">${ch.html}${pa.html}</div>
    <div class="synth">
    ${barres("Types d’articles", compter(arts.map(i => i.type), 8), "var(--pri)")}
    ${barres("Qualité des auteurs (plusieurs possibles par lecture)", compter(arts.flatMap(i => metiersListe(i.qualite)), 8), "var(--pri)")}
    ${barres("Années de parution", parAnnee, "var(--pri)")}
    ${barres("Revues et sources les plus citées", compter(arts.map(i => i.source), 8), "var(--pri)")}
+   ${pa.html}
    </div>`;
   const lignes = [["Rubrique", "Élément", "Nombre"], ["Chiffres clés", "Lectures", items.length], ["Chiffres clés", "Terminées", items.filter(i => i.statut === "Terminée").length], ["Chiffres clés", "Commentaires", comments.length]]
     .concat(compter(listesMots.flatMap(l => l), 60).map(([m, n]) => ["Mots-clés", m, n]))
     .concat(compter(arts.map(i => i.nation), 60).map(([m, n]) => ["Nationalité des auteurs", m, n]))
     .concat(compter(arts.map(i => i.type), 20).map(([m, n]) => ["Types d’articles", m, n]))
     .concat(compter(arts.flatMap(i => metiersListe(i.qualite)), 20).map(([m, n]) => ["Qualité des auteurs", m, n]))
-    .concat(parAnnee.map(([m, n]) => ["Années de parution", m, n]), compter(arts.map(i => i.source), 20).map(([m, n]) => ["Revues et sources", m, n]), ch.lignes, pa.lignes);
+    .concat(parAnnee.map(([m, n]) => ["Années de parution", m, n]), compter(arts.map(i => i.source), 20).map(([m, n]) => ["Revues et sources", m, n]), pa.lignes);
   return { html, lignes };
 }
 
