@@ -214,6 +214,7 @@ $("rpday")?.addEventListener("click", e => {
   else if (d.rpf) basculerFait(d.rpf);
   else if (d.rpdel) supprimerEntree(d.rpdel);
   else if (d.rcr) ouvrirCompteRendu(d.rcr);
+  else if (d.red) { fermerJour(); fermerSuiviForm(); ouvrirSuiviForm("reunion", d.red); $("reunionform")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
 });
 $("rpform")?.addEventListener("click", e => {
   if (e.target === $("rpform")) return fermerEntree();
