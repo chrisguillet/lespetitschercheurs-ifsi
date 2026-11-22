@@ -44,15 +44,33 @@ function renderCtx() {
   $("vg").onclick = () => changerContexte({ vue: "groupe" }); $("vp").onclick = () => changerContexte({ vue: "promo" });
 }
 
-// Établissement · promo · groupe : texte simple, ou liste déroulante quand la personne a plusieurs groupes (administrateurs, formateurs…). Reconstruite seulement si elle change.
+// Établissement · promo · groupe : un sélecteur par niveau quand il y a un choix à faire (texte simple sinon). Reconstruits seulement s'ils changent.
 function majLigneGroupe(g) {
   const sub = $("sub");
   const sig = JSON.stringify([g && g.id, groupes.map(x => [x.id, x.nom, x.promo, x.etablissement, nonLusDe(x, "groupe")])]);
   if (sub.dataset.sig === sig) return;
   sub.dataset.sig = sig;
-  if (!g || groupes.length < 2) { sub.textContent = g ? `${g.etablissement} · ${g.promo} · ${g.nom}` : ""; return; }
-  sub.innerHTML = `<select id="ctxg" aria-label="Choisir le groupe">${groupes.map(x => { const n = nonLusDe(x, "groupe"); return `<option value="${esc(x.id)}" ${x.id === g.id ? "selected" : ""}>${esc(x.etablissement)} · ${esc(x.promo)} · ${esc(x.nom)}${n ? " (" + n + " non lu" + (n > 1 ? "s" : "") + ")" : ""}</option>`; }).join("")}</select>`;
-  $("ctxg").onchange = e => changerContexte({ gid: e.target.value });
+  if (!g) { sub.textContent = ""; return; }
+  // Niveaux : établissements, puis promos de l'établissement courant, puis groupes de la promo courante.
+  const unique = (l, cle) => l.filter((x, i) => l.findIndex(y => cle(y) === cle(x)) === i);
+  const etabs = unique(groupes, x => x.etablissement_id || x.etablissement);
+  const promos = unique(groupes.filter(x => (x.etablissement_id || x.etablissement) === (g.etablissement_id || g.etablissement)), x => x.promo_id || x.promo);
+  const grps = groupes.filter(x => (x.promo_id || x.promo) === (g.promo_id || g.promo) && (x.etablissement_id || x.etablissement) === (g.etablissement_id || g.etablissement));
+  const niveau = (id, lib, options, courant) => options.length > 1
+    ? `<select data-cn="${id}" aria-label="${lib}">${options.map(([v, t]) => `<option value="${esc(v)}" ${v === courant ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`
+    : `<span class="ctxtxt">${esc(options[0][1])}</span>`;
+  const nl = x => { const n = nonLusDe(x, "groupe"); return n ? " (" + n + ")" : ""; };
+  sub.innerHTML = `<div class="ctxsel">
+    ${niveau("etab", "Choisir l’établissement", etabs.map(x => [x.id, x.etablissement]), g.id)}
+    ${niveau("promo", "Choisir la promo", promos.map(x => [x.id, x.promo]), g.id)}
+    ${niveau("groupe", "Choisir le groupe", grps.map(x => [x.id, x.nom + nl(x)]), g.id)}</div>`;
+  // Chaque option porte l'identifiant du premier groupe de l'établissement ou de la promo : choisir un niveau choisit un groupe de ce niveau.
+  const parEtab = new Map(), parPromo = new Map();
+  groupes.forEach(x => { const e = x.etablissement_id || x.etablissement, p = e + "|" + (x.promo_id || x.promo); if (!parEtab.has(e)) parEtab.set(e, x.id); if (!parPromo.has(p)) parPromo.set(p, x.id); });
+  const selEtab = sub.querySelector('[data-cn="etab"]'), selPromo = sub.querySelector('[data-cn="promo"]');
+  if (selEtab) [...selEtab.options].forEach((o, i) => { const e = etabs[i]; o.value = parEtab.get(e.etablissement_id || e.etablissement); o.selected = (e.etablissement_id || e.etablissement) === (g.etablissement_id || g.etablissement); });
+  if (selPromo) [...selPromo.options].forEach((o, i) => { const p = promos[i]; o.value = parPromo.get((g.etablissement_id || g.etablissement) + "|" + (p.promo_id || p.promo)); o.selected = (p.promo_id || p.promo) === (g.promo_id || g.promo); });
+  sub.querySelectorAll("select").forEach(s => { s.onchange = e => changerContexte({ gid: e.target.value }); });
 }
 
 function changerContexte(c) {

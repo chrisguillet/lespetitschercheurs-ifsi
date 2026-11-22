@@ -164,7 +164,7 @@ final class Donnees
                 (($a['role'] === 'etudiant' ? 0 : 1) <=> ($b['role'] === 'etudiant' ? 0 : 1))
                 ?: strcmp(mb_strtolower($a['prenom']), mb_strtolower($b['prenom'])));
             $out[] = ['id' => $id, 'nom' => (string) $g['nom'], 'etablissement' => (string) $g['etablissement'],
-                'promo' => (string) $g['promo'], 'promo_id' => (string) $g['promo_id'], 'membres' => $liste,
+                'promo' => (string) $g['promo'], 'promo_id' => (string) $g['promo_id'], 'etablissement_id' => (string) $g['etablissement_id'], 'membres' => $liste,
                 'chat' => ChatRegles::groupeActif($regles, (string) $id, (string) $g['promo_id']), 'chat_promo' => ChatRegles::promoActif($regles, (string) $g['promo_id'])];
         }
         usort($out, static fn (array $a, array $b): int =>
@@ -283,7 +283,7 @@ final class Donnees
     private static function lignesGroupes(Contexte $c, bool $aussiMiens): array
     {
         $d = $c->droits();
-        $sql = 'SELECT g.id, g.nom, g.cree_le, g.promo_id, e.nom AS etablissement, p.nom AS promo
+        $sql = 'SELECT g.id, g.nom, g.cree_le, g.promo_id, p.etablissement_id, e.nom AS etablissement, p.nom AS promo
                 FROM groupes g JOIN promos p ON p.id = g.promo_id JOIN etablissements e ON e.id = p.etablissement_id';
         $conditions = [];
         $params = [];

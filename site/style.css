@@ -924,3 +924,15 @@ header #sub select option{color:#18203a;background:#fff}
 .sugtags legend{font-size:13px;padding:0 6px}
 .sugtags .chk{display:inline-flex;align-items:center;gap:6px;margin:3px 12px 3px 0;font-weight:400}
 .sugtags .chk input{width:auto}
+
+/* En-tête : le logo occupe toute la hauteur entre le haut et le menu ; commandes à droite sur deux lignes */
+.toprow{align-items:stretch}
+.brand{display:flex;align-items:stretch;gap:14px;min-width:0}
+.brand .logo{align-self:stretch;aspect-ratio:1 / 1;width:auto;height:auto;min-height:62px;max-height:96px;flex:none}
+.brandtxt{display:flex;flex-direction:column;justify-content:center;min-width:0}
+header .brand h1{margin:0}
+.rightcol .ctxsel{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+header #sub .ctxtxt{color:rgba(255,255,255,.92);font-size:13px;padding:5px 4px}
+header #sub select{padding:5px 26px 5px 10px}
+@media (max-width:640px){.brand .logo{min-height:46px;max-height:56px}}
+.sub .lnk#themebtn{font-size:inherit}

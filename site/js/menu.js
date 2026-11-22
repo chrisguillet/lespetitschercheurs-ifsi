@@ -19,9 +19,8 @@ const themeSombre = () => (document.documentElement.dataset.theme || (matchMedia
 function majLibelleTheme() {
   const b = $("themebtn"); if (!b) return;
   const sombre = themeSombre(), lib = sombre ? "Passer en mode clair" : "Passer en mode sombre";
-  b.textContent = sombre ? "☀️" : "🌙"; b.title = lib; b.setAttribute("aria-label", lib);
+  b.textContent = sombre ? "☀️ Mode clair" : "🌙 Mode sombre"; b.title = lib; b.setAttribute("aria-label", lib);
 }
-const BOUTON_THEME = '<button type="button" class="btn sm sec themebtn" id="themebtn"></button>';
 function basculerTheme() {
   const next = themeSombre() ? "light" : "dark";
   document.documentElement.dataset.theme = next;
@@ -32,7 +31,7 @@ function basculerTheme() {
 // En haut à droite : menu du compte (statut de connexion, thème, déconnexion).
 function renderMe() {
   const init = esc(String(me.prenom || "?").trim().charAt(0).toUpperCase());
-  $("me").innerHTML = BOUTON_THEME + `<details class="colmenu acct"><summary class="btn sm sec acctbtn" aria-label="Menu du compte : ${esc(me.prenom)}">
+  $("me").innerHTML = `<details class="colmenu acct"><summary class="btn sm sec acctbtn" aria-label="Menu du compte : ${esc(me.prenom)}">
       <span class="avatar" style="--c:${esc(me.couleur)}">${init}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
     <div class="colpop right acctpop">
       <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
@@ -53,7 +52,6 @@ function renderMe() {
   };
   $("profilbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirProfil(); };
   $("notesbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirNotes(); };
-  $("themebtn").onclick = basculerTheme;
   majLibelleTheme();
 }
 
@@ -96,8 +94,7 @@ $("jeuclose")?.addEventListener("click", fermerJeu);
 $("jeumodal")?.addEventListener("click", e => { if (e.target === $("jeumodal")) fermerJeu(); });
 
 function renderMeAnonyme() {
-  $("me").innerHTML = BOUTON_THEME;
-  $("themebtn").onclick = basculerTheme;
+  $("me").innerHTML = "";
   majLibelleTheme();
 }
 
@@ -223,3 +220,6 @@ if (window.LydiaJeux) LydiaJeux.surFin = (jeu, niveau, score) => {
   if (!me || VUE_AS) return;
   api("jeu_score", { data: { jeu, niveau, score } }).then(r => { scoresJeux = r.scores || scoresJeux; majRecordsJeux(); }).catch(() => { /* le record reste local */ });
 };
+
+// Bascule clair / sombre : un lien discret en bas de page (disponible aussi avant la connexion).
+if ($("themebtn")) { $("themebtn").onclick = basculerTheme; majLibelleTheme(); }

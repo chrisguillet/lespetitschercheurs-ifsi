@@ -1173,9 +1173,9 @@ verifie('suggestion : groupe inconnu refusé', $err($sg('forma@ci.test', 'sugges
 $r = $sg('forma@ci.test', 'suggestion_save', ['data' => $data]);
 $sug = $r['suggestions'] ?? [];
 $idS = (string) ($sug['liste'][0]['id'] ?? '');
-verifie('suggestion : créée par le formateur, qui voit ses tags', ($r['ok'] ?? false) === true && count($sug['liste'] ?? []) === 1 && ($sug['liste'][0]['modifiable'] ?? false) === true && ($sug['liste'][0]['groupes'] ?? []) === [$alpha] && in_array($pv, $sug['peut'] ?? [], true));
+verifie('suggestion : créée par le formateur, qui voit ses tags ' . json_encode([$r['ok'] ?? null, $r['message'] ?? null, $r['error'] ?? null, $sug['liste'][0]['groupes'] ?? null, $sug['liste'][0]['modifiable'] ?? null, $sug['peut'] ?? null, $alpha, $pv]), ($r['ok'] ?? false) === true && count($sug['liste'] ?? []) === 1 && ($sug['liste'][0]['modifiable'] ?? false) === true && ($sug['liste'][0]['groupes'] ?? []) === [$alpha] && in_array($pv, $sug['peut'] ?? [], true));
 $l1 = $liste('a1@ci.test');
-verifie('suggestion : visible de toute la promo, avec alerte pour le groupe tagué', count($l1['liste'] ?? []) === 1 && ($l1['liste'][0]['nouveau'] ?? false) === true && ($l1['liste'][0]['alerte'] ?? false) === true && ($l1['alertes'] ?? 0) === 1);
+verifie('suggestion : visible de toute la promo, avec alerte pour le groupe tagué ' . json_encode($l1), count($l1['liste'] ?? []) === 1 && ($l1['liste'][0]['nouveau'] ?? false) === true && ($l1['liste'][0]['alerte'] ?? false) === true && ($l1['alertes'] ?? 0) === 1);
 verifie('suggestion : le tag reste invisible des étudiantes', ($l1['liste'][0]['groupes'] ?? ['x']) === [] && ($l1['liste'][0]['modifiable'] ?? true) === false && ($l1['peut'] ?? ['x']) === []);
 $l4 = $liste('a4@ci.test');
 verifie('suggestion : un autre groupe la voit sans alerte', count($l4['liste'] ?? []) === 1 && ($l4['liste'][0]['nouveau'] ?? false) === true && ($l4['liste'][0]['alerte'] ?? true) === false && ($l4['alertes'] ?? 9) === 0);
@@ -1191,13 +1191,16 @@ verifie('suggestion : le groupe nouvellement tagué est alerté', ($liste('a4@ci
 verifie('suggestion : un administrateur de la promo peut la corriger', ($sg('ap@ci.test', 'suggestion_save', ['id' => $idS, 'data' => array_merge($data, ['titre' => 'Corrigé par l’admin'])])['ok'] ?? false) === true);
 verifie('suggestion : préremplissage par DOI permis aux formateurs', ($sg('forma@ci.test', 'doi_lookup', ['doi' => 'pas-un-doi'])['error'] ?? '') !== 'forbidden');
 $r = $sg('ap@ci.test', 'suggestion_delete', ['id' => $idS]);
-verifie('suggestion : supprimée', ($r['ok'] ?? false) === true && count($r['suggestions']['liste'] ?? []) === 0);
-foreach ([['formc@ci.test', 'anonymiser'], ['formb@ci.test', 'supprimer']] as [$mail, $mode]) {
+verifie('suggestion : supprimée ' . json_encode([$r['ok'] ?? null, $r['message'] ?? null, $r['suggestions']['liste'] ?? null]), ($r['ok'] ?? false) === true && count($r['suggestions']['liste'] ?? []) === 0);
+foreach ([['formx@ci.test', 'anonymiser'], ['formy@ci.test', 'supprimer']] as [$mail, $mode]) {
+    $fx = creerUtilisateur($pdo, $mail);
+    Attributions::ajouter($pdo, $fx, 'formateur', $e3);
+    $pdo->prepare('UPDATE utilisateurs SET prenom = ?, nom = ? WHERE id = ?')->execute(['Fx', 'Prof', $fx]);
     $sg($mail, 'suggestion_save', ['data' => ['promo_id' => $pv, 'titre' => 'De ' . $mail]]);
     appel($admin, 'admin_erase', ['email' => $mail, 'contributions' => $mode]);
 }
-verifie('effacement : la suggestion reste détachée (anonymisation) ou disparaît (suppression)', (int) valeur($pdo, "SELECT COUNT(*) FROM suggestions WHERE titre = 'De formc@ci.test' AND propose_par IS NULL") === 1
-    && (int) valeur($pdo, "SELECT COUNT(*) FROM suggestions WHERE titre = 'De formb@ci.test'") === 0);
+verifie('effacement : la suggestion reste détachée (anonymisation) ou disparaît (suppression)', (int) valeur($pdo, "SELECT COUNT(*) FROM suggestions WHERE titre = 'De formx@ci.test' AND propose_par IS NULL") === 1
+    && (int) valeur($pdo, "SELECT COUNT(*) FROM suggestions WHERE titre = 'De formy@ci.test'") === 0);
 $pdo->prepare("DELETE FROM suggestions")->execute();
 
 // ---------- Lot D : chat ----------
@@ -1260,7 +1263,7 @@ verifie('chat : au plus cinq mille messages par salon de promo', (int) valeur($c
 
 // ---------- Préremplissage par DOI (la requête Crossref elle-même est testée sans réseau dans run.php) ----------
 verifie('doi_lookup : saisie invalide refusée', $err(appel('a1@ci.test', 'doi_lookup', ['doi' => 'pas un doi'])) === 'invalid' && $err(appel('a1@ci.test', 'doi_lookup', [])) === 'invalid');
-verifie('doi_lookup : réservé aux étudiantes', $err(appel('forma@ci.test', 'doi_lookup', ['doi' => '10.1000/xyz'])) === 'forbidden');
+verifie('doi_lookup : permis aux formateurs pour leurs propositions (DOI invalide : erreur de saisie, pas de refus)', $err(appel('forma@ci.test', 'doi_lookup', ['doi' => 'pas-un-doi'])) === 'invalid');
 
 // ---------- Fusion des doublons d'articles ----------
 $nowM = gmdate('Y-m-d H:i:s');
