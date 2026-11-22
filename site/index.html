@@ -39,6 +39,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
       <button class="tab" data-t="biblio" role="tab" aria-selected="false">📖 Bibliographie</button>
       <button class="tab" data-t="synth" role="tab" aria-selected="false">📈 Synthèse</button>
       <button class="tab hidden" data-t="suivi" role="tab" aria-selected="false">🗓️ Suivi de projet <span id="alertnb" class="count alertnb hidden" title="Jalons à surveiller"></span></button>
+      <button class="tab hidden" data-t="memoire" role="tab" aria-selected="false">🎓 Mémoire</button>
       <button class="tab hidden" data-t="glossaire" role="tab" aria-selected="false">📚 Glossaire</button>
       <button class="tab hidden" data-t="dash" role="tab" aria-selected="false">🧭 Tableau de bord</button>
       <button class="tab hidden" data-t="admin" role="tab" aria-selected="false"><span id="adminlbl">👥 Administration</span> <span id="pending" class="count hidden"></span></button>
@@ -84,6 +85,10 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
 
     <section id="cmts" class="hidden">
       <div id="cmtsbox"></div>
+    </section>
+
+    <section id="memoire" class="hidden">
+      <div id="memoirebox"></div>
     </section>
 
     <section id="suivi" class="hidden">
@@ -273,7 +278,7 @@ window.addEventListener("load", function () {
 </script>
 <script>
 /* Scripts classiques chargés dans l'ordre : ils partagent tous la même portée globale (voir js/*.js). */
-document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "monde", "synthese", "suggestions", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "retro", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
+document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "monde", "synthese", "suggestions", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "retro", "memoire", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
 </script>
 </body>
 </html>

@@ -194,7 +194,45 @@ final class Outils
         return ['ok' => true] + \Lpc\BacASable::etat($c);
     }
 
-    /** Propose (ou modifie) une lecture à une promo : formateurs et administrateurs. @param array<string,mixed> $req @return array<string,mixed> */
+    /** Mémoire du groupe. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function memoireGet(Contexte $c, array $req): array
+    {
+        return ['ok' => true, 'memoire' => pcmemoire::pourclient($c, is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '')];
+    }
+
+    /** modifie l'en-tête du mémoire. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function memoireentete(contexte $c, array $req): array
+    {
+        $gid = is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '';
+        pcmemoire::enregistrerentete($c, $gid, $req['data'] ?? null);
+        return ['ok' => true, 'memoire' => pcmemoire::pourclient($c, $gid)];
+    }
+
+    /** ajoute ou modifie un bloc du mémoire. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function memoirebloc(contexte $c, array $req): array
+    {
+        $gid = is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '';
+        pcmemoire::enregistrerbloc($c, $gid, $req['id'] ?? null, $req['data'] ?? null);
+        return ['ok' => true, 'memoire' => pcmemoire::pourclient($c, $gid)];
+    }
+
+    /** supprime un bloc du mémoire. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function memoireblocsupprimer(contexte $c, array $req): array
+    {
+        $gid = is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '';
+        pcmemoire::supprimerbloc($c, $gid, $req['id'] ?? null);
+        return ['ok' => true, 'memoire' => pcmemoire::pourclient($c, $gid)];
+    }
+
+    /** nouvel ordre des blocs. @param array<string,mixed> $req @return array<string,mixed> */
+    public static function memoireordre(contexte $c, array $req): array
+    {
+        $gid = is_string($req['groupe_id'] ?? null) ? $req['groupe_id'] : '';
+        pcmemoire::reordonner($c, $gid, $req['ids'] ?? null);
+        return ['ok' => true, 'memoire' => pcmemoire::pourclient($c, $gid)];
+    }
+
+    /** propose (ou modifie) une lecture à une promo : formateurs et administrateurs. @param array<string,mixed> $req @return array<string,mixed> */
     public static function suggestionSave(Contexte $c, array $req): array
     {
         \Lpc\Suggestions::enregistrer($c, $req['id'] ?? null, $req['data'] ?? null);

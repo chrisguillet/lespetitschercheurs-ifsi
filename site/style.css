@@ -958,3 +958,28 @@ header .brand .logo{margin:2px 0}
 /* Pastilles des personnes assignées : rond de leur couleur avec leurs initiales (aussi sur le calendrier) */
 .ppers{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--c);color:#fff;font-size:9px;font-weight:700;line-height:1;margin:0 2px 0 0;vertical-align:middle;box-shadow:0 0 0 1.5px var(--card);flex:none}
 .rchip .ppers,.rbi .ppers{width:15px;height:15px;font-size:7.5px;margin-right:3px}
+
+/* Mémoire : éditeur à gauche, contrôle et aperçu à droite */
+.memlayout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,420px);gap:14px;align-items:start}
+.memen{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 12px;margin-top:10px}
+.memajout{margin:12px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.memref{display:block;width:100%;text-align:left;background:none;border:1px solid var(--bd);border-radius:8px;padding:6px 10px;margin:4px 0;font:inherit;color:var(--tx);cursor:pointer}
+.memref:hover{border-color:var(--pri)}
+.memblc{padding:10px 12px;margin:10px 0}
+.memtete{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.memops{margin-left:auto;display:flex;gap:4px}
+.memtxt{width:100%;font-family:"Times New Roman",Times,serif;font-size:15px;line-height:1.5;resize:vertical}
+.memtxt-titre1{font-size:18px;font-weight:700}
+.memtxt-titre2{font-size:16px;font-weight:700}
+.memcheck{list-style:none;padding:0;margin:0 0 8px;font-size:13px}
+.memcheck li{padding:2px 0}
+.memcheck .ko{color:#b45309}
+.memfeuille{background:#fff;color:#000;font-family:"Times New Roman",Times,serif;font-size:12pt;line-height:1.5;text-align:justify;padding:2.5cm 2.5cm 3cm 3cm;border-radius:4px;box-shadow:0 1px 6px rgba(0,0,0,.25);max-height:70vh;overflow:auto;zoom:.5}
+.memfeuille .memcouv{text-align:center;font-weight:700;font-size:14pt;margin-bottom:40px}
+.memfeuille .mh1{font-size:16pt;font-weight:700;text-align:left;margin:18px 0 8px}
+.memfeuille .mh2{font-size:14pt;font-weight:700;text-align:left;margin:12px 0 6px}
+.memfeuille .mpar{margin:0 0 8px;text-indent:1.25cm}
+.memfeuille .mcit{margin:8px 1.5cm;font-size:11pt}
+.memfeuille .mref{padding-left:1.25cm;text-indent:-1.25cm;font-size:12pt}
+.memfeuille b{font-weight:700}
+@media (max-width:900px){.memlayout{grid-template-columns:1fr}}

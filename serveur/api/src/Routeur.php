@@ -40,7 +40,7 @@ final class Routeur
         'nom_demande', 'nom_demandes', 'nom_decision',
         'invitation_create', 'invitation_list', 'invitation_revoke',
         'attribution_add', 'attribution_remove', 'feedback_status', 'doi_lookup', 'doublons_list', 'article_merge', 'doublons_ignore', 'chat_regles', 'chat_regle_set',
-        'jeux_scores', 'jeu_score', 'suggestion_save', 'suggestion_delete', 'suggestion_vues', 'bac_sable_etat', 'bac_sable_reinit',
+        'jeux_scores', 'jeu_score', 'suggestion_save', 'suggestion_delete', 'suggestion_vues', 'bac_sable_etat', 'bac_sable_reinit', 'memoire_get', 'memoire_entete', 'memoire_bloc', 'memoire_bloc_supprimer', 'memoire_ordre',
     ];
 
     /** @var array<string,callable(Contexte,array<string,mixed>):array<string,mixed>> */
@@ -69,6 +69,11 @@ final class Routeur
             'suggestion_vues' => [Outils::class, 'suggestionVues'],
             'bac_sable_etat' => [Outils::class, 'bacSableEtat'],
             'bac_sable_reinit' => [Outils::class, 'bacSableReinit'],
+            'memoire_get' => [Outils::class, 'memoireGet'],
+            'memoire_entete' => [Outils::class, 'memoireEntete'],
+            'memoire_bloc' => [Outils::class, 'memoireBloc'],
+            'memoire_bloc_supprimer' => [Outils::class, 'memoireBlocSupprimer'],
+            'memoire_ordre' => [Outils::class, 'memoireOrdre'],
             'article_merge' => [Outils::class, 'articleMerge'],
             'doublons_ignore' => [Outils::class, 'doublonsIgnore'],
             'etab_create' => [Structure::class, 'etabCreate'],

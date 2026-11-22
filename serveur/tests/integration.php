@@ -1047,6 +1047,23 @@ verifie('jalon : une personne hors du groupe est refusée', $err(appel('a1@ci.te
 $rv = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'id' => $jid, 'data' => array_merge($jalon, ['titre' => 'Relire le plan', 'type' => 'tache', 'visio' => 'https://meet.google.com/abc-defg-hij'])]);
 verifie('visio : lien enregistré et visible du groupe', ($jalonPar($rv, $jid)['visio'] ?? '') === 'https://meet.google.com/abc-defg-hij' && ($jalonPar(appel('a3@ci.test', 'list'), $jid)['visio'] ?? '') === 'https://meet.google.com/abc-defg-hij');
 verifie('visio : un lien non https est refusé', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'id' => $jid, 'data' => array_merge($jalon, ['titre' => 'x', 'type' => 'tache', 'visio' => 'javascript:alert(1)'])])) === 'invalid');
+// Mémoire partagé par le groupe : blocs ordonnés, écrits par les membres, lus par le groupe seulement
+$m0 = appel('a1@ci.test', 'memoire_get', ['groupe_id' => $alpha]);
+verifie('mémoire : vide au départ, modifiable par une membre', ($m0['memoire']['blocs'] ?? ['x']) === [] && ($m0['memoire']['modifiable'] ?? false) === true);
+$e = appel('a1@ci.test', 'memoire_entete', ['groupe_id' => $alpha, 'data' => ['titre' => 'Autonomie', 'ue' => 'UE 6.1', 'referent' => 'Mme K.', 'date_rendu' => '2027-01-15']]);
+verifie('mémoire : en-tête enregistré', ($e['memoire']['titre'] ?? '') === 'Autonomie' && ($e['memoire']['date_rendu'] ?? '') === '2027-01-15');
+$b1 = appel('a1@ci.test', 'memoire_bloc', ['groupe_id' => $alpha, 'data' => ['type' => 'titre1', 'texte' => 'Introduction']]);
+$b2 = appel('a2@ci.test', 'memoire_bloc', ['groupe_id' => $alpha, 'data' => ['type' => 'paragraphe', 'texte' => 'Le texte d\'une autre membre.']]);
+$ids = array_column($b2['memoire']['blocs'] ?? [], 'id');
+verifie('mémoire : deux blocs, dans l\'ordre d\'ajout, avec leur auteur', count($ids) === 2 && ($b2['memoire']['blocs'][1]['par'] ?? '') !== '');
+verifie('mémoire : type inconnu refusé', $err(appel('a1@ci.test', 'memoire_bloc', ['groupe_id' => $alpha, 'data' => ['type' => 'script', 'texte' => 'x']])) === 'invalid');
+verifie('mémoire : une personne extérieure au groupe ne lit ni n\'écrit', $err(appel('a4@ci.test', 'memoire_get', ['groupe_id' => $alpha])) === 'forbidden'
+    && $err(appel('a4@ci.test', 'memoire_bloc', ['groupe_id' => $alpha, 'data' => ['type' => 'paragraphe', 'texte' => 'x']])) === 'forbidden');
+$r = appel('a1@ci.test', 'memoire_ordre', ['groupe_id' => $alpha, 'ids' => array_reverse($ids)]);
+verifie('mémoire : réordonnancement', ($r['memoire']['blocs'][0]['id'] ?? '') === $ids[1]);
+verifie('mémoire : un ordre incomplet est refusé', $err(appel('a1@ci.test', 'memoire_ordre', ['groupe_id' => $alpha, 'ids' => [$ids[0]]])) === 'invalid');
+$r = appel('a1@ci.test', 'memoire_bloc_supprimer', ['groupe_id' => $alpha, 'id' => $ids[1]]);
+verifie('mémoire : bloc supprimé', count($r['memoire']['blocs'] ?? []) === 1);
 verifie('jalon : les personnes sont vues des autres membres', ($jalonPar(appel('a3@ci.test', 'list'), $jid)['personnes'][0]['pid'] ?? '') === $pidA2);
 $pdo->prepare('DELETE FROM membres WHERE groupe_id = ? AND utilisateur_id = ?')->execute([$alpha, $B['a2']]);
 verifie('jalon : une personne qui quitte le groupe n\'apparaît plus', ($jalonPar(appel('a1@ci.test', 'list'), $jid)['personnes'] ?? ['x']) === []);

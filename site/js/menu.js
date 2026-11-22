@@ -120,7 +120,7 @@ function renderPending() {
 
 // Navigation à deux niveaux : cinq sections, chacune avec ses pages. Les pages gardent leur identifiant (data-t) ; la section d'une page se déduit de lui.
 // « Administration » est la gestion des accès : pour un étudiant elle concerne son groupe, pour l'administrateur c'est du pilotage.
-const SECTION_DE = { home: "home", mine: "mine", all: "lectures", sug: "lectures", cmts: "lectures", biblio: "lectures", synth: "lectures", suivi: "groupe", glossaire: "groupe", dash: "pilotage" };
+const SECTION_DE = { home: "home", mine: "mine", all: "lectures", sug: "lectures", cmts: "lectures", biblio: "lectures", synth: "lectures", suivi: "groupe", memoire: "groupe", glossaire: "groupe", dash: "pilotage" };
 const sectionDe = t => t === "admin" ? (isSuper() ? "pilotage" : "groupe") : SECTION_DE[t];
 let section = "lectures";
 const derniereDeSection = { lectures: "all", groupe: "suivi", pilotage: "dash" };
@@ -161,7 +161,7 @@ document.querySelectorAll(".gtab").forEach(b => b.onclick = () => {
   setTab(prefere && sectionDe(prefere) === g && ongletVisible(prefere) ? prefere : ordreOnglets().find(t => sectionDe(t) === g && ongletVisible(t)));
 });
 
-const ONGLETS = ["home", "all", "sug", "mine", "cmts", "suivi", "glossaire", "biblio", "synth", "dash", "admin"];
+const ONGLETS = ["home", "all", "sug", "mine", "cmts", "suivi", "memoire", "glossaire", "biblio", "synth", "dash", "admin"];
 function setTab(t) {
   if (t !== "sug" && typeof SUG !== "undefined") SUG.ouvertes.clear();   // les marques « Nouveau » ne durent que le temps de la visite
   tab = t;
@@ -179,6 +179,7 @@ function setTab(t) {
   if (t === "admin" && canAdmin()) loadAdmin();
   if (t === "cmts") renderComments();
   if (t === "suivi") renderSuivi();
+  if (t === "memoire") renderMemoire();
   if (t === "glossaire") renderGlossaire();
   if (t === "home") renderHome();
   if (t === "dash") renderDash();
