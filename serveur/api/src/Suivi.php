@@ -15,7 +15,7 @@ final class Suivi
 
     private const TYPES = [
         'reunion' => ['table' => 'reunions', 'champs' => ['date', 'titre', 'participants', 'vu', 'attendu', 'suite']],
-        'jalon' => ['table' => 'jalons', 'champs' => ['titre', 'type', 'echeance', 'heure', 'statut', 'note', 'debut', 'alerte_jours']],
+        'jalon' => ['table' => 'jalons', 'champs' => ['titre', 'type', 'echeance', 'heure', 'statut', 'note', 'visio', 'debut', 'alerte_jours']],
         'terme' => ['table' => 'glossaire', 'champs' => ['mot', 'definition', 'reference']],
     ];
     private const DATES = ['date', 'echeance', 'debut'];
@@ -230,6 +230,9 @@ final class Suivi
                 if ($d['debut'] === $d['echeance']) {
                     $d['debut'] = '';   // une plage d'un jour est une date fixe
                 }
+            }
+            if ($d['visio'] !== '' && preg_match('#^https://[^\s<>"\']{3,290}$#i', $d['visio']) !== 1) {
+                throw new Erreur('invalid', 'Le lien de visio doit commencer par https://');
             }
             if ($d['alerte_jours'] !== '' && (preg_match('/^\d{1,3}$/', $d['alerte_jours']) !== 1 || (int) $d['alerte_jours'] > 365)) {
                 throw new Erreur('invalid', 'Alerte : nombre de jours entre 0 et 365');

@@ -99,7 +99,7 @@ function lignesJour(cle) {
   const ligne = j => `<div class="rrow ${j.statut === "fait" ? "fait" : ""}" style="--t:${typeEntree(j).c}"><i></i>
       <div class="rtxt"><div><b>${esc(typeEntree(j).ico)} ${esc(j.titre)}</b>${pastPers(j)} <span class="meta">${esc(typeEntree(j).lib)}${j.heure ? " · " + esc(j.heure) : ""}${estPlage(j) ? " · " + esc(fmtDatesJalon(j)) : ""}</span></div>
         ${j.par ? `<div class="meta"><span class="dot" style="background:${esc(j.par_couleur || "#888")}"></span> ${esc(j.par)}</div>` : ""}
-        <div class="meta">${esc(STATUT_JALON[j.statut] || j.statut)} ${delaiJalon(j)}${j.note ? " · " + esc(j.note) : ""}</div></div>
+        <div class="meta">${esc(STATUT_JALON[j.statut] || j.statut)} ${delaiJalon(j)}${j.note ? " · " + esc(j.note) : ""}${urlSure(j.visio) ? ` · <a href="${esc(urlSure(j.visio))}" target="_blank" rel="noopener noreferrer">🎥 Visio</a>` : ""}</div></div>
       ${j.modifiable ? `<div class="ract"><button type="button" class="btn sm sec" data-rpf="${esc(j.id)}" title="${j.statut === "fait" ? "Remettre à faire" : "Marquer comme fait"}">${j.statut === "fait" ? "↩" : "✓"}</button><button type="button" class="btn sm sec" data-rped="${esc(j.id)}">Modifier</button><button type="button" class="btn sm sec del" data-rpdel="${esc(j.id)}" aria-label="Supprimer">🗑</button></div>` : ""}</div>`;
   return (el.length ? el.map(ligne).join("") : '<div class="meta">Rien de prévu ce jour-là.</div>')
     + (cr.length ? `<div class="rtit" style="margin-top:12px">📝 Comptes rendus de réunion</div>${cr.map(r => `<div class="rrow" style="--t:#7c3aed"><i></i><div class="rtxt"><b>${esc(r.titre || "Compte rendu")}</b></div><div class="ract"><button type="button" class="btn sm sec" data-rcr="${esc(r.id)}">📄 Aperçu / PDF</button></div></div>`).join("")}` : "")
@@ -143,6 +143,7 @@ function ouvrirEntree(id, cleDefaut) {
       <div><label for="e_statut">Statut</label><select id="e_statut">${Object.keys(STATUT_JALON).map(k => `<option value="${k}" ${j.statut === k ? "selected" : ""}>${esc(STATUT_JALON[k])}</option>`).join("")}</select></div>
       <div><label for="e_alerte">Alerte dans l’outil</label><select id="e_alerte">${ale.map(a => `<option value="${esc(a[0])}" ${a[0] === al ? "selected" : ""}>${esc(a[1])}</option>`).join("")}</select></div>
       <div style="grid-column:1/-1"><label>Personnes concernées <span class="meta">(une pastille de leur couleur sur l’entrée)</span></label><div class="grow">${(groupeCourant() || {}).membres ? (groupeCourant().membres).map(m => `<label class="chk"><input type="checkbox" data-epers="${esc(m.pid)}" ${(j.personnes || []).some(p => p.pid === m.pid) ? "checked" : ""}> ${esc(m.prenom)}</label>`).join("") : ""}</div></div>
+      <div style="grid-column:1/-1"><label for="e_visio">Visio <span class="meta">(lien Google Meet ou autre, en https)</span></label><div class="grow"><input id="e_visio" type="url" maxlength="290" value="${esc(j.visio || "")}" placeholder="https://meet.google.com/…" style="flex:1;min-width:200px"><button type="button" class="btn sm sec" id="e_meet" title="Ouvre Google Meet dans un nouvel onglet : créez la réunion, puis collez ici son lien">🎥 Créer un Meet</button></div></div>
       <div style="grid-column:1/-1"><label for="e_note">Note</label><input id="e_note" maxlength="500" value="${esc(j.note || "")}"></div></div>
     <div class="meta">L’alerte apparaît dans la cloche 🔔 des membres du groupe, tant que l’entrée n’est pas « Fait ». Chacun peut la reporter.</div>
     <div class="savebar"><div id="eerr" class="err" role="alert"></div><button class="btn" id="esave" type="button">Enregistrer</button> <button class="btn sec" id="ecancel" type="button">Annuler</button></div>`;
@@ -162,7 +163,7 @@ async function enregistrerEntree() {
   if (!date) { $("eerr").textContent = "Indiquez la date."; return; }
   if (fin && fin < date) { $("eerr").textContent = "La date de fin doit suivre la date de début."; return; }
   const data = { titre: $("e_titre").value, type: RP.type, debut: fin && fin !== date ? date : "", echeance: fin && fin !== date ? fin : date, heure: $("e_heure").value,
-    statut: $("e_statut").value, alerte_jours: $("e_alerte").value, note: $("e_note").value, personnes: [...document.querySelectorAll("[data-epers]:checked")].map(c => c.dataset.epers) };
+    statut: $("e_statut").value, alerte_jours: $("e_alerte").value, note: $("e_note").value, visio: $("e_visio").value.trim(), personnes: [...document.querySelectorAll("[data-epers]:checked")].map(c => c.dataset.epers) };
   $("esave").disabled = true;
   try {
     const res = await enCours("Enregistrement…", () => api("jalon_save", { groupe_id: g.id, id: f.id || undefined, data }));
@@ -253,3 +254,6 @@ document.addEventListener("click", e => {
   if (!e.target.closest(".mcpop")) document.querySelectorAll(".mcpop").forEach(x => x.remove());
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape") document.querySelectorAll(".mcpop").forEach(x => x.remove()); });
+
+// « Créer un Meet » : ouvre Google Meet dans un nouvel onglet (la personne connectée à son compte Google y crée la réunion, puis colle le lien dans le champ).
+document.addEventListener("click", e => { if (e.target.closest && e.target.closest("#e_meet")) window.open("https://meet.google.com/new", "_blank", "noopener"); });

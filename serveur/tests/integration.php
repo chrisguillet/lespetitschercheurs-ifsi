@@ -1044,6 +1044,9 @@ $r = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'id' => $jid, 'da
 $hg = creerUtilisateur($pdo, 'hors-groupe@ci.test'); Attributions::ajouter($pdo, $hg, 'etudiant', null, $pv);
 verifie('jalon : une personne assignée (membre du groupe)', ($r['ok'] ?? false) === true && ($jalonPar($r, $jid)['personnes'][0]['pid'] ?? '') === $pidA2 && ($jalonPar($r, $jid)['personnes'][0]['couleur'] ?? '') !== '');
 verifie('jalon : une personne hors du groupe est refusée', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'id' => $jid, 'data' => array_merge($jalon, ['titre' => 'x', 'type' => 'tache', 'personnes' => [Ids::pid('hors-groupe@ci.test')]])])) === 'invalid');
+$rv = appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'id' => $jid, 'data' => array_merge($jalon, ['titre' => 'Relire le plan', 'type' => 'tache', 'visio' => 'https://meet.google.com/abc-defg-hij'])]);
+verifie('visio : lien enregistré et visible du groupe', ($jalonPar($rv, $jid)['visio'] ?? '') === 'https://meet.google.com/abc-defg-hij' && ($jalonPar(appel('a3@ci.test', 'list'), $jid)['visio'] ?? '') === 'https://meet.google.com/abc-defg-hij');
+verifie('visio : un lien non https est refusé', $err(appel('a1@ci.test', 'jalon_save', ['groupe_id' => $alpha, 'id' => $jid, 'data' => array_merge($jalon, ['titre' => 'x', 'type' => 'tache', 'visio' => 'javascript:alert(1)'])])) === 'invalid');
 verifie('jalon : les personnes sont vues des autres membres', ($jalonPar(appel('a3@ci.test', 'list'), $jid)['personnes'][0]['pid'] ?? '') === $pidA2);
 $pdo->prepare('DELETE FROM membres WHERE groupe_id = ? AND utilisateur_id = ?')->execute([$alpha, $B['a2']]);
 verifie('jalon : une personne qui quitte le groupe n\'apparaît plus', ($jalonPar(appel('a1@ci.test', 'list'), $jid)['personnes'] ?? ['x']) === []);

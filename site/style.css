@@ -950,3 +950,7 @@ header .brand h1{white-space:nowrap}
 .toprow > div:first-child{flex:1 1 auto;min-width:0}
 .rightcol{flex:0 1 auto;min-width:0;max-width:60%}
 @media (max-width:640px){header .brand h1{white-space:normal}.rightcol{max-width:100%}}
+
+/* En-tête : la tuile du logo ne touche plus le cadre (marge en haut et en bas) */
+header .toprow{padding-top:6px;padding-bottom:14px}
+header .brand .logo{margin:2px 0}
