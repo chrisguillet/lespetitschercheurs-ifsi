@@ -599,9 +599,9 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
   // Sur le toit de l'hôpital, l'infirmier·ère en pause se déplace, saute et rattrape fruits et sandwichs, en évitant les dossiers qui tombent et les brancards lancés à pleine vitesse.
   const HD = 300, SOLD = HD - 30, TOITD = HD - 70, VIES_D = 3, GD = 1700, SAUT_D = 610;
   const PERSOS = [
-    { nom: "Infirmière", cheveux: "#6b3f2a", coiffure: "chignon", calot: true },
-    { nom: "Infirmier", cheveux: "#2b2b33", coiffure: "court", calot: false },
-    { nom: "Neutre", cheveux: "#c9a24b", coiffure: "bandeau", calot: false }
+    { nom: "Infirmière", e: "👩‍⚕️", cheveux: "#6b3f2a", coiffure: "chignon", calot: true },
+    { nom: "Infirmier", e: "👨‍⚕️", cheveux: "#2b2b33", coiffure: "court", calot: false },
+    { nom: "Neutre", e: "🧑‍⚕️", cheveux: "#c9a24b", coiffure: "bandeau", calot: false }
   ];
   const lirePerso = () => { try { const v = +localStorage.getItem("lydia_jeu_perso"); return PERSOS[v] ? v : 0; } catch (e) { return 0; } };
   const FRUITS_D = ["🍎", "🍌", "🍊", "🍇", "🍓", "🍐", "🍒", "🥕"];
@@ -951,9 +951,9 @@ const emoji = (ctx, e, x, y, taille) => { ctx.save(); ctx.globalAlpha = 1; ctx.f
       zone.insertBefore(bar, zone.firstChild);
     }
     if (jeu.persos) {
-      const bar = doc.createElement("div"); bar.className = "jeuperso"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px";
+      const bar = doc.createElement("div"); bar.className = "jeuperso"; bar.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:0";
       const cur = jeu.lirePerso();
-      bar.innerHTML = '<span class="meta">Personnage :</span>' + jeu.persos.map((p, i) => '<button type="button" class="btn sm sec" data-perso="' + i + '" aria-pressed="' + (i === cur) + '"' + (i === cur ? ' style="outline:2px solid var(--pri)"' : "") + '>' + p.nom + '</button>').join("");
+      bar.innerHTML = jeu.persos.map((p, i) => '<button type="button" class="btn sm sec" data-perso="' + i + '" aria-label="' + p.nom + '" aria-pressed="' + (i === cur) + '" title="' + p.nom + '" style="font-size:20px;line-height:1;' + (i === cur ? "outline:2px solid var(--pri)" : "") + '">' + p.e + "</button>").join("");
       bar.addEventListener("click", e => {
         const b = e.target.closest("[data-perso]"); if (!b || !actif) return;
         try { localStorage.setItem("lydia_jeu_perso", b.dataset.perso); } catch (x) { /* ignoré */ }
