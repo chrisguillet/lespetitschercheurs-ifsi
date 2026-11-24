@@ -10,6 +10,7 @@ use Lpc\Feedback;
 use Lpc\Fichiers;
 use Lpc\Lectures;
 use Lpc\Notes;
+use Lpc\Saisie;
 use Lpc\Suivi;
 use Lpc\SuiviPieces;
 use Lpc\SuiviTaches;
