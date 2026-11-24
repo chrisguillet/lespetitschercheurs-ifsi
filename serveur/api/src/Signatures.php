@@ -112,8 +112,14 @@ final class Signatures
         if ($gid === '' || !Membres::estMembre($pdo, $gid, (int) $c->user->id)) {
             throw new Erreur('forbidden', 'Vous ne faites pas partie de ce groupe');
         }
-        $pdo->prepare('DELETE FROM signatures_charte WHERE groupe_id = ? AND utilisateur_id = ? AND cible = ?')
-            ->execute([$gid, (int) $c->user->id, is_string($cible) ? $cible : '']);
+        $cible = is_string($cible) ? $cible : '';
+        $uid = (int) $c->user->id;
+        $efface = $pdo->prepare('DELETE FROM signatures_charte WHERE groupe_id = ? AND utilisateur_id = ? AND cible = ?');
+        $efface->execute([$gid, $uid, $cible]);
+        if ($cible !== self::CHARTE) {
+            // Retirer sa signature d'une règle, c'est ne plus s'engager sur la charte entière : sa signature globale tombe aussi.
+            $efface->execute([$gid, $uid, self::CHARTE]);
+        }
     }
 
     /** Efface les signatures d'une règle supprimée. */

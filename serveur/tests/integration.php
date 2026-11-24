@@ -1310,6 +1310,10 @@ $moi = array_values(array_filter($ch['signatures'], static fn (array $s): bool =
 verifie('signature : resigner la nouvelle version la remet à jour (une seule signature par personne)', ($moi['a_jour'] ?? false) === true && count($ch['signatures']) === 2
     && (int) valeur($pdo, 'SELECT COUNT(*) FROM signatures_charte WHERE groupe_id = ? AND cible = ?', [$alpha, 'charte']) === 2);
 verifie('signature : on ne retire que la sienne', count($charteDe(appel('a1@ci.test', 'charte_retirer', ['groupe_id' => $alpha, 'cible' => 'charte']))['signatures'] ?? []) === 1);
+$pid2 = Ids::pid('a2@ci.test');
+$r = appel('a2@ci.test', 'charte_retirer', ['groupe_id' => $alpha, 'cible' => $r2]);
+verifie('signature : retirer sa signature d’une règle retire aussi sa signature de la charte entière',
+    count(array_filter($charteDe($r)['signatures'] ?? [], static fn (array $s): bool => $s['pid'] === $pid2)) === 0);
 $sr = (int) valeur($pdo, 'SELECT COUNT(*) FROM signatures_charte WHERE cible = ?', [$r1]);
 verifie('signature : règle signée avant suppression (par chaque signataire de la charte entière)', $sr >= 1);
 appel('a1@ci.test', 'regle_delete', ['id' => $r1]);

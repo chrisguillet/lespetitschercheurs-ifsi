@@ -181,8 +181,7 @@ function chartePage() {
     <div class="crhead"><div class="crsup">${esc([g.etablissement, g.promo, g.nom].filter(Boolean).join(" · "))}</div>
       <h2>Charte de fonctionnement</h2>
       <div class="crsous">Groupe ${esc(g.nom)} · ${l.length} règle${l.length > 1 ? "s" : ""}</div></div>
-    ${l.length ? `<ol class="ct-pliste">${l.map(r => { const ok = chAJour(chSigsRegle(g, r.id));
-      return `<li><b>${esc(r.titre)}</b>${String(r.description || "").trim() ? `<div class="crtxt">${esc(r.description)}</div>` : ""}${ok.length ? `<div class="ct-sigre">Signée électroniquement par ${ok.map(x => esc(x.prenom)).join(", ")}</div>` : ""}</li>`; }).join("")}</ol>`
+    ${l.length ? `<ol class="ct-pliste">${l.map(r => `<li><b>${esc(r.titre)}</b>${String(r.description || "").trim() ? `<div class="crtxt">${esc(r.description)}</div>` : ""}</li>`).join("")}</ol>`
       : '<div class="meta">Aucune règle pour l’instant.</div>'}
     ${membres.length ? `<section class="crsect"><h3>Les membres du groupe s’engagent à respecter cette charte</h3>
       <div class="ct-sign">${membres.map(m => { const s = sigCharte.get(m.pid);
@@ -211,8 +210,6 @@ function pdfCharte() {
     doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(255); doc.text(String(i + 1), 19, y, { align: "center" });
     ecrire(r.titre, 12, true, 20, 26, larg - 11);
     if (String(r.description || "").trim()) { y += 0.5; ecrire(r.description, 10, false, 50, 26, larg - 11); }
-    const ok = chAJour(chSigsRegle(g, r.id));
-    if (ok.length) { y += 0.5; ecrire("Signée électroniquement par " + ok.map(x => x.prenom).join(", "), 8, false, 47, 26, larg - 11); }
     y += 4;
   });
   const membres = chEtudiants(g).filter(m => m.prenom);

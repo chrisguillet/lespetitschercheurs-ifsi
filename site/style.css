@@ -560,7 +560,6 @@ tr.fikw .chipsc{max-height:none;flex-wrap:wrap}
 .ct-sign div{display:flex;flex-direction:column;gap:2px}
 .ct-sign i{border-top:1px solid #aaa;margin-top:34px;padding-top:2px;font-size:11px;color:#888;font-style:normal}
 .ct-sign i.ok{margin-top:10px;color:#1a7f3c;border-top-color:#1a7f3c;font-weight:600}
-.ct-sigre{font-size:11px;color:#1a7f3c;margin-top:2px}
 /* Signatures électroniques de la charte */
 .ct-sig{margin:10px 0 4px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--pri) 35%,var(--bd));border-radius:12px;background:color-mix(in srgb,var(--pri) 5%,var(--card))}
 .ct-sigtete{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
