@@ -85,8 +85,22 @@ final class Signatures
         if (!is_string($empreinte) || !hash_equals($actuelle, $empreinte)) {
             throw new Erreur('conflict', 'Le texte a changé depuis que vous l’avez lu : relisez-le avant de signer');
         }
-        $pdo->prepare('REPLACE INTO signatures_charte (groupe_id, utilisateur_id, cible, empreinte, texte, signe_le) VALUES (?, ?, ?, ?, ?, ?)')
-            ->execute([$gid, $uid, $cible, $actuelle, $texte, Temps::maintenant()]);
+        $now = Temps::maintenant();
+        $ecrire = $pdo->prepare('REPLACE INTO signatures_charte (groupe_id, utilisateur_id, cible, empreinte, texte, signe_le) VALUES (?, ?, ?, ?, ?, ?)');
+        $pdo->beginTransaction();
+        try {
+            $ecrire->execute([$gid, $uid, $cible, $actuelle, $texte, $now]);
+            if ($cible === self::CHARTE) {
+                // Signer la charte entière, c'est s'engager sur chacune de ses règles : on signe aussi chaque règle, telle qu'elle est aujourd'hui.
+                foreach ($regles as $r) {
+                    $ecrire->execute([$gid, $uid, (string) $r['id'], self::empreinteRegle((string) $r['titre'], (string) $r['description']), self::texteRegle($r), $now]);
+                }
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
     }
 
     /** Retire la signature de la personne (la sienne seulement). */

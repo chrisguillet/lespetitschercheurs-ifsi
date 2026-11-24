@@ -74,7 +74,7 @@ async function signerCharte(cible, retirer) {
   const info = chInfo(g);
   const empreinte = cible === "charte" ? info.empreinte : ((info.regles || {})[cible] || {}).empreinte;
   if (!retirer) {
-    const txt = cible === "charte" ? "Signer la charte de fonctionnement du groupe (" + chRegles(g).length + " règle(s)) ?\nVotre nom, la date et l’heure seront enregistrés avec le texte signé."
+    const txt = cible === "charte" ? "Signer la charte de fonctionnement du groupe (" + chRegles(g).length + " règle(s)) ?\nCela vaut engagement sur chacune des règles. Votre nom, la date et l’heure seront enregistrés avec le texte signé."
       : "Vous engager sur cette règle ?";
     if (!confirm(txt)) return;
   }

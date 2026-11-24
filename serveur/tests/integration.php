@@ -1283,6 +1283,8 @@ verifie('signature : empreinte périmée refusée', $err(appel('a1@ci.test', 'ch
 $r = appel('a1@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => 'charte', 'empreinte' => $ch['empreinte']]);
 $ch = $charteDe($r);
 verifie('signature : charte entière signée', ($ch['signatures'][0]['pid'] ?? '') === $pid1 && ($ch['signatures'][0]['a_jour'] ?? false) === true);
+$tousOk = static fn (array $c, string $pid): bool => count($c['regles'] ?? []) === 2 && array_reduce($c['regles'], static fn (bool $ok, array $x): bool => $ok && count(array_filter($x['signatures'], static fn (array $s): bool => $s['pid'] === $pid && $s['a_jour'])) === 1, true);
+verifie('signature : signer la charte entière signe aussi chaque règle', $tousOk($ch, $pid1));
 $r = appel('a2@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => 'charte', 'empreinte' => $ch['empreinte']]);
 verifie('signature : une deuxième personne signe aussi', count($charteDe($r)['signatures'] ?? []) === 2);
 verifie('signature : seul un membre étudiant du groupe signe', $err(appel('a6@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => 'charte', 'empreinte' => $ch['empreinte']])) === 'forbidden'
@@ -1295,6 +1297,7 @@ $r = appel('a1@ci.test', 'regle_save', ['id' => $r1, 'data' => ['titre' => 'Ponc
 $ch2 = $charteDe($r);
 verifie('signature : texte modifié, signatures périmées', ($ch2['regles'][$r1]['signatures'][0]['a_jour'] ?? true) === false
     && ($ch2['signatures'][0]['a_jour'] ?? true) === false && ($ch2['signatures'][1]['a_jour'] ?? true) === false && $ch2['empreinte'] !== $ch['empreinte']);
+verifie('signature : les règles non modifiées restent signées', count(array_filter($ch2['regles'][$r2]['signatures'], static fn (array $s): bool => $s['pid'] === $pid1 && $s['a_jour'])) === 1);
 verifie('signature : déplacer une règle périme la charte entière', (static function () use ($charteDe, $r2): bool {
     $avant = $charteDe(appel('a1@ci.test', 'init'));
     $apres = $charteDe(appel('a1@ci.test', 'regle_move', ['id' => $r2, 'sens' => 1]));
@@ -1308,7 +1311,7 @@ verifie('signature : resigner la nouvelle version la remet à jour (une seule si
     && (int) valeur($pdo, 'SELECT COUNT(*) FROM signatures_charte WHERE groupe_id = ? AND cible = ?', [$alpha, 'charte']) === 2);
 verifie('signature : on ne retire que la sienne', count($charteDe(appel('a1@ci.test', 'charte_retirer', ['groupe_id' => $alpha, 'cible' => 'charte']))['signatures'] ?? []) === 1);
 $sr = (int) valeur($pdo, 'SELECT COUNT(*) FROM signatures_charte WHERE cible = ?', [$r1]);
-verifie('signature : règle signée avant suppression', $sr === 1);
+verifie('signature : règle signée avant suppression (par chaque signataire de la charte entière)', $sr >= 1);
 appel('a1@ci.test', 'regle_delete', ['id' => $r1]);
 verifie('signature : règle supprimée, ses signatures aussi', (int) valeur($pdo, 'SELECT COUNT(*) FROM signatures_charte WHERE cible = ?', [$r1]) === 0);
 verifie('charte : règles supprimées', $regleDe(appel('a2@ci.test', 'regle_delete', ['id' => $r2])) === []);
