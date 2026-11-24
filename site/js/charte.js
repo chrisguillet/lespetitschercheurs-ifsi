@@ -19,6 +19,73 @@ const chGroupe = () => groupeCourant();
 const chRegles = g => reglesAll.filter(r => g && r.groupe_id === g.id).sort((a, b) => a.ordre - b.ordre || String(a.cree_le).localeCompare(String(b.cree_le)));
 const chPeutEcrire = g => !!g && canWrite() && groupes.some(x => x.id === g.id);
 
+// ---------- Signatures électroniques ----------
+// Une signature = la personne connectée + la date + l'empreinte du texte signé (calculée par le serveur). Quand le texte change,
+// la signature devient « périmée » (a_jour = false) : la personne signe de nouveau. Charte entière : cible « charte » ; règle : son id.
+const chInfo = g => chartesAll.find(x => g && x.groupe_id === g.id) || { empreinte: "", signatures: [], regles: {} };
+const chEtudiants = g => (g.membres || []).filter(m => m.role === "etudiant");
+const chMoi = g => (g.membres || []).find(m => m.moi && m.role === "etudiant");
+const chSigsRegle = (g, id) => ((chInfo(g).regles || {})[id] || {}).signatures || [];
+const chAJour = sigs => sigs.filter(s => s.a_jour);
+const chDate = iso => fmtDT(iso).replace(",", " à");
+
+// Bloc de signature de la charte entière : qui a signé la version actuelle, et le bouton pour signer.
+function chSignatureHtml(g, ecrit) {
+  const info = chInfo(g), moi = chMoi(g), membres = chEtudiants(g);
+  const sigs = info.signatures || [];
+  const parPid = new Map(sigs.map(s => [s.pid, s]));
+  const nbOk = membres.filter(m => parPid.get(m.pid)?.a_jour).length;
+  const maSig = moi && parPid.get(moi.pid);
+  const puces = membres.map(m => {
+    const s = parPid.get(m.pid);
+    if (s && s.a_jour) return `<span class="ct-chip ok" title="Signé le ${esc(chDate(s.le))}">✓ ${esc(m.prenom)}</span>`;
+    if (s) return `<span class="ct-chip old" title="A signé une version précédente le ${esc(chDate(s.le))}">↻ ${esc(m.prenom)} <small>à resigner</small></span>`;
+    return `<span class="ct-chip">${esc(m.prenom)} <small>à signer</small></span>`;
+  }).join("");
+  let action = "";
+  if (ecrit && moi) {
+    action = maSig && maSig.a_jour
+      ? `<span class="meta">✓ Vous avez signé le ${esc(chDate(maSig.le))}</span> <button type="button" class="btn sm sec" data-chunsign="charte">Retirer ma signature</button>`
+      : `<button type="button" class="btn" data-chsign="charte">✍️ ${maSig ? "Signer la nouvelle version" : "Signer la charte"}</button>`;
+  }
+  const etat = !membres.length ? "" : nbOk === membres.length ? "✅ Tout le groupe a signé la version actuelle de la charte."
+    : `✍️ <b>${nbOk} membre${nbOk > 1 ? "s" : ""} sur ${membres.length}</b> ${nbOk > 1 ? "ont" : "a"} signé la version actuelle de la charte.`;
+  return `<div class="ct-sig"><div class="ct-sigtete"><div>${etat}<div class="meta">Toute modification des règles (ajout, retrait, texte ou ordre) demande une nouvelle signature de la charte.</div></div>
+    <div class="ct-sigact">${action}</div></div><div class="ct-chips">${puces}</div></div>`;
+}
+
+// Signatures d'une règle : qui s'engage sur ce texte (version actuelle), et le bouton pour s'engager.
+function chSigRegleHtml(g, r, ecrit) {
+  const sigs = chSigsRegle(g, r.id), ok = chAJour(sigs), moi = chMoi(g);
+  const maSig = moi && sigs.find(s => s.pid === moi.pid);
+  const noms = ok.length ? `Validée par ${ok.map(s => esc(s.prenom)).join(", ")}` : "Pas encore validée";
+  let action = "";
+  if (ecrit && moi) {
+    action = maSig && maSig.a_jour
+      ? `<button type="button" class="btn sm sec" data-chunsign="${esc(r.id)}" title="Retirer ma signature de cette règle">✓ Signée · retirer</button>`
+      : `<button type="button" class="btn sm sec" data-chsign="${esc(r.id)}" aria-label="Signer la règle ${esc(r.titre)}">✍️ ${maSig ? "Resigner" : "Je m’engage"}</button>`;
+  }
+  const perimee = maSig && !maSig.a_jour ? ` <span class="ct-chip old">modifiée depuis votre signature</span>` : "";
+  return `<div class="ct-sigs"><span class="meta">✍️ ${noms}</span>${perimee}${action}</div>`;
+}
+
+async function signerCharte(cible, retirer) {
+  const g = chGroupe(); if (!chPeutEcrire(g)) return;
+  const info = chInfo(g);
+  const empreinte = cible === "charte" ? info.empreinte : ((info.regles || {})[cible] || {}).empreinte;
+  if (!retirer) {
+    const txt = cible === "charte" ? "Signer la charte de fonctionnement du groupe (" + chRegles(g).length + " règle(s)) ?\nVotre nom, la date et l’heure seront enregistrés avec le texte signé."
+      : "Vous engager sur cette règle ?";
+    if (!confirm(txt)) return;
+  }
+  try {
+    const res = await enCours(retirer ? "Retrait…" : "Signature…", () => api(retirer ? "charte_retirer" : "charte_signer", { groupe_id: g.id, cible, empreinte }));
+    applyResult(res); renderCharte();
+  } catch (e) {
+    if (e.code === "unauthorized") sessionError(e); else alert((retirer ? "Retrait" : "Signature") + " impossible : " + e.message);
+  }
+}
+
 function renderCharte() {
   const box = $("regles"); if (!box) return;
   const g = chGroupe();
@@ -36,6 +103,7 @@ function renderCharte() {
   }
   box.innerHTML = `<div class="ct-bar"><span class="meta">Groupe <b>${esc(g.nom)}</b> · ${l.length} règle${l.length > 1 ? "s" : ""}</span>
       <button type="button" class="btn sm sec" data-chapercu title="Aperçu avant impression ou enregistrement en PDF">📄 Aperçu / PDF</button></div>
+    ${chSignatureHtml(g, ecrit)}
     <ol class="ct-liste">${l.map((r, i) => chRegleHtml(r, i, l.length, ecrit)).join("")}</ol>`;
 }
 
@@ -48,7 +116,8 @@ function chRegleHtml(r, i, n, ecrit) {
   return `<li class="ct-regle" id="regle_${esc(r.id)}"><span class="ct-num" aria-hidden="true">${i + 1}</span>
     <div class="ct-corps"><div class="ct-tete"><h3 class="ct-titre">${esc(r.titre)}</h3>${outils}</div>
       ${String(r.description || "").trim() ? `<div class="ct-desc">${esc(r.description)}</div>` : ""}
-      <div class="ct-par">proposée par ${esc(r.par)}${r.modifie_par ? ` · modifiée par ${esc(r.modifie_par)}` : ""}</div></div></li>`;
+      <div class="ct-par">proposée par ${esc(r.par)}${r.modifie_par ? ` · modifiée par ${esc(r.modifie_par)}` : ""}</div>
+      ${chSigRegleHtml(chGroupe(), r, ecrit)}</div></li>`;
 }
 
 // Formulaire : à la place de la règle modifiée, ou en tête pour une nouvelle règle.
@@ -106,15 +175,19 @@ async function supprimerRegle(id) {
 function chartePage() {
   const g = chGroupe(); if (!g) return "";
   const l = chRegles(g);
-  const membres = (g.membres || []).map(m => m.prenom).filter(Boolean);
+  const membres = chEtudiants(g).filter(m => m.prenom);
+  const sigCharte = new Map((chInfo(g).signatures || []).filter(s => s.a_jour).map(s => [s.pid, s]));
   return `<article class="crpage ct-page">
     <div class="crhead"><div class="crsup">${esc([g.etablissement, g.promo, g.nom].filter(Boolean).join(" · "))}</div>
       <h2>Charte de fonctionnement</h2>
       <div class="crsous">Groupe ${esc(g.nom)} · ${l.length} règle${l.length > 1 ? "s" : ""}</div></div>
-    ${l.length ? `<ol class="ct-pliste">${l.map(r => `<li><b>${esc(r.titre)}</b>${String(r.description || "").trim() ? `<div class="crtxt">${esc(r.description)}</div>` : ""}</li>`).join("")}</ol>`
+    ${l.length ? `<ol class="ct-pliste">${l.map(r => { const ok = chAJour(chSigsRegle(g, r.id));
+      return `<li><b>${esc(r.titre)}</b>${String(r.description || "").trim() ? `<div class="crtxt">${esc(r.description)}</div>` : ""}${ok.length ? `<div class="ct-sigre">Signée électroniquement par ${ok.map(x => esc(x.prenom)).join(", ")}</div>` : ""}</li>`; }).join("")}</ol>`
       : '<div class="meta">Aucune règle pour l’instant.</div>'}
     ${membres.length ? `<section class="crsect"><h3>Les membres du groupe s’engagent à respecter cette charte</h3>
-      <div class="ct-sign">${membres.map(p => `<div><span>${esc(p)}</span><i>Signature</i></div>`).join("")}</div></section>` : ""}
+      <div class="ct-sign">${membres.map(m => { const s = sigCharte.get(m.pid);
+        return `<div><span>${esc(m.prenom)}</span>${s ? `<i class="ok">Signé électroniquement le ${esc(chDate(s.le))}</i>` : "<i>Signature</i>"}</div>`; }).join("")}</div>
+      ${sigCharte.size ? `<div class="meta">Signature électronique : compte de la personne, date et heure enregistrés avec le texte signé ; elle vaut pour la version de la charte à cette date.</div>` : ""}</section>` : ""}
     <footer class="crpied">Édité le ${esc(fmtD(new Date().toISOString()))}</footer></article>`;
 }
 
@@ -131,27 +204,32 @@ function pdfCharte() {
   ecrire([g.etablissement, g.promo, g.nom].filter(Boolean).join(" · "), 9, false, 110);
   y += 1; ecrire("Charte de fonctionnement", 18, true); ecrire("Groupe " + g.nom, 11, false, 70);
   doc.setDrawColor(47, 95, 208); doc.setLineWidth(0.6); doc.line(15, y, 195, y); y += 8;
+  const sigCharte = new Map((chInfo(g).signatures || []).filter(s => s.a_jour).map(s => [s.pid, s]));
   chRegles(g).forEach((r, i) => {
     saut(14);
     doc.setFillColor(47, 95, 208); doc.circle(19, y - 1.4, 3.6, "F");
     doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(255); doc.text(String(i + 1), 19, y, { align: "center" });
     ecrire(r.titre, 12, true, 20, 26, larg - 11);
     if (String(r.description || "").trim()) { y += 0.5; ecrire(r.description, 10, false, 50, 26, larg - 11); }
+    const ok = chAJour(chSigsRegle(g, r.id));
+    if (ok.length) { y += 0.5; ecrire("Signée électroniquement par " + ok.map(x => x.prenom).join(", "), 8, false, 47, 26, larg - 11); }
     y += 4;
   });
-  const membres = (g.membres || []).map(m => m.prenom).filter(Boolean);
+  const membres = chEtudiants(g).filter(m => m.prenom);
   if (membres.length) {
     y += 4; saut(30); ecrire("Les membres du groupe s'engagent à respecter cette charte", 11, true, 47);
     y += 2;
-    membres.forEach((p, i) => {
-      const col = i % 2, x = 15 + col * 92;
+    membres.forEach((m, i) => {
+      const col = i % 2, x = 15 + col * 92, s = sigCharte.get(m.pid);
       if (col === 0) saut(22);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(20); doc.text(p, x, y);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(20); doc.text(m.prenom, x, y);
       doc.setDrawColor(170); doc.setLineWidth(0.2); doc.line(x, y + 12, x + 80, y + 12);
-      doc.setFontSize(8); doc.setTextColor(130); doc.text("Signature", x, y + 16);
+      if (s) { doc.setFontSize(9); doc.setTextColor(26, 127, 60); doc.text("Signé électroniquement", x, y + 7); }
+      doc.setFontSize(8); doc.setTextColor(130); doc.text(s ? "le " + chDate(s.le) : "Signature", x, y + 16);
       if (col === 1 || i === membres.length - 1) y += 22;
     });
   }
+  if (sigCharte.size) { y += 2; ecrire("Signature électronique : compte de la personne, date et heure enregistrés avec le texte signé ; elle vaut pour la version de la charte à cette date.", 8, false, 120); }
   y += 2; saut(8); ecrire("Édité le " + fmtD(new Date().toISOString()), 8, false, 120);
   doc.save("charte-" + (cleTitre(g.nom || "groupe").replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "groupe") + "-" + stamp() + ".pdf");
 }
@@ -160,6 +238,8 @@ $("addregle")?.addEventListener("click", () => ouvrirRegleForm(""));
 $("charte")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b || b.disabled) return;
   const d = b.dataset;
+  if (d.chsign) return signerCharte(d.chsign, false);
+  if (d.chunsign) return signerCharte(d.chunsign, true);
   if (d.chidee !== undefined) return ouvrirRegleForm("", CH_IDEES[+d.chidee]);
   if (d.chapercu !== undefined) return ouvrirCompteRendu("", "charte");
   if (d.ched) return ouvrirRegleForm(d.ched);

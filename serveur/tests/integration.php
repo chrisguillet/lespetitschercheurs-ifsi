@@ -1269,7 +1269,48 @@ verifie('charte : seul le groupe la rédige', $err(appel('a6@ci.test', 'regle_sa
     && $err(appel('a6@ci.test', 'regle_delete', ['id' => $r1])) === 'forbidden');
 $vueFormateur = $regleDe(appel('forma@ci.test', 'init'));
 verifie('charte : le formateur du groupe la lit sans la modifier', count($vueFormateur) === 2 && ($vueFormateur[0]['modifiable'] ?? true) === false);
+// Signature électronique : par règle et pour la charte entière, périmée dès que le texte change.
+$charteDe = static fn (array $r): array => array_values(array_filter($r['chartes'] ?? [], static fn (array $x): bool => $x['groupe_id'] === $alpha))[0] ?? [];
+$pid1 = Ids::pid('a1@ci.test');
+$ch = $charteDe(appel('a1@ci.test', 'init'));
+verifie('signature : charte non signée au départ', ($ch['signatures'] ?? null) === [] && ($ch['empreinte'] ?? '') !== '' && count((array) ($ch['regles'] ?? [])) === 2);
+$r = appel('a1@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => $r1, 'empreinte' => $ch['regles'][$r1]['empreinte']]);
+$ch = $charteDe($r);
+verifie('signature : règle signée, réponse partielle (chartes)', ($r['ok'] ?? false) === true && !array_key_exists('reunions', $r)
+    && ($ch['regles'][$r1]['signatures'][0]['pid'] ?? '') === $pid1 && ($ch['regles'][$r1]['signatures'][0]['a_jour'] ?? false) === true && ($ch['signatures'] ?? null) === []);
+verifie('signature : empreinte périmée refusée', $err(appel('a1@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => $r1, 'empreinte' => str_repeat('0', 64)])) === 'conflict'
+    && $err(appel('a1@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => 'inconnue', 'empreinte' => 'x'])) === 'not_found');
+$r = appel('a1@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => 'charte', 'empreinte' => $ch['empreinte']]);
+$ch = $charteDe($r);
+verifie('signature : charte entière signée', ($ch['signatures'][0]['pid'] ?? '') === $pid1 && ($ch['signatures'][0]['a_jour'] ?? false) === true);
+$r = appel('a2@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => 'charte', 'empreinte' => $ch['empreinte']]);
+verifie('signature : une deuxième personne signe aussi', count($charteDe($r)['signatures'] ?? []) === 2);
+verifie('signature : seul un membre étudiant du groupe signe', $err(appel('a6@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => 'charte', 'empreinte' => $ch['empreinte']])) === 'forbidden'
+    && $err(appel('forma@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => 'charte', 'empreinte' => $ch['empreinte']])) === 'forbidden'
+    && $err(appel('a6@ci.test', 'charte_retirer', ['groupe_id' => $alpha, 'cible' => 'charte'])) === 'forbidden');
+$vueFormateur = $charteDe(appel('forma@ci.test', 'init'));
+verifie('signature : le formateur du groupe voit les signatures', count($vueFormateur['signatures'] ?? []) === 2);
+// Modifier la règle périme sa signature et celle de la charte, mais pas la signature d'une autre règle.
+$r = appel('a1@ci.test', 'regle_save', ['id' => $r1, 'data' => ['titre' => 'Ponctualité', 'description' => 'Arriver 5 minutes avant.']]);
+$ch2 = $charteDe($r);
+verifie('signature : texte modifié, signatures périmées', ($ch2['regles'][$r1]['signatures'][0]['a_jour'] ?? true) === false
+    && ($ch2['signatures'][0]['a_jour'] ?? true) === false && ($ch2['signatures'][1]['a_jour'] ?? true) === false && $ch2['empreinte'] !== $ch['empreinte']);
+verifie('signature : déplacer une règle périme la charte entière', (static function () use ($charteDe, $r2): bool {
+    $avant = $charteDe(appel('a1@ci.test', 'init'));
+    $apres = $charteDe(appel('a1@ci.test', 'regle_move', ['id' => $r2, 'sens' => 1]));
+    return $avant['empreinte'] !== $apres['empreinte'];
+})());
+$ch = $charteDe(appel('a1@ci.test', 'init'));
+$r = appel('a1@ci.test', 'charte_signer', ['groupe_id' => $alpha, 'cible' => 'charte', 'empreinte' => $ch['empreinte']]);
+$ch = $charteDe($r);
+$moi = array_values(array_filter($ch['signatures'], static fn (array $s): bool => $s['pid'] === $pid1))[0] ?? [];
+verifie('signature : resigner la nouvelle version la remet à jour (une seule signature par personne)', ($moi['a_jour'] ?? false) === true && count($ch['signatures']) === 2
+    && (int) valeur($pdo, 'SELECT COUNT(*) FROM signatures_charte WHERE groupe_id = ? AND cible = ?', [$alpha, 'charte']) === 2);
+verifie('signature : on ne retire que la sienne', count($charteDe(appel('a1@ci.test', 'charte_retirer', ['groupe_id' => $alpha, 'cible' => 'charte']))['signatures'] ?? []) === 1);
+$sr = (int) valeur($pdo, 'SELECT COUNT(*) FROM signatures_charte WHERE cible = ?', [$r1]);
+verifie('signature : règle signée avant suppression', $sr === 1);
 appel('a1@ci.test', 'regle_delete', ['id' => $r1]);
+verifie('signature : règle supprimée, ses signatures aussi', (int) valeur($pdo, 'SELECT COUNT(*) FROM signatures_charte WHERE cible = ?', [$r1]) === 0);
 verifie('charte : règles supprimées', $regleDe(appel('a2@ci.test', 'regle_delete', ['id' => $r2])) === []);
 
 // ---------- Lot D : notes privées ----------

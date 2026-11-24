@@ -108,20 +108,34 @@ final class Outils
     /** Règle de la charte de fonctionnement du groupe. @param array<string,mixed> $req @return array<string,mixed> */
     public static function regleSave(Contexte $c, array $req): array
     {
-        return self::sauver($c, 'regle', $req, ['regles']);
+        return self::sauver($c, 'regle', $req, ['regles', 'chartes']);
     }
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function regleDelete(Contexte $c, array $req): array
     {
-        return self::retirer($c, 'regle', $req, ['regles']);
+        return self::retirer($c, 'regle', $req, ['regles', 'chartes']);
     }
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function regleMove(Contexte $c, array $req): array
     {
         Suivi::deplacerRegle($c, $req['id'] ?? null, $req['sens'] ?? null);
-        return ['ok' => true] + Donnees::choisies($c, ['regles']);
+        return ['ok' => true] + Donnees::choisies($c, ['regles', 'chartes']);
+    }
+
+    /** Signature électronique d'une règle ou de la charte entière (cible « charte »). @param array<string,mixed> $req @return array<string,mixed> */
+    public static function charteSigner(Contexte $c, array $req): array
+    {
+        \Lpc\Signatures::signer($c, $req['groupe_id'] ?? null, $req['cible'] ?? null, $req['empreinte'] ?? null);
+        return ['ok' => true] + Donnees::choisies($c, ['chartes']);
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function charteRetirer(Contexte $c, array $req): array
+    {
+        \Lpc\Signatures::retirer($c, $req['groupe_id'] ?? null, $req['cible'] ?? null);
+        return ['ok' => true] + Donnees::choisies($c, ['chartes']);
     }
 
     // ---------- Pièces jointes ----------

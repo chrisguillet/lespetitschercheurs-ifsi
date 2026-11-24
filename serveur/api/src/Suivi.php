@@ -151,6 +151,9 @@ final class Suivi
             throw new Erreur('forbidden', 'Cette échéance vient d’une tâche de compte rendu : supprimez la tâche dans le compte rendu');
         }
         $pdo->prepare("DELETE FROM `$table` WHERE id = ?")->execute([$id]);
+        if ($type === 'regle') {
+            Signatures::oublierRegle($pdo, $id);
+        }
     }
 
     /** Éléments des groupes que la personne voit (les siens et ceux qu'elle administre). @return list<array<string,mixed>> */

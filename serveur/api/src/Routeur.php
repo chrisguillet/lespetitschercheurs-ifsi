@@ -40,7 +40,7 @@ final class Routeur
     public const NOUVELLES = [
         'nom_demande', 'nom_demandes', 'nom_decision',
         'invitation_create', 'invitation_list', 'invitation_revoke',
-        'attribution_add', 'attribution_remove', 'feedback_status', 'doi_lookup', 'doublons_list', 'article_merge', 'doublons_ignore', 'chat_regles', 'chat_regle_set', 'saisie_signal', 'reunion_historique',
+        'attribution_add', 'attribution_remove', 'feedback_status', 'doi_lookup', 'doublons_list', 'article_merge', 'doublons_ignore', 'chat_regles', 'chat_regle_set', 'saisie_signal', 'reunion_historique', 'charte_signer', 'charte_retirer',
         'jeux_scores', 'jeu_score', 'suggestion_save', 'suggestion_delete', 'suggestion_vues', 'bac_sable_etat', 'bac_sable_reinit', 'memoire_get', 'memoire_entete', 'memoire_bloc', 'memoire_bloc_supprimer', 'memoire_ordre', 'memoire_export',
     ];
 
@@ -118,6 +118,8 @@ final class Routeur
             'regle_save' => [Outils::class, 'regleSave'],
             'regle_delete' => [Outils::class, 'regleDelete'],
             'regle_move' => [Outils::class, 'regleMove'],
+            'charte_signer' => [Outils::class, 'charteSigner'],
+            'charte_retirer' => [Outils::class, 'charteRetirer'],
             'file_add' => [Outils::class, 'fileAdd'],
             'file_get' => [Outils::class, 'fileGet'],
             'file_delete' => [Outils::class, 'fileDelete'],

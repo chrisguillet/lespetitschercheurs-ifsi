@@ -57,6 +57,7 @@ final class Donnees
             'jalons' => static fn (): array => Suivi::pourClient($c, 'jalon'),
             'termes' => static fn (): array => Suivi::pourClient($c, 'terme'),
             'regles' => static fn (): array => Suivi::pourClient($c, 'regle'),
+            'chartes' => static fn (): array => Signatures::pourClient($c),
             'lectures' => static fn (): array => Lectures::lister($c),
             'commentaires' => static fn (): array => Commentaires::lister($c),
             'lus' => static fn (): array => Commentaires::lus($c),

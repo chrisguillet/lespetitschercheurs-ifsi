@@ -102,6 +102,7 @@ final class Rgpd
             'propositions_de_correction' => $lignes('SELECT article_id, valeurs, statut, cree_le, clos_le FROM propositions WHERE propose_par = ?', [$id]),
             'termes_du_glossaire_crees' => $lignes('SELECT mot, definition, reference, cree_le FROM glossaire WHERE cree_par = ?', [$id]),
             'regles_de_charte_creees' => $lignes('SELECT titre, description, cree_le FROM regles WHERE cree_par = ?', [$id]),
+            'signatures_de_charte' => $lignes('SELECT groupe_id, cible, texte, signe_le FROM signatures_charte WHERE utilisateur_id = ?', [$id]),
             'reunions_creees' => $lignes('SELECT date, titre, participants, objectifs, vu, attendu, suite, cree_le FROM reunions WHERE cree_par = ?', [$id]),
             'jalons_crees' => $lignes('SELECT titre, type, debut, echeance, heure, statut, note, cree_le FROM jalons WHERE cree_par = ?', [$id]),
             'historique_de_mes_fiches' => $lignes('SELECT cible, cible_id, avant, modifie_le FROM historique WHERE proprietaire = ?', [$id]),
