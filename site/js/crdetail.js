@@ -305,7 +305,8 @@ function crAttenteRafraichir() {
 
 // Enregistre le compte rendu, puis ses tâches (avec leurs liens), ses liens et ses pièces jointes saisis avec lui.
 async function enregistrerCompteRendu(id, gid, errId) {
-  const data = Object.assign(Object.fromEntries(["date", "titre", "participants", "vu", "attendu"].map(k => [k, $("r_" + k).value])), { suite: (reunionsAll.find(r => r.id === id) || {}).suite || "" });
+  const data = Object.assign(Object.fromEntries(["date", "titre", "participants", "objectifs", "vu", "attendu"].map(k => [k, $("r_" + k).value])), { suite: (reunionsAll.find(r => r.id === id) || {}).suite || "" });
+  if (id && suiviForm && suiviForm.base) data.version_base = suiviForm.base.version;   // le serveur refuse d'écraser un enregistrement plus récent
   const avant = new Set(reunionsAll.map(r => r.id));
   const erreurs = [];
   try {
@@ -347,7 +348,9 @@ async function enregistrerCompteRendu(id, gid, errId) {
     });
     if (erreurs.length) alert("Le compte rendu est enregistré, mais certains éléments n’ont pas pu être ajoutés :\n" + erreurs.join("\n"));
   } catch (e) {
-    if (e.code === "unauthorized") sessionError(e); else $(errId).textContent = "Enregistrement impossible : " + e.message;
+    if (e.code === "unauthorized") sessionError(e);
+    else if (e.code === "conflict" && e.extra) { $(errId).textContent = ""; crAfficherConflit(e.extra, id, gid, errId); }
+    else $(errId).textContent = "Enregistrement impossible : " + e.message;
   }
 }
 // Gestes sur le détail des comptes rendus (délégation sur l'onglet Suivi).
@@ -412,3 +415,63 @@ $("suivi")?.addEventListener("change", e => {
     return t.id === "ca_cam" ? ajouterPieceEnAttente(file, true) : ajouterPiece(t.dataset.fcin, file, true);
   }
 });
+
+// ---------- Conflit d'enregistrement : version ouverte, votre version, version arrivée entre-temps ----------
+const CR_CHAMPS = [["date", "Date"], ["titre", "Titre"], ["participants", "Participants"], ["objectifs", "Objectifs"], ["vu", "Ce qui a été vu"], ["attendu", "Ce qui est attendu"]];
+const crChampsDe = x => Object.fromEntries(CR_CHAMPS.map(([k]) => [k, String((x && x[k]) || "")]));
+const crValeursFormulaire = () => Object.fromEntries(CR_CHAMPS.map(([k]) => [k, $("r_" + k) ? $("r_" + k).value : ""]));
+
+// Affiché quand quelqu'un a enregistré le compte rendu depuis son ouverture : rien n'a été écrit, on propose de fusionner champ par champ.
+function crAfficherConflit(actuel, id, gid, errId) {
+  const zone = $("r_conflit"); if (!zone || !suiviForm || !suiviForm.base) return;
+  const base = suiviForm.base.champs, mien = crValeursFormulaire();
+  const diff = CR_CHAMPS.filter(([k]) => String(actuel[k] || "") !== base[k] && String(actuel[k] || "") !== mien[k]);   // arrivés entre-temps et différents de la saisie
+  const bloc = t => `<div class="cdtxt">${t.trim() ? esc(t) : '<span class="meta">(vide)</span>'}</div>`;
+  const qui = actuel.par ? esc(actuel.par) : "Quelqu’un";
+  zone.innerHTML = `<div class="sec cdiff" role="alert"><b>⚠️ ${qui} a modifié ce compte rendu${actuel.le ? " le " + esc(fmtDT(actuel.le)) : ""} depuis que vous l’avez ouvert.</b>
+    <div class="meta">Rien n’a été enregistré. ${diff.length ? "Choisissez, champ par champ, la version à garder." : "Ses changements sont identiques aux vôtres ou sans effet sur vos champs : vous pouvez enregistrer."}</div>
+    ${diff.map(([k, lib]) => {
+      const mienneInchangee = mien[k] === base[k];
+      return `<fieldset class="cdchamp"><legend>${esc(lib)}</legend><div class="cdcols">
+        <div><div class="meta">Version que vous aviez ouverte</div>${bloc(base[k])}</div>
+        <div><div class="meta">Votre version${mienneInchangee ? " (inchangée)" : ""}</div>${bloc(mien[k])}</div>
+        <div><div class="meta">Version de ${qui}</div>${bloc(String(actuel[k] || ""))}</div></div>
+        <label class="chk"><input type="radio" name="cd_${k}" value="mien" ${mienneInchangee ? "" : "checked"}> Garder la mienne</label>
+        <label class="chk"><input type="radio" name="cd_${k}" value="leur" ${mienneInchangee ? "checked" : ""}> Prendre la sienne</label></fieldset>`;
+    }).join("")}
+    <div class="savebar"><button type="button" class="btn" id="cd_ok">Enregistrer avec ces choix</button> <button type="button" class="btn sec" id="cd_retour">Revenir au formulaire</button></div></div>`;
+  zone.scrollIntoView({ block: "nearest" });
+  $("cd_retour").onclick = () => { zone.innerHTML = ""; };
+  $("cd_ok").onclick = () => {
+    for (const [k] of diff) {
+      const choix = zone.querySelector(`input[name="cd_${k}"]:checked`);
+      if (choix && choix.value === "leur" && $("r_" + k)) $("r_" + k).value = String(actuel[k] || "");
+    }
+    // Les champs que seule l'autre personne a changés (donc inchangés ici) reprennent aussi sa version, pour ne pas la défaire.
+    for (const [k] of CR_CHAMPS) if (!diff.some(d => d[0] === k) && mien[k] === base[k] && String(actuel[k] || "") !== base[k] && $("r_" + k)) $("r_" + k).value = String(actuel[k] || "");
+    suiviForm.base = { version: actuel.version, champs: crChampsDe(actuel) };
+    zone.innerHTML = "";
+    enregistrerCompteRendu(id, gid, errId);
+  };
+}
+
+// ---------- Historique : les 25 derniers états écrasés d'un compte rendu, à reprendre dans le formulaire ----------
+async function crAfficherHistorique(id) {
+  const zone = $("r_histo"); if (!zone) return;
+  if (zone.innerHTML) { zone.innerHTML = ""; return; }   // un second clic referme
+  let versions;
+  try { versions = (await enCours("Chargement de l’historique…", () => api("reunion_historique", { id }))).versions || []; }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); else zone.innerHTML = `<div class="err">Historique indisponible : ${esc(e.message)}</div>`; return; }
+  zone.innerHTML = `<div class="sec crhisto"><b>🕘 Historique</b> <span class="meta">(les ${CR_HISTORIQUE_MAX} derniers états remplacés, du plus récent au plus ancien)</span>
+    ${versions.length ? versions.map((v, i) => `<details><summary>${esc(fmtDT(v.le))}${v.par ? " · " + esc(v.par) : ""}${v.titre ? " · " + esc(v.titre) : ""}</summary>
+      ${CR_CHAMPS.filter(([k]) => k !== "date" && String(v[k] || "").trim()).map(([k, lib]) => `<div class="sect"><b>${esc(lib)}</b><div class="cdtxt">${esc(v[k])}</div></div>`).join("") || '<div class="meta">(état vide)</div>'}
+      <button type="button" class="btn sm sec" data-hreprendre="${i}">Reprendre cet état dans le formulaire</button></details>`).join("")
+      : '<div class="meta">Aucune modification enregistrée pour l’instant.</div>'}</div>`;
+  zone.querySelectorAll("[data-hreprendre]").forEach(b => b.onclick = () => {
+    const v = versions[Number(b.dataset.hreprendre)];
+    for (const [k] of CR_CHAMPS) if ($("r_" + k)) $("r_" + k).value = String(v[k] || "");
+    zone.innerHTML = "";
+    const e = $("rerr"); if (e) e.textContent = "État repris dans le formulaire : relisez-le puis enregistrez.";
+  });
+}
+const CR_HISTORIQUE_MAX = 25;

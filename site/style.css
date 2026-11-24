@@ -1051,3 +1051,16 @@ header .brand .logo{margin:2px 0}
 .memfeuille .memcouv-bas{text-align:left;font-size:12pt;line-height:1.5}
 .memfeuille .memcontenu{border-top:1px dashed var(--bd);padding-top:12px}
 .memfeuille .mempied{font-size:9pt;text-align:center;margin-top:24px;border-top:1px solid #999;padding-top:4px}
+
+/* Conflit d'enregistrement d'un compte rendu et historique */
+.cdiff { border-left: 4px solid #d98200; }
+.cdchamp { margin: 10px 0; border: 1px solid var(--line, #ddd); border-radius: 6px; }
+.cdcols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 6px; }
+@media (max-width: 760px) { .cdcols { grid-template-columns: 1fr; } }
+.cdtxt { white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 8px; border: 1px solid var(--line, #ddd); border-radius: 4px; max-height: 14em; overflow: auto; }
+.crhisto details { margin: 6px 0; }
+.crhisto summary { cursor: pointer; }
+
+/* Mise en forme du glossaire : barre d'outils et texte formaté */
+.fmtbar { display: flex; gap: 4px; margin: 2px 0 4px; }
+.fmtbar button { min-width: 2em; }

@@ -192,6 +192,18 @@ final class Outils
     // ---------- Chat ----------
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function reunionHistorique(Contexte $c, array $req): array
+    {
+        return ['ok' => true, 'versions' => Suivi::historiqueReunion($c, $req['id'] ?? null)];
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function saisieSignal(Contexte $c, array $req): array
+    {
+        return Saisie::signaler($c, $req);
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function chatList(Contexte $c, array $req): array
     {
         return Chat::lister($c, $req);

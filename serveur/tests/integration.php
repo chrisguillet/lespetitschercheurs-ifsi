@@ -1112,6 +1112,31 @@ foreach ($crRes['reunions'] ?? [] as $r) {
     }
 }
 verifie('CR : compte rendu créé', $crId !== '');
+$objRes = appel('a1@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'id' => $crId, 'data' => ['date' => '2027-02-01', 'titre' => 'CR de test', 'objectifs' => 'Choisir la question', 'vu' => 'Point d’étape']]);
+verifie('CR : les objectifs sont enregistrés et renvoyés', ($crLe($objRes, $crId)['objectifs'] ?? '') === 'Choisir la question');
+$sg = ['groupe_id' => $alpha, 'cible' => $crId];
+appel('a1@ci.test', 'saisie_signal', $sg + ['ecrit' => true]);
+verifie('saisie : l’autre membre voit qui écrit, pas soi-même', (appel('a2@ci.test', 'saisie_signal', $sg + ['ecrit' => false])['ecrivent'] ?? []) !== []
+    && (appel('a1@ci.test', 'saisie_signal', $sg + ['ecrit' => true])['ecrivent'] ?? ['x']) === []);
+appel('a1@ci.test', 'saisie_signal', $sg + ['ecrit' => false]);
+verifie('saisie : le signal est retiré quand on arrête', (appel('a2@ci.test', 'saisie_signal', $sg + ['ecrit' => false])['ecrivent'] ?? ['x']) === []);
+verifie('saisie : refusée hors du groupe', $err(appel('a4@ci.test', 'saisie_signal', $sg + ['ecrit' => true])) === 'forbidden');
+// Version, conflit et historique des comptes rendus
+$v0 = (int) ($crLe($objRes, $crId)['version'] ?? 0);
+$dataCr = static fn (string $vu): array => ['date' => '2027-02-01', 'titre' => 'CR de test', 'objectifs' => 'Choisir la question', 'vu' => $vu];
+$r1 = appel('a1@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'id' => $crId, 'data' => $dataCr('Version A1') + ['version_base' => $v0]]);
+verifie('CR : la version augmente à chaque modification', (int) ($crLe($r1, $crId)['version'] ?? 0) === $v0 + 1);
+$rc = appel('a2@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'id' => $crId, 'data' => $dataCr('Version A2') + ['version_base' => $v0]]);
+verifie('CR : enregistrer à partir d’une version dépassée est refusé avec l’état actuel', ($rc['error'] ?? '') === 'conflict' && ($rc['extra']['vu'] ?? '') === 'Version A1' && ($rc['extra']['version'] ?? 0) === $v0 + 1);
+$rf = appel('a2@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'id' => $crId, 'data' => $dataCr('Version A2') + ['version_base' => $v0, 'forcer' => true]]);
+verifie('CR : l’enregistrement forcé passe', ($crLe($rf, $crId)['vu'] ?? '') === 'Version A2');
+$h = appel('a1@ci.test', 'reunion_historique', ['id' => $crId])['versions'] ?? [];
+verifie('CR : l’historique garde les états écrasés, le plus récent d’abord', count($h) >= 2 && ($h[0]['vu'] ?? '') === 'Version A1' && ($h[1]['vu'] ?? '') === 'Point d’étape');
+for ($i = 0; $i < 30; $i++) {
+    appel('a1@ci.test', 'reunion_save', ['groupe_id' => $alpha, 'id' => $crId, 'data' => $dataCr('Boucle ' . $i)]);
+}
+verifie('CR : l’historique est limité à 25 états', count(appel('a1@ci.test', 'reunion_historique', ['id' => $crId])['versions'] ?? []) === 25);
+verifie('CR : historique refusé hors du groupe', $err(appel('a4@ci.test', 'reunion_historique', ['id' => $crId])) === 'not_found');
 $pidA2 = (string) valeur($pdo, 'SELECT pid FROM utilisateurs WHERE email = ?', ['a2@ci.test']);
 $tRes = appel('a1@ci.test', 'tache_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'data' => ['texte' => 'Chercher deux articles', 'personnes' => [$pidA2]]]);
 $cr1 = $crLe($tRes, $crId);

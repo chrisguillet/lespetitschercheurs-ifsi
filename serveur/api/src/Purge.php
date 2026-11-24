@@ -118,6 +118,7 @@ final class Purge
             $chat = $db->chat();
             $chat->prepare('DELETE FROM chat_messages WHERE auteur_id = ?')->execute([$id]);
             $chat->prepare('DELETE FROM presence WHERE utilisateur_id = ?')->execute([$id]);
+            $chat->prepare('DELETE FROM saisies WHERE utilisateur_id = ?')->execute([$id]);
         } catch (\Throwable $e) {
             error_log('Purge : chat non nettoyé : ' . $e->getMessage());
         }

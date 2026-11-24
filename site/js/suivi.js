@@ -141,7 +141,7 @@ function renderSuivi() {
   $("reunions").innerHTML = reu.length ? reu.map(x => `<article class="cardc reunion"><div class="tools" style="justify-content:space-between"><h3 style="margin:0">${esc(fmtD(x.date))}${x.titre ? " · " + esc(x.titre) : ""}</h3>
     <div><button type="button" class="btn sm sec" data-rcr="${esc(x.id)}" title="Aperçu avant impression ou enregistrement en PDF">📄 Aperçu / PDF</button>${x.modifiable ? ` <button type="button" class="btn sm sec" data-red="${esc(x.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-rdel="${esc(x.id)}">Supprimer</button>` : ""}</div></div>
     <div class="meta">${x.participants ? "Participants : " + esc(x.participants) + " · " : ""}saisi par ${esc(x.par)}${x.modifie_par ? ` · modifié par ${esc(x.modifie_par)}` : ""}</div>
-    ${sect("Ce qui a été vu", x.vu)}${sect("Ce qui est attendu", x.attendu)}${suiviForm && suiviForm.type === "reunion" && suiviForm.id === x.id
+    ${sect("Objectifs", x.objectifs)}${sect("Ce qui a été vu", x.vu)}${sect("Ce qui est attendu", x.attendu)}${suiviForm && suiviForm.type === "reunion" && suiviForm.id === x.id
       ? '<div class="meta">✏️ Tâches, liens et pièces jointes : dans le formulaire de modification ci-dessus.</div>' : reunionDetailHtml(x)}</article>`).join("")
     : `<div class="empty">Aucun compte rendu pour l’instant.</div>`;
   if (suiviForm && suiviForm.type === "reunion") crAttenteRafraichir();
@@ -180,22 +180,70 @@ function ouvrirSuiviForm(type, id) {
       <div><label for="r_date">Date</label><input id="r_date" type="date" value="${esc(x.date)}"></div>
       <div><label for="r_titre">Titre</label><input id="r_titre" maxlength="200" value="${esc(x.titre)}" placeholder="ex. Point avec la formatrice"></div>
       <div><label for="r_participants">Participants</label><input id="r_participants" maxlength="500" value="${esc(x.participants)}"></div></div>
+      <div><label for="r_objectifs">Objectifs</label><textarea id="r_objectifs" maxlength="2500" placeholder="ex. choisir la question de recherche, répartir les lectures">${esc(x.objectifs)}</textarea></div>
       <div class="grid"><div><label for="r_vu">Ce qui a été vu</label><textarea id="r_vu" maxlength="2500">${esc(x.vu)}</textarea></div>
       <div><label for="r_attendu">Ce qui est attendu</label><textarea id="r_attendu" maxlength="2500">${esc(x.attendu)}</textarea></div>
       </div>
+      <div id="r_saisie" class="meta" role="status" aria-live="polite"></div>
       <div id="cr_attente"></div>
-      <div class="savebar"><div id="rerr" class="err" role="alert"></div><button class="btn" id="rsave" type="button">Enregistrer le compte rendu</button> <button class="btn sec" id="rcancel" type="button">Annuler</button></div></div>`;
+      <div id="r_conflit"></div><div id="r_histo"></div>
+      <div class="savebar"><div id="rerr" class="err" role="alert"></div><button class="btn" id="rsave" type="button">Enregistrer le compte rendu</button> <button class="btn sec" id="rcancel" type="button">Annuler</button>${id ? ' <button class="btn sec" id="rhisto" type="button" title="Retrouver un état récent écrasé">🕘 Historique</button>' : ""}</div></div>`;
+    suiviForm.base = id ? { version: x.version, champs: crChampsDe(x) } : null;   // l'état ouvert : sert à repérer ce qui change entre-temps
+    if (id) $("rhisto").onclick = () => crAfficherHistorique(id);
     crAttenteReinit(id);
     crDetailSignature = "";
     if (id) renderSuivi(); else crAttenteRafraichir();   // en modification, le détail passe de la fiche au formulaire
     $("rsave").onclick = () => enregistrerCompteRendu(id, g.id, "rerr");
     $("rcancel").onclick = () => fermerSuiviForm();
-    $("r_vu").focus();
+    saisieDemarrer(g.id, id);
+    $("r_objectifs").focus();
   }
+}
+
+// ---------- « Untel écrit… » : on signale sa propre saisie et on reçoit celle des autres membres, pendant que le formulaire est ouvert ----------
+const SAISIE = { timer: null, derniere: 0, groupe: "", cible: "" };
+const SAISIE_ACTIVE_MS = 5000, SAISIE_PERIODE_MS = 4000;
+
+function saisieTexte(noms) {
+  if (!noms.length) return "";
+  const liste = noms.length === 1 ? noms[0] : noms.slice(0, -1).join(", ") + " et " + noms[noms.length - 1];
+  return "✏️ " + liste + (noms.length === 1 ? " est" : " sont") + " en train d’écrire sur ce compte rendu…";
+}
+
+async function saisieEnvoyer() {
+  if (!SAISIE.cible) return;
+  const cible = SAISIE.cible, ecrit = Date.now() - SAISIE.derniere < SAISIE_ACTIVE_MS;
+  try {
+    const r = await api("saisie_signal", { groupe_id: SAISIE.groupe, cible, ecrit });
+    const z = $("r_saisie");
+    if (z && SAISIE.cible === cible) z.textContent = saisieTexte(r.ecrivent || []);
+  } catch (e) { if (e.code === "unauthorized") sessionError(e); /* autre erreur : l'indicateur est facultatif, on réessaie au prochain tour */ }
+}
+
+function saisieDemarrer(gid, id) {
+  saisieArreter();
+  SAISIE.groupe = gid; SAISIE.cible = id || "nouveau"; SAISIE.derniere = 0;
+  $("reunionform").oninput = () => {
+    const premiere = Date.now() - SAISIE.derniere >= SAISIE_ACTIVE_MS;
+    SAISIE.derniere = Date.now();
+    if (premiere) saisieEnvoyer();   // la première frappe se signale tout de suite, la suite au rythme du minuteur
+  };
+  SAISIE.timer = setInterval(() => { if (!document.hidden) saisieEnvoyer(); }, SAISIE_PERIODE_MS);
+  saisieEnvoyer();
+}
+
+function saisieArreter() {
+  if (SAISIE.timer) clearInterval(SAISIE.timer);
+  SAISIE.timer = null;
+  const gid = SAISIE.groupe, cible = SAISIE.cible;
+  SAISIE.cible = "";
+  const f = $("reunionform"); if (f) f.oninput = null;
+  if (gid && cible && token) api("saisie_signal", { groupe_id: gid, cible, ecrit: false }).catch(() => {});   // son signal est effacé sans attendre
 }
 
 function fermerSuiviForm() {
   const etaitModif = suiviForm && suiviForm.type === "reunion" && suiviForm.id;
+  saisieArreter();
   suiviForm = null; $("jalonform").innerHTML = ""; $("reunionform").innerHTML = "";
   if (etaitModif) renderSuivi();   // le détail revient sur la fiche du compte rendu
 }

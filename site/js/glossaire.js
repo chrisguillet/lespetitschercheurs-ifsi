@@ -23,7 +23,7 @@ function renderGlossaire() {
     "ancien": (a, b) => String(a.cree_le).localeCompare(String(b.cree_le)),
     "ref": (a, b) => (!a.reference) - (!b.reference) || alpha(a.reference, b.reference) || alpha(a.mot, b.mot),   // sans référence à la fin
   }[tri] || ((a, b) => alpha(a.mot, b.mot));
-  const l = tous.filter(t => !q || gloCle(t.mot).includes(q) || gloCle(t.definition).includes(q) || gloCle(t.reference).includes(q))
+  const l = tous.filter(t => !q || gloCle(t.mot).includes(q) || gloCle(gloSansMarques(t.definition)).includes(q) || gloCle(t.reference).includes(q))
     .sort(comparer);
   const alphabetique = tri === "mot" || tri === "mot-desc";   // intertitres par lettre seulement pour le tri alphabétique
   if (!tous.length) { box.innerHTML = `<div class="empty">Aucun terme pour l’instant.${ecrit ? " Ajoutez les définitions importantes de votre mémoire, avec la référence qui les donne." : ""}</div>`; return; }
@@ -35,8 +35,8 @@ function renderGlossaire() {
     html += `<article class="terme"><div class="tools" style="justify-content:space-between"><b class="termemot">${esc(t.mot)}</b>
       ${t.modifiable ? `<div><button type="button" class="btn sm sec" data-ted="${esc(t.id)}">Modifier</button> <button type="button" class="btn sm sec del" data-tdel="${esc(t.id)}">Supprimer</button></div>` : ""}</div>
       ${t.type === "citation"
-        ? `<div class="meta">Citation</div><div style="white-space:pre-wrap">« ${esc(t.definition)} »</div><div class="meta">📎 Référence : ${esc(gloRefCitation(t))}</div><div class="meta">Dans le texte : ${esc(gloCitationTexte(t))}</div>`
-        : `<div style="white-space:pre-wrap">${esc(t.definition)}</div>${t.reference ? `<div class="meta">📎 Référence : ${esc(t.reference)}</div>` : `<div class="meta">Aucune référence indiquée</div>`}`}
+        ? `<div class="meta">Citation</div><div style="white-space:pre-wrap">« ${gloFormate(t.definition)} »</div><div class="meta">📎 Référence : ${esc(gloRefCitation(t))}</div><div class="meta">Dans le texte : ${esc(gloCitationTexte(t))}</div>`
+        : `<div style="white-space:pre-wrap">${gloFormate(t.definition)}</div>${t.reference ? `<div class="meta">📎 Référence : ${esc(t.reference)}</div>` : `<div class="meta">Aucune référence indiquée</div>`}`}
       <div class="meta">saisi par ${esc(t.par)}${t.modifie_par ? ` · modifié par ${esc(t.modifie_par)}` : ""}</div></article>`;
   });
   box.innerHTML = html;
@@ -90,6 +90,7 @@ function ouvrirTermeForm(id) {
   $("tsave").onclick = () => enregistrerTerme(g.id, id, gloLireForm());
   $("tcancel").onclick = fermerTermeForm;
   gloMajApercu();
+  gloMonterFormat();
   $("t_mot").focus();
 }
 
@@ -137,3 +138,88 @@ $("glossaire").addEventListener("click", e => {
   if (b.dataset.ted) { fermerTermeForm(); ouvrirTermeForm(b.dataset.ted); }
   else if (b.dataset.tdel) supprimerTerme(b.dataset.tdel);
 });
+
+// ---------- Mise en forme des définitions : gras, italique, souligné, barré, cumulables ----------
+// Le texte est stocké tel quel avec de légères marques : **gras**, *italique*, __souligné__, ~~barré~~ ; elles s'imbriquent (***gras et italique***).
+// Une marque sans sa jumelle reste du texte ordinaire. Tout le reste est échappé : aucun HTML saisi n'est interprété.
+const GLO_MARQUES = { "**": "b", "*": "i", "__": "u", "~~": "s" };
+
+function gloFormate(texte) {
+  const t = String(texte ?? ""), re = /\*\*|__|~~|\*/g, jetons = [];
+  let fin = 0, m;
+  while ((m = re.exec(t))) {
+    if (m.index > fin) jetons.push({ txt: t.slice(fin, m.index) });
+    jetons.push({ marque: m[0] });
+    fin = m.index + m[0].length;
+  }
+  if (fin < t.length) jetons.push({ txt: t.slice(fin) });
+  const total = {}, vu = {};
+  jetons.forEach(j => { if (j.marque) total[j.marque] = (total[j.marque] || 0) + 1; });
+  const ouvertes = [];
+  let html = "";
+  for (const j of jetons) {
+    if (!j.marque) { html += esc(j.txt); continue; }
+    const rang = vu[j.marque] = (vu[j.marque] || 0) + 1;
+    if (rang > Math.floor(total[j.marque] / 2) * 2) { html += esc(j.marque); continue; }   // marque sans jumelle : texte ordinaire
+    const i = ouvertes.indexOf(j.marque);
+    if (i < 0) { ouvertes.push(j.marque); html += "<" + GLO_MARQUES[j.marque] + ">"; continue; }
+    // Fermeture : les marques ouvertes depuis sont refermées puis rouvertes, pour garder des balises bien imbriquées.
+    const dessus = ouvertes.splice(i);
+    html += dessus.slice().reverse().map(x => "</" + GLO_MARQUES[x] + ">").join("");
+    dessus.shift();
+    html += dessus.map(x => "<" + GLO_MARQUES[x] + ">").join("");
+    ouvertes.push(...dessus);
+  }
+  return html.replace(/<(b|i|u|s)><\/\1>/g, "").replace(/<(b|i|u|s)><\/\1>/g, "");
+}
+
+// Texte sans les marques (recherche).
+const gloSansMarques = t => gloFormate(t).replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+
+// Applique ou retire une marque sur la sélection du champ « définition » ; on peut cumuler plusieurs mises en forme.
+function gloAppliquerMarque(marque) {
+  const ta = $("t_definition"); if (!ta) return;
+  const a = ta.selectionStart, b = ta.selectionEnd, v = ta.value, n = marque.length;
+  const compte = (depuis, pas) => { let c = 0; for (let i = depuis; i >= 0 && i < v.length && v[i] === "*"; i += pas) c++; return c; };
+  let presente;
+  if (marque === "*" || marque === "**") { const k = Math.min(compte(a - 1, -1), compte(b, 1)); presente = marque === "*" ? k % 2 === 1 : k >= 2; }
+  else presente = a >= n && v.slice(a - n, a) === marque && v.slice(b, b + n) === marque;
+  ta.focus();
+  let debut = a, fin = b, texte;
+  if (presente) { debut = a - n; fin = b + n; texte = v.slice(a, b); } else texte = marque + v.slice(a, b) + marque;
+  ta.setSelectionRange(debut, fin);
+  if (!document.execCommand || !document.execCommand("insertText", false, texte)) ta.setRangeText(texte, debut, fin, "end");   // insertText garde l'annulation (Ctrl+Z)
+  const interieur = presente ? a - n : a + n;
+  ta.setSelectionRange(interieur, interieur + (b - a));
+  gloMajFormat();
+}
+
+// Barre d'outils et aperçu de la définition, montés dans le formulaire.
+function gloMonterFormat() {
+  const ta = $("t_definition"); if (!ta || $("t_fmtbar")) return;
+  const barre = document.createElement("div");
+  barre.id = "t_fmtbar"; barre.className = "fmtbar"; barre.setAttribute("role", "toolbar"); barre.setAttribute("aria-label", "Mise en forme");
+  barre.innerHTML = [["**", "<b>G</b>", "Gras (Ctrl+B)"], ["*", "<i>I</i>", "Italique (Ctrl+I)"], ["__", "<u>S</u>", "Souligné (Ctrl+U)"], ["~~", "<s>B</s>", "Barré (Ctrl+Maj+X)"]]
+    .map(([m, lib, titre]) => `<button type="button" class="btn sm sec" data-fmt="${esc(m)}" title="${esc(titre)}" aria-label="${esc(titre)}">${lib}</button>`).join("")
+    + '<span class="meta" style="align-self:center">sélectionnez du texte ; les mises en forme se cumulent</span>';
+  ta.parentNode.insertBefore(barre, ta);
+  const apercu = document.createElement("div");
+  apercu.id = "t_fmtprev"; apercu.className = "meta hidden"; apercu.style.whiteSpace = "pre-wrap";
+  ta.insertAdjacentElement("afterend", apercu);
+  barre.addEventListener("mousedown", e => { if (e.target.closest("button")) e.preventDefault(); });   // le champ garde sa sélection
+  barre.addEventListener("click", e => { const b = e.target.closest("button[data-fmt]"); if (b) gloAppliquerMarque(b.dataset.fmt); });
+  ta.addEventListener("keydown", e => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const k = e.key.toLowerCase(), m = k === "b" && !e.shiftKey ? "**" : k === "i" && !e.shiftKey ? "*" : k === "u" && !e.shiftKey ? "__" : k === "x" && e.shiftKey ? "~~" : "";
+    if (m) { e.preventDefault(); gloAppliquerMarque(m); }
+  });
+  ta.addEventListener("input", gloMajFormat);
+  gloMajFormat();
+}
+
+function gloMajFormat() {
+  const ta = $("t_definition"), z = $("t_fmtprev"); if (!ta || !z) return;
+  const h = gloFormate(ta.value), formate = h !== esc(ta.value);
+  z.classList.toggle("hidden", !formate);
+  z.innerHTML = formate ? "Aperçu : " + h : "";
+}

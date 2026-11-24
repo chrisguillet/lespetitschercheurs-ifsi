@@ -14,7 +14,7 @@ final class Suivi
     public const TYPES_JALON = ['tache', 'reunion', 'rappel', 'evenement', 'echeance'];
 
     private const TYPES = [
-        'reunion' => ['table' => 'reunions', 'champs' => ['date', 'titre', 'participants', 'vu', 'attendu', 'suite']],
+        'reunion' => ['table' => 'reunions', 'champs' => ['date', 'titre', 'participants', 'objectifs', 'vu', 'attendu', 'suite']],
         'jalon' => ['table' => 'jalons', 'champs' => ['titre', 'type', 'echeance', 'heure', 'statut', 'note', 'visio', 'debut', 'alerte_jours']],
         'terme' => ['table' => 'glossaire', 'champs' => ['mot', 'definition', 'reference', 'type', 'auteur', 'annee', 'titre_source', 'editeur', 'page', 'lien']],
         'regle' => ['table' => 'regles', 'champs' => ['titre', 'description']],
@@ -98,6 +98,8 @@ final class Suivi
                 }
                 $pdo->prepare('UPDATE regles SET ordre = ? WHERE id = ?')->execute([(int) $max + 1, $identifiant]);
             }
+        } elseif ($type === 'reunion') {
+            self::modifierReunion($pdo, $identifiant, $d, $data, $uid, $now);
         } else {
             $sets = implode(', ', array_map(static fn (string $k): string => "`$k` = ?", $def['champs']));
             $pdo->prepare("UPDATE `$table` SET $sets, modifie_le = ?, modifie_par = ? WHERE id = ?")->execute([...$valeurs, $now, $uid, $identifiant]);
@@ -195,6 +197,9 @@ final class Suivi
             foreach ($def['champs'] as $k) {
                 $o[$k] = $r[$k] === null ? '' : (string) $r[$k];
             }
+            if ($type === 'reunion') {
+                $o['version'] = (int) $r['version'];
+            }
             if ($type === 'jalon') {
                 $o['personnes'] = $assignes[(string) $r['id']] ?? [];
                 $o['tache_id'] = $r['tache_id'] === null ? '' : (string) $r['tache_id'];
@@ -219,6 +224,96 @@ final class Suivi
         return $out;
     }
 
+    /** Nombre d'états précédents gardés par compte rendu. */
+    public const HISTORIQUE_MAX = 25;
+    private const CHAMPS_REUNION = ['date', 'titre', 'participants', 'objectifs', 'vu', 'attendu', 'suite'];
+
+    /**
+     * Modifie un compte rendu. Si le client indique la version qu'il avait ouverte (`version_base`) et qu'une autre personne a enregistré depuis,
+     * rien n'est écrit : l'erreur « conflict » renvoie l'état actuel, sauf si le client force (`forcer`). L'état écrasé est rangé dans l'historique.
+     *
+     * @param array<string,string> $d valeurs validées
+     * @param array<mixed> $data requête brute
+     */
+    private static function modifierReunion(\PDO $pdo, string $id, array $d, array $data, int $uid, string $now): void
+    {
+        $pdo->beginTransaction();
+        try {
+            $st = $pdo->prepare('SELECT r.*, u.prenom, u.nom AS u_nom, u.pseudo FROM reunions r LEFT JOIN utilisateurs u ON u.id = COALESCE(r.modifie_par, r.cree_par) WHERE r.id = ? FOR UPDATE');
+            $st->execute([$id]);
+            $r = $st->fetch();
+            if ($r === false) {
+                throw new Erreur('not_found', 'Élément introuvable');
+            }
+            $base = isset($data['version_base']) && is_numeric($data['version_base']) ? (int) $data['version_base'] : null;
+            $forcer = ($data['forcer'] ?? false) === true;
+            if ($base !== null && $base !== (int) $r['version'] && !$forcer) {
+                $actuel = ['version' => (int) $r['version']];
+                foreach (self::CHAMPS_REUNION as $k) {
+                    $actuel[$k] = $r[$k] === null ? '' : (string) $r[$k];
+                }
+                $quand = $r['modifie_le'] ?? $r['cree_le'];
+                $actuel['par'] = $r['prenom'] === null ? '' : Utilisateur::nomAffiche((string) $r['prenom'], (string) $r['u_nom'], $r['pseudo'] === null ? null : (string) $r['pseudo']);
+                $actuel['le'] = Temps::iso($quand === null ? null : (string) $quand);
+                throw new Erreur('conflict', 'Ce compte rendu a été modifié par ' . ($actuel['par'] ?: 'quelqu’un') . ' depuis que vous l’avez ouvert', $actuel);
+            }
+            // L'état actuel est rangé dans l'historique s'il change vraiment (ne pas remplir l'historique d'enregistrements sans effet).
+            $change = false;
+            foreach (self::CHAMPS_REUNION as $k) {
+                if ((string) ($r[$k] ?? '') !== (string) ($d[$k] ?? '')) {
+                    $change = true;
+                }
+            }
+            if ($change) {
+                $pdo->prepare('INSERT INTO reunions_historique (reunion_id, version, date, titre, participants, objectifs, vu, attendu, suite, auteur_id, ecrit_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                    ->execute([$id, (int) $r['version'], $r['date'], (string) $r['titre'], $r['participants'], $r['objectifs'], $r['vu'], $r['attendu'], $r['suite'],
+                        $r['modifie_par'] ?? $r['cree_par'], $r['modifie_le'] ?? $r['cree_le']]);
+                $pdo->prepare('DELETE FROM reunions_historique WHERE reunion_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM reunions_historique WHERE reunion_id = ? ORDER BY id DESC LIMIT ' . self::HISTORIQUE_MAX . ') x)')
+                    ->execute([$id, $id]);
+            }
+            $sets = implode(', ', array_map(static fn (string $k): string => "`$k` = ?", self::CHAMPS_REUNION));
+            $pdo->prepare("UPDATE reunions SET $sets, version = version + 1, modifie_le = ?, modifie_par = ? WHERE id = ?")
+                ->execute([...array_map(static fn (string $k): mixed => self::valeurSql($k, $d[$k]), self::CHAMPS_REUNION), $now, $uid, $id]);
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Les états précédents d'un compte rendu (25 au plus, du plus récent au plus ancien), pour retrouver un texte écrasé.
+     * Visible par les mêmes personnes que le compte rendu.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function historiqueReunion(Contexte $c, mixed $id): array
+    {
+        $rid = is_string($id) ? $id : '';
+        $pdo = $c->db->principale();
+        $st = $pdo->prepare('SELECT groupe_id FROM reunions WHERE id = ?');
+        $st->execute([$rid]);
+        $g = $st->fetchColumn();
+        if ($g === false || !in_array((string) $g, Donnees::idsGroupesVisibles($c), true)) {
+            throw new Erreur('not_found', 'Compte rendu introuvable');
+        }
+        $st = $pdo->prepare('SELECT h.*, u.prenom, u.nom AS u_nom, u.pseudo FROM reunions_historique h LEFT JOIN utilisateurs u ON u.id = h.auteur_id
+                             WHERE h.reunion_id = ? ORDER BY h.id DESC LIMIT ' . self::HISTORIQUE_MAX);
+        $st->execute([$rid]);
+        $out = [];
+        foreach ($st->fetchAll() as $h) {
+            $o = ['id' => (string) $h['id'], 'version' => (int) $h['version'], 'le' => Temps::iso((string) $h['ecrit_le']),
+                'par' => $h['prenom'] === null ? '' : Utilisateur::nomAffiche((string) $h['prenom'], (string) $h['u_nom'], $h['pseudo'] === null ? null : (string) $h['pseudo'])];
+            foreach (self::CHAMPS_REUNION as $k) {
+                $o[$k] = $h[$k] === null ? '' : (string) $h[$k];
+            }
+            $out[] = $o;
+        }
+        return $out;
+    }
+
     // ---------- Interne ----------
 
     /** @param array<string,string> $d */
@@ -228,7 +323,7 @@ final class Suivi
             if (!self::dateValide($d['date'])) {
                 throw new Erreur('invalid', 'Date de réunion invalide');
             }
-            if ($d['titre'] === '' && $d['vu'] === '' && $d['attendu'] === '' && $d['suite'] === '') {
+            if ($d['titre'] === '' && $d['objectifs'] === '' && $d['vu'] === '' && $d['attendu'] === '' && $d['suite'] === '') {
                 throw new Erreur('invalid', 'Renseignez au moins un titre ou un compte rendu');
             }
             self::titre($d['titre']);

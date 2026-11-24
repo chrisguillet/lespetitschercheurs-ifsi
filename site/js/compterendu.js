@@ -17,8 +17,8 @@ function crPage(r) {
       <h2>Compte rendu de réunion</h2>
       <div class="crsous">${esc(fmtD(r.date))}${r.titre ? " · " + esc(r.titre) : ""}</div></div>
     ${r.participants ? `<section class="crsect"><h3>Participants</h3><div class="crtxt">${esc(r.participants)}</div></section>` : ""}
-    ${sect("Ce qui a été vu", r.vu)}${sect("Ce qui est attendu", r.attendu)}${crBlocSuite(r)}
-    ${[r.vu, r.attendu, r.suite].some(v => String(v || "").trim()) || (r.taches || []).length ? "" : '<div class="meta">Ce compte rendu est vide.</div>'}
+    ${sect("Objectifs", r.objectifs)}${sect("Ce qui a été vu", r.vu)}${sect("Ce qui est attendu", r.attendu)}${crBlocSuite(r)}
+    ${[r.objectifs, r.vu, r.attendu, r.suite].some(v => String(v || "").trim()) || (r.taches || []).length ? "" : '<div class="meta">Ce compte rendu est vide.</div>'}
     <footer class="crpied">Saisi par ${esc(r.par || "—")}${r.modifie_par ? ` · modifié par ${esc(r.modifie_par)}` : ""} · édité le ${esc(fmtD(new Date().toISOString()))}</footer>
   </article>${crAnnexes(r)}`;
 }
@@ -110,7 +110,7 @@ async function pdfCompteRendu() {
   y += 1; ecrire("Compte rendu de réunion", 17, true); y += 1;
   ecrire(fmtD(r.date) + (r.titre ? " · " + r.titre : ""), 11, false, 70); y += 4;
   const bloc = (titre, texte) => { if (!String(texte || "").trim()) return; ecrire(titre, 11, true); y += 0.5; ecrire(texte, 10, false); y += 4; };
-  bloc("Participants", r.participants); bloc("Ce qui a été vu", r.vu); bloc("Ce qui est attendu", r.attendu);
+  bloc("Participants", r.participants); bloc("Objectifs", r.objectifs); bloc("Ce qui a été vu", r.vu); bloc("Ce qui est attendu", r.attendu);
   const taches = (r.taches || []).map(x => (x.fait ? "[x] " : "[ ] ") + x.texte + (x.personnes.length ? " (" + x.personnes.map(p => p.prenom).join(", ") + ")" : "")
     + x.liens.map(lien => "\n      ↳ " + lien.libelle + " : " + lien.description).join("")).join("\n");
   bloc("Étapes pour la suite", [taches, r.suite].filter(v => String(v || "").trim()).join("\n"));
