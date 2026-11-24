@@ -195,7 +195,7 @@ function renderForm() {
   $("form").oninput = $("form").onchange = surSaisie;
   $("form").onclick = e => {
     const b = e.target.closest("[data-fu],[data-fo],[data-fx],[data-fr]"); if (!b) return;
-    if (b.dataset.fr) { fichierAttente = null; majFichiersForm(); } else if (b.dataset.fu) choisirFichier(b.dataset.fu); else if (b.dataset.fo) ouvrirFichier(b.dataset.fo); else supprimerFichierCli(b.dataset.fx);
+    if (b.dataset.fr) { fichierAttente = null; majFichiersForm(); } else if (b.dataset.fu !== undefined) choisirFichier(b.dataset.fu); else if (b.dataset.fo) ouvrirFichier(b.dataset.fo); else supprimerFichierCli(b.dataset.fx);
   };
   majApercu(); majDoublon();
 }
