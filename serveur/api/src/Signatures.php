@@ -154,7 +154,7 @@ final class Signatures
                 $e = self::empreinteRegle((string) $r['titre'], (string) $r['description']);
                 $parRegle[(string) $r['id']] = ['empreinte' => $e, 'signatures' => $vue((string) $r['id'], $e)];
             }
-            $out[] = ['groupe_id' => $gid, 'empreinte' => $empCharte, 'signatures' => $vue(self::CHARTE, $empCharte), 'regles' => (object) $parRegle];
+            $out[] = ['groupe_id' => $gid, 'empreinte' => $empCharte, 'signatures' => $vue(self::CHARTE, $empCharte), 'regles' => $parRegle];
         }
         return $out;
     }
