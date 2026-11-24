@@ -160,7 +160,7 @@ $("addregle")?.addEventListener("click", () => ouvrirRegleForm(""));
 $("charte")?.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b || b.disabled) return;
   const d = b.dataset;
-  if (d.ct-idee !== undefined) return ouvrirRegleForm("", CH_IDEES[+d.ct-idee]);
+  if (d.chidee !== undefined) return ouvrirRegleForm("", CH_IDEES[+d.chidee]);
   if (d.chapercu !== undefined) return ouvrirCompteRendu("", "charte");
   if (d.ched) return ouvrirRegleForm(d.ched);
   if (d.chdel) return supprimerRegle(d.chdel);
