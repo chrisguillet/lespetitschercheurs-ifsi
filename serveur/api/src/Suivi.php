@@ -317,6 +317,32 @@ final class Suivi
         return $out;
     }
 
+    /**
+     * État courant d'un compte rendu (version et champs de texte, sans pièces ni tâches) : lecture légère pour l'édition à plusieurs,
+     * interrogée toutes les quelques secondes. Visible par les mêmes personnes que le compte rendu.
+     *
+     * @return array<string,mixed>
+     */
+    public static function etatReunion(Contexte $c, mixed $id): array
+    {
+        $rid = is_string($id) ? $id : '';
+        $pdo = $c->db->principale();
+        $st = $pdo->prepare('SELECT r.*, u.prenom, u.nom AS u_nom, u.pseudo FROM reunions r LEFT JOIN utilisateurs u ON u.id = COALESCE(r.modifie_par, r.cree_par) WHERE r.id = ?');
+        $st->execute([$rid]);
+        $r = $st->fetch();
+        if ($r === false || !in_array((string) $r['groupe_id'], Donnees::idsGroupesVisibles($c), true)) {
+            throw new Erreur('not_found', 'Compte rendu introuvable');
+        }
+        $o = ['version' => (int) $r['version']];
+        foreach (self::CHAMPS_REUNION as $k) {
+            $o[$k] = $r[$k] === null ? '' : (string) $r[$k];
+        }
+        $o['par'] = $r['prenom'] === null ? '' : Utilisateur::nomAffiche((string) $r['prenom'], (string) $r['u_nom'], $r['pseudo'] === null ? null : (string) $r['pseudo']);
+        $quand = $r['modifie_le'] ?? $r['cree_le'];
+        $o['le'] = Temps::iso($quand === null ? null : (string) $quand);
+        return $o;
+    }
+
     // ---------- Interne ----------
 
     /** @param array<string,string> $d */

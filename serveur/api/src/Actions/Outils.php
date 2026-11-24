@@ -213,6 +213,12 @@ final class Outils
     }
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function reunionEtat(Contexte $c, array $req): array
+    {
+        return ['ok' => true, 'etat' => Suivi::etatReunion($c, $req['id'] ?? null)];
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function saisieSignal(Contexte $c, array $req): array
     {
         return Saisie::signaler($c, $req);

@@ -1137,6 +1137,11 @@ for ($i = 0; $i < 30; $i++) {
 }
 verifie('CR : l’historique est limité à 25 états', count(appel('a1@ci.test', 'reunion_historique', ['id' => $crId])['versions'] ?? []) === 25);
 verifie('CR : historique refusé hors du groupe', $err(appel('a4@ci.test', 'reunion_historique', ['id' => $crId])) === 'not_found');
+$etat = appel('a2@ci.test', 'reunion_etat', ['id' => $crId])['etat'] ?? [];
+$vFin = (int) valeur($pdo, 'SELECT version FROM reunions WHERE id = ?', [$crId]);
+verifie('CR : l’état léger donne la version et les champs actuels', ($etat['version'] ?? 0) === $vFin && ($etat['vu'] ?? '') === 'Boucle 29' && array_key_exists('suite', $etat) && ($etat['par'] ?? '') !== '');
+verifie('CR : l’état léger est refusé hors du groupe', $err(appel('a4@ci.test', 'reunion_etat', ['id' => $crId])) === 'not_found');
+verifie('CR : l’état léger d’un compte rendu inconnu', $err(appel('a1@ci.test', 'reunion_etat', ['id' => Ids::uuid()])) === 'not_found');
 $pidA2 = (string) valeur($pdo, 'SELECT pid FROM utilisateurs WHERE email = ?', ['a2@ci.test']);
 $tRes = appel('a1@ci.test', 'tache_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'data' => ['texte' => 'Chercher deux articles', 'personnes' => [$pidA2]]]);
 $cr1 = $crLe($tRes, $crId);

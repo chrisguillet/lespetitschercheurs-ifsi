@@ -455,6 +455,144 @@ function crAfficherConflit(actuel, id, gid, errId) {
   };
 }
 
+// ---------- Édition à plusieurs : enregistrement automatique + synchronisation des champs toutes les quelques secondes ----------
+// Pas de bouton « Enregistrer » pour un compte rendu existant : chaque champ modifié part tout seul (CO_DELAI_MS après la dernière frappe),
+// avec la version qu'on avait ouverte. Si quelqu'un a enregistré entre-temps, on fusionne champ par champ : ce que l'autre seul a changé
+// arrive dans le formulaire, ce que nous seuls avons changé est gardé. Si les deux ont changé le MÊME champ, notre version est gardée
+// (celle de l'autre reste dans l'historique) et on le signale tout de suite.
+const CO_DELAI_MS = 1200, CO_SYNC_MS = 3000;
+let CO = coVide();
+function coVide() { return { id: "", gid: "", base: null, suite: "", enCours: null, sale: false, timer: null, sync: null }; }
+
+// Fusion à trois : base (ce qu'on avait ouvert), mien (valeurs actuelles du formulaire), actuel (état du serveur).
+// Renvoie les valeurs à afficher, les champs repris de l'autre personne et ceux changés des deux côtés.
+function coFusion(base, mien, actuel) {
+  const valeurs = { ...mien }, repris = [], conflits = [];
+  for (const [k] of CR_CHAMPS) {
+    const leur = String(actuel[k] || "");
+    if (leur === base[k] || leur === mien[k]) continue;   // l'autre n'y a pas touché, ou nous sommes d'accord
+    if (mien[k] === base[k]) { valeurs[k] = leur; repris.push(k); } else conflits.push(k);
+  }
+  return { valeurs, repris, conflits };
+}
+const coLibelle = k => (CR_CHAMPS.find(c => c[0] === k) || [k, k])[1];
+
+function coEtat(msg, erreur) {
+  const z = $("r_etat"); if (!z) return;
+  z.textContent = msg; z.classList.toggle("err", !!erreur);
+}
+const coHeure = () => new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+// Affiche dans le formulaire les champs repris de l'autre personne (sans déplacer le curseur de celui qu'on tape).
+function coAppliquer(ctx, res, actuel) {
+  if (ctx !== CO) return;
+  for (const k of res.repris) {
+    const el = $("r_" + k); if (!el) continue;
+    const a = el === document.activeElement && el.type !== "date" ? [el.selectionStart, el.selectionEnd] : null;
+    el.value = String(actuel[k] || "");
+    if (a) { try { el.setSelectionRange(Math.min(a[0], el.value.length), Math.min(a[1], el.value.length)); } catch (e) { /* champ sans sélection */ } }
+  }
+  const qui = actuel.par || "Quelqu’un";
+  if (res.conflits.length) coEtat(`⚠️ ${qui} a aussi modifié ${res.conflits.map(k => "« " + coLibelle(k) + " »").join(", ")} : votre version est gardée (la sienne est dans 🕘 l’historique).`, true);
+  else if (res.repris.length) coEtat(`🔄 ${qui} a modifié ${res.repris.map(k => "« " + coLibelle(k) + " »").join(", ")}.`);
+}
+
+// Envoie les champs modifiés. Une seule requête à la fois ; ce qui est tapé pendant l'envoi repart juste après.
+// `ctx` est l'état de la session d'édition : on peut fermer le formulaire sans perdre l'envoi en cours.
+function coEnregistrer(ctx) {
+  if (!ctx.id || !ctx.base) return Promise.resolve(true);
+  if (ctx.enCours) return ctx.enCours.then(() => coEnregistrer(ctx));
+  const mien = ctx === CO ? crValeursFormulaire() : ctx.dernier;
+  if (CR_CHAMPS.every(([k]) => mien[k] === ctx.base.champs[k])) { ctx.sale = false; return Promise.resolve(true); }
+  ctx.dernier = mien;
+  if (ctx === CO) coEtat("⏳ Enregistrement…");
+  ctx.enCours = (async () => {
+    let envoye = mien;
+    try {
+      for (let essai = 0; essai < 4; essai++) {
+        try {
+          const res = await api("reunion_save", { groupe_id: ctx.gid, id: ctx.id, data: { ...envoye, suite: ctx.suite, version_base: ctx.base.version } });
+          const r = (res.reunions || []).find(x => x.id === ctx.id);
+          ctx.base = { version: r ? r.version : ctx.base.version + 1, champs: { ...envoye } };
+          if (r) ctx.suite = r.suite || "";
+          const vivant = ctx === CO ? crValeursFormulaire() : null;   // ce qui a été tapé pendant l'envoi repartira juste après
+          ctx.sale = !!vivant && CR_CHAMPS.some(([k]) => vivant[k] !== ctx.base.champs[k]);
+          if (ctx === CO) coEtat("✓ Enregistré automatiquement à " + coHeure() + ".");
+          applyResult(res);
+          return true;
+        } catch (e) {
+          if (e.code !== "conflict" || !e.extra) throw e;
+          const a = e.extra;
+          const actuelMien = ctx === CO ? crValeursFormulaire() : envoye;
+          const res = coFusion(ctx.base.champs, actuelMien, a);
+          coAppliquer(ctx, res, a);
+          ctx.base = { version: a.version, champs: crChampsDe(a) };
+          ctx.suite = a.suite || "";
+          envoye = ctx === CO ? crValeursFormulaire() : res.valeurs;
+        }
+      }
+      throw new Error("trop de modifications simultanées, réessayez");
+    } catch (e) {
+      if (e.code === "unauthorized") sessionError(e);
+      else if (ctx === CO) coEtat("⚠️ Pas enregistré : " + e.message + ". Nouvel essai à la prochaine modification.", true);
+      return false;
+    }
+  })().finally(() => { ctx.enCours = null; if (ctx === CO && ctx.sale) coPlanifier(); });
+  return ctx.enCours;
+}
+
+function coPlanifier() {
+  if (!CO.id) return;
+  CO.sale = true;
+  clearTimeout(CO.timer);
+  if (!CO.enCours) coEtat("Modifications en attente…");
+  CO.timer = setTimeout(() => coEnregistrer(CO), CO_DELAI_MS);
+}
+
+// Regarde si quelqu'un d'autre a enregistré et reprend ses changements dans les champs qu'on n'a pas touchés.
+async function coSynchroniser() {
+  const ctx = CO;
+  if (!ctx.id || !ctx.base || ctx.enCours || document.hidden) return;
+  let a;
+  try { a = (await api("reunion_etat", { id: ctx.id })).etat; }
+  catch (e) { if (e.code === "unauthorized") sessionError(e); return; }   // synchronisation facultative : on réessaie au prochain tour
+  if (ctx !== CO || ctx.enCours || !a || a.version <= ctx.base.version) return;   // une réponse plus ancienne que notre propre envoi est ignorée
+  const res = coFusion(ctx.base.champs, crValeursFormulaire(), a);
+  coAppliquer(ctx, res, a);
+  ctx.base = { version: a.version, champs: crChampsDe(a) };
+  ctx.suite = a.suite || "";
+}
+
+function coDemarrer(id, gid, x) {
+  coArreter();
+  if (!id) return;
+  CO = { ...coVide(), id, gid, base: { version: x.version, champs: crChampsDe(x) }, suite: x.suite || "" };
+  CO.sync = setInterval(coSynchroniser, CO_SYNC_MS);
+  coEtat("Les modifications sont enregistrées automatiquement, et celles des autres membres apparaissent ici.");
+}
+
+// Ferme la session d'édition : ce qui n'est pas parti est envoyé avant de lâcher.
+// À appeler tant que le formulaire est encore affiché : ses valeurs sont relevées avant qu'il soit vidé.
+function coArreter() {
+  const ctx = CO;
+  clearTimeout(ctx.timer); clearInterval(ctx.sync);
+  CO = coVide();
+  if (!ctx.id) return;
+  if (ctx.sale || ctx.enCours) { ctx.dernier = crValeursFormulaire(); coEnregistrer(ctx); }
+}
+
+// « Terminer » : on attend que tout soit enregistré avant de refermer le formulaire.
+async function coTerminer() {
+  clearTimeout(CO.timer);
+  const ctx = CO;
+  const ok = await coEnregistrer(ctx);
+  if (!ok) return;
+  fermerSuiviForm();
+}
+
+$("reunionform")?.addEventListener("input", e => { if (CO.id && e.target.id && e.target.id.startsWith("r_")) coPlanifier(); });
+window.addEventListener("beforeunload", e => { if (CO.id && (CO.sale || CO.enCours)) { e.preventDefault(); e.returnValue = ""; } });
+
 // ---------- Historique : les 25 derniers états écrasés d'un compte rendu, à reprendre dans le formulaire ----------
 async function crAfficherHistorique(id) {
   const zone = $("r_histo"); if (!zone) return;

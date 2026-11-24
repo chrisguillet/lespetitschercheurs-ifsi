@@ -185,16 +185,20 @@ function ouvrirSuiviForm(type, id) {
       <div><label for="r_attendu">Ce qui est attendu</label><textarea id="r_attendu" maxlength="2500">${esc(x.attendu)}</textarea></div>
       </div>
       <div id="r_saisie" class="meta" role="status" aria-live="polite"></div>
+      ${id ? '<div id="r_etat" class="meta" role="status" aria-live="polite"></div>' : ""}
       <div id="cr_attente"></div>
       <div id="r_conflit"></div><div id="r_histo"></div>
-      <div class="savebar"><div id="rerr" class="err" role="alert"></div><button class="btn" id="rsave" type="button">Enregistrer le compte rendu</button> <button class="btn sec" id="rcancel" type="button">Annuler</button>${id ? ' <button class="btn sec" id="rhisto" type="button" title="Retrouver un état récent écrasé">🕘 Historique</button>' : ""}</div></div>`;
+      <div class="savebar"><div id="rerr" class="err" role="alert"></div>${id
+        ? '<button class="btn" id="rsave" type="button" title="Tout est déjà enregistré automatiquement : referme l’édition">Terminer l’édition</button> <button class="btn sec" id="rhisto" type="button" title="Retrouver un état récent écrasé">🕘 Historique</button>'
+        : '<button class="btn" id="rsave" type="button">Enregistrer le compte rendu</button> <button class="btn sec" id="rcancel" type="button">Annuler</button>'}</div></div>`;
     suiviForm.base = id ? { version: x.version, champs: crChampsDe(x) } : null;   // l'état ouvert : sert à repérer ce qui change entre-temps
     if (id) $("rhisto").onclick = () => crAfficherHistorique(id);
     crAttenteReinit(id);
     crDetailSignature = "";
     if (id) renderSuivi(); else crAttenteRafraichir();   // en modification, le détail passe de la fiche au formulaire
-    $("rsave").onclick = () => enregistrerCompteRendu(id, g.id, "rerr");
-    $("rcancel").onclick = () => fermerSuiviForm();
+    // Compte rendu existant : édition à plusieurs (enregistrement automatique) ; nouveau compte rendu : enregistrement classique.
+    if (id) { $("rsave").onclick = () => coTerminer(); coDemarrer(id, g.id, x); }
+    else { $("rsave").onclick = () => enregistrerCompteRendu(id, g.id, "rerr"); $("rcancel").onclick = () => fermerSuiviForm(); }
     saisieDemarrer(g.id, id);
     $("r_objectifs").focus();
   }
@@ -243,6 +247,7 @@ function saisieArreter() {
 
 function fermerSuiviForm() {
   const etaitModif = suiviForm && suiviForm.type === "reunion" && suiviForm.id;
+  coArreter();   // avant que le formulaire soit vidé : ce qui n'est pas encore parti est envoyé
   saisieArreter();
   suiviForm = null; $("jalonform").innerHTML = ""; $("reunionform").innerHTML = "";
   if (etaitModif) renderSuivi();   // le détail revient sur la fiche du compte rendu
