@@ -50,7 +50,7 @@ $("notetabs")?.addEventListener("click", e => {
 function fermerNotes() {
   if (!N.ouvert) return;
   if (N.vue === "carnet" && !confirmerAbandon()) return;
-  N.ouvert = false; N.d = null; CA.d = null; CA.snap = "";
+  N.ouvert = false; N.d = null; CA.d = null; CA.snap = ""; CA.attente = [];
   $("notemodal").classList.add("hidden"); $("notebody").innerHTML = ""; document.body.classList.remove("modalopen");
   if (N.foc && N.foc.focus) { try { N.foc.focus(); } catch (e) { /* ignoré */ } }
 }

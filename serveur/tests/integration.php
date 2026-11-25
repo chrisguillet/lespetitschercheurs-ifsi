@@ -1366,6 +1366,28 @@ verifie('carnet : validations', $err(appel('a1@ci.test', 'carnet_save', ['data' 
     && $err(appel('a1@ci.test', 'carnet_save', ['data' => array_merge($ent, ['types' => array_map(static fn (int $i): string => 't' . $i, range(1, 11))])])) === 'invalid');
 verifie('carnet : entrée supprimée', count(appel('a1@ci.test', 'carnet_delete', ['id' => $cid])['carnet'] ?? []) === 1);
 
+// Documents joints au carnet : 3 au plus, strictement privés.
+$ec = appel('a1@ci.test', 'carnet_save', ['data' => ['date' => '2026-12-10', 'vu' => 'Avec documents']]);
+$cdoc = (string) $ec['id'];
+$pdfC = base64_encode("%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF");
+for ($i = 1; $i <= 3; $i++) {
+    $fr = appel('a1@ci.test', 'carnet_fichier_ajouter', ['carnet_id' => $cdoc, 'nom' => "c$i.pdf", 'contenu' => $pdfC]);
+}
+$lig = array_values(array_filter($fr['carnet'] ?? [], static fn (array $e): bool => $e['id'] === $cdoc))[0] ?? [];
+verifie('carnet : trois documents joints', count($lig['fichiers'] ?? []) === 3);
+$fid = (string) ($lig['fichiers'][0]['id'] ?? '');
+verifie('carnet : un quatrième refusé', $err(appel('a1@ci.test', 'carnet_fichier_ajouter', ['carnet_id' => $cdoc, 'nom' => 'c4.pdf', 'contenu' => $pdfC])) === 'invalid');
+verifie('carnet : format texte refusé', $err(appel('a1@ci.test', 'carnet_fichier_ajouter', ['carnet_id' => $cdoc, 'nom' => 'a.txt', 'contenu' => base64_encode('bonjour')])) === 'invalid');
+verifie('carnet : lecture par la personne', (appel('a1@ci.test', 'carnet_fichier_lire', ['id' => $fid])['type'] ?? '') === 'application/pdf');
+verifie('carnet : documents strictement privés', $err(appel('a2@ci.test', 'carnet_fichier_lire', ['id' => $fid])) === 'not_found'
+    && $err(appel($admin, 'carnet_fichier_lire', ['id' => $fid])) === 'not_found'
+    && $err(appel('a2@ci.test', 'carnet_fichier_supprimer', ['id' => $fid])) === 'not_found'
+    && $err(appel('a2@ci.test', 'carnet_fichier_ajouter', ['carnet_id' => $cdoc, 'nom' => 'x.pdf', 'contenu' => $pdfC])) === 'not_found');
+$sup = appel('a1@ci.test', 'carnet_fichier_supprimer', ['id' => $fid]);
+verifie('carnet : document supprimé', count(array_values(array_filter($sup['carnet'] ?? [], static fn (array $e): bool => $e['id'] === $cdoc))[0]['fichiers'] ?? []) === 2);
+appel('a1@ci.test', 'carnet_delete', ['id' => $cdoc]);
+verifie('carnet : entrée supprimée, ses documents aussi', (int) valeur($pdo, 'SELECT COUNT(*) FROM carnet_fichiers WHERE carnet_id = ?', [$cdoc]) === 0);
+
 // ---------- Lot D : retours sur l'outil ----------
 $fb = ['type' => 'idee', 'texte' => 'Un mode sombre', 'contexte' => "page\nlectures"];
 $r = appel('a1@ci.test', 'feedback_save', ['data' => $fb]);

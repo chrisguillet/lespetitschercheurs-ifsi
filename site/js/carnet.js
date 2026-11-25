@@ -12,12 +12,15 @@ const SECT_CARNET = [
 ];
 const TYPES_CARNET = ["Savoir théorique", "Savoir-faire", "Savoir-être", "Méthode de travail", "Réflexivité", "Communication"];
 
-const CA = { entrees: [], charge: false, d: null, snap: "", q: "", mode: "ecrire", err: "" };
+const CA_FICHIERS_MAX = 3;
+const CA_IMG = new Map();   // id du document → data URL de l'image (chargée une fois)
+const CA = { entrees: [], charge: false, d: null, snap: "", q: "", mode: "ecrire", err: "", attente: [] };
 const carnetVide = () => ({ id: "", date: aujourdhuiISO(), vu: "", comprehension: "", apprentissage: "", types: [], interrogations: "", axe: "", transfert: "" });
 const copieCarnet = e => ({ id: e.id, date: e.date, vu: e.vu, comprehension: e.comprehension, apprentissage: e.apprentissage, types: (e.types || []).slice(), interrogations: e.interrogations, axe: e.axe, transfert: e.transfert });
 const nbRempli = e => SECT_CARNET.filter(s => String(e[s.k] || "").trim()).length;
 const resume = (t, n) => { const s = String(t || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
-const carnetModifie = () => !!CA.d && JSON.stringify(CA.d) !== CA.snap;
+const carnetModifie = () => !!CA.d && (JSON.stringify(CA.d) !== CA.snap || CA.attente.length > 0);
+const fichiersDe = id => { const e = CA.entrees.find(x => x.id === id); return e ? e.fichiers || [] : []; };
 const confirmerAbandon = () => !carnetModifie() || confirm("Cette entrée a des modifications non enregistrées. Les abandonner ?");
 
 function chargerCarnet() {
@@ -25,11 +28,11 @@ function chargerCarnet() {
     .catch(e => { if (!CA.charge && N.ouvert && N.vue === "carnet") $("notebody").innerHTML = `<div class="err" style="padding:14px">Chargement impossible : ${esc(e.message)}</div>`; throw e; });
 }
 function ouvrirCarnet() {
-  CA.d = null; CA.snap = ""; CA.q = ""; CA.err = ""; CA.mode = "ecrire";
+  CA.d = null; CA.snap = ""; CA.attente = []; CA.q = ""; CA.err = ""; CA.mode = "ecrire";
   if (CA.charge) renderCarnet(); else $("notebody").innerHTML = '<div class="meta" style="padding:14px">Chargement…</div>';
   chargerCarnet().then(() => { if (N.ouvert && N.vue === "carnet") renderCarnet(); }).catch(() => {});
 }
-function reinitialiserCarnet() { CA.entrees = []; CA.charge = false; CA.d = null; CA.snap = ""; }
+function reinitialiserCarnet() { CA.entrees = []; CA.charge = false; CA.d = null; CA.snap = ""; CA.attente = []; CA_IMG.clear(); }
 
 function renderCarnet() {
   $("notebody").innerHTML = `<div class="nwrap"><div class="nlist"><div class="nbar"><input id="cq" type="search" placeholder="Rechercher dans mon carnet…" aria-label="Rechercher dans mon carnet" value="${esc(CA.q)}"><button type="button" class="btn sm" data-cnew>＋ Nouvelle</button><button type="button" class="btn sm sec" data-cexport title="Télécharger tout mon carnet (texte)" aria-label="Exporter mon carnet">⬇️</button></div><div id="citems"></div></div><div class="nedit" id="cedit"></div></div>`;
@@ -41,7 +44,7 @@ function renderCListe() {
   $("citems").innerHTML = l.map(e => {
     const pts = SECT_CARNET.map(s => `<span class="cdot ${String(e[s.k] || "").trim() ? "on" : ""}" title="${esc(s.lib)}"></span>`).join("");
     const apercu = resume(e.vu || e.comprehension || e.apprentissage || e.interrogations || e.axe || e.transfert, 110);
-    return `<button type="button" class="nitem ${CA.d && CA.d.id === e.id ? "on" : ""}" data-copen="${esc(e.id)}"><b>🗓️ ${esc(fmtD(e.date))}</b><span class="cdots" aria-label="${nbRempli(e)} rubriques sur 6">${pts}<span class="meta">${nbRempli(e)}/6</span></span>${(e.types || []).length ? `<span class="meta">${e.types.map(t => "🎓 " + esc(t)).join(" · ")}</span>` : ""}<span class="meta ccex">${esc(apercu)}</span></button>`;
+    return `<button type="button" class="nitem ${CA.d && CA.d.id === e.id ? "on" : ""}" data-copen="${esc(e.id)}"><b>🗓️ ${esc(fmtD(e.date))}</b><span class="cdots" aria-label="${nbRempli(e)} rubriques sur 6">${pts}<span class="meta">${nbRempli(e)}/6</span></span>${(e.fichiers || []).length ? `<span class="meta">📎 ${e.fichiers.length} document${e.fichiers.length > 1 ? "s" : ""}</span>` : ""}${(e.types || []).length ? `<span class="meta">${e.types.map(t => "🎓 " + esc(t)).join(" · ")}</span>` : ""}<span class="meta ccex">${esc(apercu)}</span></button>`;
   }).join("") || `<div class="note">${CA.entrees.length ? "Aucune entrée ne correspond." : "Aucune entrée pour le moment. Ce carnet est individuel : invisible du groupe et des formateurs."}</div>`;
 }
 
@@ -69,7 +72,9 @@ function renderCForm() {
   $("cmain").innerHTML = `<div class="nrow"><div><label for="cd">Date de la séance</label><input id="cd" type="date" value="${esc(d.date)}"></div></div>`
     + SECT_CARNET.map((s, i) => `<section class="csec s${i}"><label for="c_${s.k}"><span class="cico" aria-hidden="true">${s.ico}</span> ${esc(s.lib)} <span class="meta">${esc(s.aide)}</span></label>
       <textarea id="c_${s.k}" data-ck="${s.k}" rows="${s.k === "vu" ? 5 : 4}" maxlength="10000" placeholder="${esc(s.ex)}">${esc(d[s.k])}</textarea>
-      ${s.k === "apprentissage" ? `<div class="meta">Type d’apprentissage :</div><div class="ntags" id="ctypes">${chips}</div>` : ""}</section>`).join("");
+      ${s.k === "apprentissage" ? `<div class="meta">Type d’apprentissage :</div><div class="ntags" id="ctypes">${chips}</div>` : ""}</section>`).join("")
+    + `<section class="csec sdoc"><label>📎 Documents <span class="meta">3 au plus : photo, image ou PDF (5 Mo max). Envoyés à l’enregistrement.</span></label><div id="cdocs">${htmlDocs(d.id, true)}</div></section>`;
+  chargerMiniatures();
 }
 
 // Aperçu : la fiche telle qu’elle se lira, les rubriques vides étant signalées plutôt que masquées.
@@ -79,9 +84,9 @@ function htmlApercu(e) {
       const t = String(e[s.k] || "").trim();
       const types = s.k === "apprentissage" && (e.types || []).length ? `<div class="ntags">${e.types.map(x => `<span class="ntag on">${esc(x)}</span>`).join("")}</div>` : "";
       return `<section class="csec s${i} ${t ? "" : "vide"}"><h4><span class="cico" aria-hidden="true">${s.ico}</span> ${esc(s.lib)}</h4>${t ? `<p>${esc(t)}</p>` : '<p class="meta">Non renseigné.</p>'}${types}</section>`;
-    }).join("") + "</article>";
+    }).join("") + (fichiersDe(e.id).length ? `<section class="csec sdoc"><h4><span class="cico" aria-hidden="true">📎</span> Documents</h4>${htmlDocs(e.id, false)}</section>` : "") + "</article>";
 }
-function renderCApercu() { $("cmain").innerHTML = htmlApercu(CA.d); }
+function renderCApercu() { $("cmain").innerHTML = htmlApercu(CA.d); chargerMiniatures(); }
 
 function carnetEnTexte() {
   return CA.entrees.map(e => {
@@ -116,15 +121,84 @@ $("notebody")?.addEventListener("click", async e => {
     try {
       const j = await enCours("Enregistrement…", () => api("carnet_save", { data: CA.d }));
       CA.entrees = j.carnet || []; CA.err = "";
+      CA.d.id = j.id; CA.snap = JSON.stringify(CA.d);   // l'entrée existe : un échec d'envoi d'un document ne la fera pas recréer
+      let echec = "";
+      while (CA.attente.length) {
+        const f = CA.attente[0];
+        try { const r = await enCours("Envoi du document…", () => api("carnet_fichier_ajouter", { carnet_id: j.id, nom: f.nom, contenu: f.contenu })); CA.entrees = r.carnet || CA.entrees; CA.attente.shift(); }
+        catch (x) { echec = "Entrée enregistrée, mais « " + f.nom + " » n’a pas pu être envoyé : " + (x.message || "erreur"); break; }
+      }
       const x = CA.entrees.find(y => y.id === j.id);
       CA.d = x ? copieCarnet(x) : null; CA.snap = CA.d ? JSON.stringify(CA.d) : "";
       renderCListe(); renderCEdit();
-      if (CA.d) $("cerr").textContent = "✔ Enregistré";
+      if (CA.d) $("cerr").textContent = echec || "✔ Enregistré";
     } catch (x) { CA.err = x.message || "Échec de l'enregistrement."; if ($("cerr")) $("cerr").textContent = CA.err; }
   }
   else if (b.dataset.cdel !== undefined) {
     if (!confirm("Supprimer cette entrée du carnet ?")) return;
     try { const j = await enCours("Suppression…", () => api("carnet_delete", { id: CA.d.id })); CA.entrees = j.carnet || []; ouvrir(null); }
     catch (x) { CA.err = x.message || "Échec de la suppression."; if ($("cerr")) $("cerr").textContent = CA.err; }
+  }
+});
+
+// ---------- Documents joints (3 au plus par entrée, photos comprises) ----------
+// Les documents ajoutés restent « en attente » dans le navigateur et partent à l'enregistrement ; ceux déjà envoyés se suppriment tout de suite.
+const nbDocs = id => (id ? fichiersDe(id).length : 0) + CA.attente.length;
+function htmlDocs(id, edition) {
+  const env = id ? fichiersDe(id) : [];
+  const vign = f => /^image\//.test(f.type) ? `<img class="cimg" data-cimg="${esc(f.id)}" alt="${esc(f.nom)}" ${CA_IMG.has(f.id) ? `src="${CA_IMG.get(f.id)}"` : ""}>` : '<span class="cpdf" aria-hidden="true">📄</span>';
+  const l = env.map(f => `<div class="cdoc">${vign(f)}<div class="cdocinfo"><b>${esc(f.nom)}</b><span class="meta">${esc(crTaille(f.taille))}</span></div>
+      <button type="button" class="btn sm sec" data-cdl="${esc(f.id)}">${/^image\//.test(f.type) ? "⬇️" : "📄 Ouvrir"}</button>${edition ? `<button type="button" class="btn sm sec" data-cdocdel="${esc(f.id)}" aria-label="Supprimer ${esc(f.nom)}">✕</button>` : ""}</div>`).join("")
+    + (edition ? CA.attente.map((f, i) => `<div class="cdoc attente">${f.apercu ? `<img class="cimg" src="${f.apercu}" alt="">` : '<span class="cpdf" aria-hidden="true">📄</span>'}<div class="cdocinfo"><b>${esc(f.nom)}</b><span class="meta">À envoyer à l’enregistrement</span></div>
+      <button type="button" class="btn sm sec" data-cdocretire="${i}" aria-label="Retirer ${esc(f.nom)}">✕</button></div>`).join("") : "");
+  const reste = CA_FICHIERS_MAX - nbDocs(id);
+  const ajout = edition ? (reste > 0
+    ? `<div class="nacts"><button type="button" class="btn sm sec" data-cfile>＋ Joindre un document</button><input type="file" hidden id="cfile" accept="application/pdf,image/png,image/jpeg">${crBoutonPhoto({ bouton: "data-ccam", champ: 'id="ccam"' })} <span class="meta">${reste} restant${reste > 1 ? "s" : ""}</span></div>`
+    : '<div class="meta">Trois documents joints : supprimez-en un pour en ajouter un autre.</div>') : "";
+  return (l + ajout) || '<div class="meta">Aucun document.</div>';
+}
+function majDocs() { const b = $("cdocs"); if (b && CA.d) { b.innerHTML = htmlDocs(CA.d.id, true); chargerMiniatures(); } }
+// Charge (une fois) les miniatures des images déjà envoyées : le contenu passe par le serveur, sans lien public.
+function chargerMiniatures() {
+  document.querySelectorAll("img[data-cimg]").forEach(async img => {
+    const id = img.dataset.cimg;
+    if (CA_IMG.has(id)) { img.src = CA_IMG.get(id); return; }
+    try { const d = await api("carnet_fichier_lire", { id }); const src = "data:" + d.type + ";base64," + d.data; CA_IMG.set(id, src); img.src = src; } catch (e) { /* miniature absente */ }
+  });
+}
+async function ajouterDocEnAttente(file, reduire) {
+  if (nbDocs(CA.d.id) >= CA_FICHIERS_MAX) { CA.err = "Trois documents au plus."; $("cerr").textContent = CA.err; return; }
+  if (file.size > CR_FICHIER_MAX * 2 && !/^image\//.test(file.type)) { CA.err = "Fichier trop volumineux (5 Mo maximum)."; $("cerr").textContent = CA.err; return; }
+  try {
+    const contenu = await crContenuFichier(file, reduire);
+    CA.attente.push({ nom: file.name, contenu, apercu: /^image\//.test(file.type) ? "data:" + (reduire || file.size > CR_IMAGE_SEUIL ? "image/jpeg" : file.type) + ";base64," + contenu : "" });
+    CA.err = ""; $("cerr").textContent = ""; majDocs();
+  } catch (e) { CA.err = "Fichier illisible : " + e.message; $("cerr").textContent = CA.err; }
+}
+async function ouvrirDoc(id) {
+  try { const d = await enCours("Ouverture du document…", () => api("carnet_fichier_lire", { id })); telecharger(new Blob([Uint8Array.from(atob(d.data), c => c.charCodeAt(0))], { type: d.type }), d.nom); }
+  catch (e) { alert("Ouverture impossible : " + e.message); }
+}
+
+$("notebody")?.addEventListener("change", e => {
+  if (N.vue !== "carnet" || !CA.d) return;
+  const t = e.target;
+  if ((t.id === "cfile" || t.id === "ccam") && t.files && t.files[0]) {
+    const brut = t.files[0]; t.value = "";
+    if (t.id === "ccam") ajouterDocEnAttente(new File([brut], crNomPhoto(brut), { type: brut.type || "image/jpeg" }), true);   // photo prise avec l'appareil
+    else ajouterDocEnAttente(brut, false);
+  }
+});
+$("notebody")?.addEventListener("click", async e => {
+  if (N.vue !== "carnet" || !CA.d) return;
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.cfile !== undefined) $("cfile")?.click();
+  else if (b.dataset.ccam !== undefined) $("ccam")?.click();
+  else if (b.dataset.cdocretire !== undefined) { CA.attente.splice(Number(b.dataset.cdocretire), 1); majDocs(); }
+  else if (b.dataset.cdl) ouvrirDoc(b.dataset.cdl);
+  else if (b.dataset.cdocdel) {
+    if (!confirm("Supprimer ce document ?")) return;
+    try { const j = await enCours("Suppression…", () => api("carnet_fichier_supprimer", { id: b.dataset.cdocdel })); CA.entrees = j.carnet || []; renderCListe(); if (CA.mode === "ecrire") majDocs(); else renderCEdit(); }
+    catch (x) { CA.err = x.message || "Suppression impossible."; if ($("cerr")) $("cerr").textContent = CA.err; }
   }
 });

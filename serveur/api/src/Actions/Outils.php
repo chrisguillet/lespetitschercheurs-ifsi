@@ -205,6 +205,26 @@ final class Outils
         return ['ok' => true, 'carnet' => Carnet::de($c)];
     }
 
+    /** Document joint à une entrée du carnet (3 au plus). @param array<string,mixed> $req @return array<string,mixed> */
+    public static function carnetFichierAjouter(Contexte $c, array $req): array
+    {
+        Carnet::ajouterFichier($c, self::texte($req['carnet_id'] ?? null), $req['nom'] ?? null, $req['contenu'] ?? null);
+        return ['ok' => true, 'carnet' => Carnet::de($c)];
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function carnetFichierLire(Contexte $c, array $req): array
+    {
+        return ['ok' => true] + Carnet::lireFichier($c, self::texte($req['id'] ?? null));
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function carnetFichierSupprimer(Contexte $c, array $req): array
+    {
+        Carnet::supprimerFichier($c, self::texte($req['id'] ?? null));
+        return ['ok' => true, 'carnet' => Carnet::de($c)];
+    }
+
     // ---------- Retours sur l'outil ----------
 
     /** @param array<string,mixed> $req @return array<string,mixed> */

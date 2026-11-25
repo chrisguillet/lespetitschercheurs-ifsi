@@ -73,6 +73,7 @@ final class Purge
             return ['conservees' => 0, 'brouillons' => 0, 'fichiers' => 0];
         }
         $chemins = array_map('strval', self::colonne($pdo, 'SELECT chemin FROM fichiers WHERE cree_par = ?', [$id]));
+        $chemins = array_merge($chemins, array_map('strval', self::colonne($pdo, 'SELECT f.chemin FROM carnet_fichiers f JOIN carnet n ON n.id = f.carnet_id WHERE n.utilisateur_id = ?', [$id])));
         $pdo->beginTransaction();
         try {
             Lectures::transmettreArticles($pdo, $id);   // les articles qu'elle a créés passent à l'autrice d'une autre fiche, s'il y en a

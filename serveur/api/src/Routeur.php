@@ -40,7 +40,7 @@ final class Routeur
     public const NOUVELLES = [
         'nom_demande', 'nom_demandes', 'nom_decision',
         'invitation_create', 'invitation_list', 'invitation_revoke',
-        'attribution_add', 'attribution_remove', 'feedback_status', 'doi_lookup', 'doublons_list', 'article_merge', 'doublons_ignore', 'chat_regles', 'chat_regle_set', 'saisie_signal', 'reunion_historique', 'reunion_etat', 'charte_signer', 'charte_retirer', 'carnet_list', 'carnet_save', 'carnet_delete',
+        'attribution_add', 'attribution_remove', 'feedback_status', 'doi_lookup', 'doublons_list', 'article_merge', 'doublons_ignore', 'chat_regles', 'chat_regle_set', 'saisie_signal', 'reunion_historique', 'reunion_etat', 'charte_signer', 'charte_retirer', 'carnet_list', 'carnet_save', 'carnet_delete', 'carnet_fichier_ajouter', 'carnet_fichier_lire', 'carnet_fichier_supprimer',
         'jeux_scores', 'jeu_score', 'suggestion_save', 'suggestion_delete', 'suggestion_vues', 'bac_sable_etat', 'bac_sable_reinit', 'memoire_get', 'memoire_entete', 'memoire_bloc', 'memoire_bloc_supprimer', 'memoire_ordre', 'memoire_export',
     ];
 
@@ -130,6 +130,9 @@ final class Routeur
             'carnet_list' => [Outils::class, 'carnetList'],
             'carnet_save' => [Outils::class, 'carnetSave'],
             'carnet_delete' => [Outils::class, 'carnetDelete'],
+            'carnet_fichier_ajouter' => [Outils::class, 'carnetFichierAjouter'],
+            'carnet_fichier_lire' => [Outils::class, 'carnetFichierLire'],
+            'carnet_fichier_supprimer' => [Outils::class, 'carnetFichierSupprimer'],
             'feedback_list' => [Outils::class, 'feedbackList'],
             'feedback_save' => [Outils::class, 'feedbackSave'],
             'chat_list' => [Outils::class, 'chatList'],
