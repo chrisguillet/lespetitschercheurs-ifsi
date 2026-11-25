@@ -10,7 +10,7 @@ namespace Lpc;
  */
 final class SuiviPieces
 {
-    public const MAX_PAR_CR = 5;
+    public const MAX_PAR_CR = 20;
     public const MAX_IMAGE = 300 * 1024;
 
     /** Pièces jointes des comptes rendus des groupes donnés. @param list<string> $gids @return array<string,list<array<string,mixed>>> */
@@ -66,7 +66,7 @@ final class SuiviPieces
         $st = $pdo->prepare('SELECT COUNT(*) FROM reunions_fichiers WHERE reunion_id = ?');
         $st->execute([$reunionId]);
         if ((int) $st->fetchColumn() >= self::MAX_PAR_CR) {
-            throw new Erreur('invalid', 'Cinq pièces jointes au plus par compte rendu : supprimez-en une avant d’en ajouter une autre');
+            throw new Erreur('invalid', 'Vingt pièces jointes au plus par compte rendu : supprimez-en une avant d’en ajouter une autre');
         }
         if ($t['type'] !== 'application/pdf') {
             $reduit = Fichiers::compresser(Fichiers::reduire($octets, $t['type']), $t['type'], self::MAX_IMAGE);

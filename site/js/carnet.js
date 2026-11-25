@@ -12,7 +12,7 @@ const SECT_CARNET = [
 ];
 const TYPES_CARNET = ["Savoir théorique", "Savoir-faire", "Savoir-être", "Méthode de travail", "Réflexivité", "Communication"];
 
-const CA_FICHIERS_MAX = 3;
+const CA_FICHIERS_MAX = 20;
 const CA_IMG = new Map();   // id du document → data URL de l'image (chargée une fois)
 const CA = { entrees: [], charge: false, d: null, snap: "", q: "", mode: "ecrire", err: "", attente: [] };
 const carnetVide = () => ({ id: "", date: aujourdhuiISO(), vu: "", comprehension: "", apprentissage: "", types: [], interrogations: "", axe: "", transfert: "" });
@@ -154,7 +154,7 @@ function htmlDocs(id, edition) {
   const reste = CA_FICHIERS_MAX - nbDocs(id);
   const ajout = edition ? (reste > 0
     ? `<div class="nacts"><button type="button" class="btn sm sec" data-cfile>＋ Joindre un document</button><input type="file" hidden id="cfile" accept="application/pdf,image/png,image/jpeg">${crBoutonPhoto({ bouton: "data-ccam", champ: 'id="ccam"' })} <span class="meta">${reste} restant${reste > 1 ? "s" : ""}</span></div>`
-    : '<div class="meta">Trois documents joints : supprimez-en un pour en ajouter un autre.</div>') : "";
+    : '<div class="meta">Vingt documents joints : supprimez-en un pour en ajouter un autre.</div>') : "";
   return (l + ajout) || '<div class="meta">Aucun document.</div>';
 }
 function majDocs() { const b = $("cdocs"); if (b && CA.d) { b.innerHTML = htmlDocs(CA.d.id, true); chargerMiniatures(); } }
@@ -167,7 +167,7 @@ function chargerMiniatures() {
   });
 }
 async function ajouterDocEnAttente(file, reduire) {
-  if (nbDocs(CA.d.id) >= CA_FICHIERS_MAX) { CA.err = "Trois documents au plus."; $("cerr").textContent = CA.err; return; }
+  if (nbDocs(CA.d.id) >= CA_FICHIERS_MAX) { CA.err = "Vingt documents au plus."; $("cerr").textContent = CA.err; return; }
   if (file.size > CR_FICHIER_MAX * 2 && !/^image\//.test(file.type)) { CA.err = "Fichier trop volumineux (5 Mo maximum)."; $("cerr").textContent = CA.err; return; }
   try {
     const contenu = await crContenuFichier(file, reduire);

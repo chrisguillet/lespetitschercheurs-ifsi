@@ -13,7 +13,7 @@ final class Carnet
     public const TEXTE_MAX = 10000;
     public const TYPES_MAX = 10;
     public const TYPE_MAX = 40;
-    public const FICHIERS_MAX = 3;
+    public const FICHIERS_MAX = 20;
     public const IMAGE_MAX = 300 * 1024;
 
     /** @return list<array<string,mixed>> les plus récentes d'abord */
@@ -134,7 +134,7 @@ final class Carnet
         $st = $pdo->prepare('SELECT COUNT(*) FROM carnet_fichiers WHERE carnet_id = ?');
         $st->execute([$carnetId]);
         if ((int) $st->fetchColumn() >= self::FICHIERS_MAX) {
-            throw new Erreur('invalid', 'Trois documents au plus par entrée : supprimez-en un avant d’en ajouter un autre');
+            throw new Erreur('invalid', 'Vingt documents au plus par entrée : supprimez-en un avant d’en ajouter un autre');
         }
         if ($t['type'] !== 'application/pdf') {
             $reduit = Fichiers::compresser(Fichiers::reduire($octets, $t['type']), $t['type'], self::IMAGE_MAX);

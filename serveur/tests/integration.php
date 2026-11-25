@@ -1167,11 +1167,11 @@ verifie('liens : cible hors du groupe refusée', $err(appel('a1@ci.test', 'lien_
 verifie('liens : sans raison, refusé', $err(appel('a1@ci.test', 'lien_save', ['groupe_id' => $alpha, 'reunion_id' => $crId, 'data' => ['cible_type' => 'bloc_memoire', 'cible_id' => $blocId, 'description' => ' ']])) === 'invalid');
 $pdfB64 = base64_encode('%PDF-1.4 test');
 $fRes = null;
-for ($i = 1; $i <= 5; $i++) {
+for ($i = 1; $i <= 20; $i++) {
     $fRes = appel('a1@ci.test', 'reunion_fichier_ajouter', ['reunion_id' => $crId, 'nom' => "doc$i.pdf", 'contenu' => $pdfB64]);
 }
-verifie('pièces jointes : cinq acceptées', count($crLe($fRes ?? [], $crId)['fichiers'] ?? []) === 5);
-verifie('pièces jointes : une sixième refusée', $err(appel('a1@ci.test', 'reunion_fichier_ajouter', ['reunion_id' => $crId, 'nom' => 'doc6.pdf', 'contenu' => $pdfB64])) === 'invalid');
+verifie('pièces jointes : vingt acceptées', count($crLe($fRes ?? [], $crId)['fichiers'] ?? []) === 20);
+verifie('pièces jointes : une vingt et unième refusée', $err(appel('a1@ci.test', 'reunion_fichier_ajouter', ['reunion_id' => $crId, 'nom' => 'doc21.pdf', 'contenu' => $pdfB64])) === 'invalid');
 verifie('pièces jointes : format texte refusé', $err(appel('a1@ci.test', 'reunion_fichier_ajouter', ['reunion_id' => $crId, 'nom' => 'a.txt', 'contenu' => base64_encode('bonjour')])) === 'invalid');
 if (function_exists('imagecreatetruecolor') && function_exists('imagejpeg')) {
     $gros = imagecreatetruecolor(2400, 2400);
@@ -1366,17 +1366,17 @@ verifie('carnet : validations', $err(appel('a1@ci.test', 'carnet_save', ['data' 
     && $err(appel('a1@ci.test', 'carnet_save', ['data' => array_merge($ent, ['types' => array_map(static fn (int $i): string => 't' . $i, range(1, 11))])])) === 'invalid');
 verifie('carnet : entrée supprimée', count(appel('a1@ci.test', 'carnet_delete', ['id' => $cid])['carnet'] ?? []) === 1);
 
-// Documents joints au carnet : 3 au plus, strictement privés.
+// Documents joints au carnet : 20 au plus, strictement privés.
 $ec = appel('a1@ci.test', 'carnet_save', ['data' => ['date' => '2026-12-10', 'vu' => 'Avec documents']]);
 $cdoc = (string) $ec['id'];
 $pdfC = base64_encode("%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF");
-for ($i = 1; $i <= 3; $i++) {
+for ($i = 1; $i <= 20; $i++) {
     $fr = appel('a1@ci.test', 'carnet_fichier_ajouter', ['carnet_id' => $cdoc, 'nom' => "c$i.pdf", 'contenu' => $pdfC]);
 }
 $lig = array_values(array_filter($fr['carnet'] ?? [], static fn (array $e): bool => $e['id'] === $cdoc))[0] ?? [];
-verifie('carnet : trois documents joints', count($lig['fichiers'] ?? []) === 3);
+verifie('carnet : vingt documents joints', count($lig['fichiers'] ?? []) === 20);
 $fid = (string) ($lig['fichiers'][0]['id'] ?? '');
-verifie('carnet : un quatrième refusé', $err(appel('a1@ci.test', 'carnet_fichier_ajouter', ['carnet_id' => $cdoc, 'nom' => 'c4.pdf', 'contenu' => $pdfC])) === 'invalid');
+verifie('carnet : un vingt et unième refusé', $err(appel('a1@ci.test', 'carnet_fichier_ajouter', ['carnet_id' => $cdoc, 'nom' => 'c21.pdf', 'contenu' => $pdfC])) === 'invalid');
 verifie('carnet : format texte refusé', $err(appel('a1@ci.test', 'carnet_fichier_ajouter', ['carnet_id' => $cdoc, 'nom' => 'a.txt', 'contenu' => base64_encode('bonjour')])) === 'invalid');
 verifie('carnet : lecture par la personne', (appel('a1@ci.test', 'carnet_fichier_lire', ['id' => $fid])['type'] ?? '') === 'application/pdf');
 verifie('carnet : documents strictement privés', $err(appel('a2@ci.test', 'carnet_fichier_lire', ['id' => $fid])) === 'not_found'

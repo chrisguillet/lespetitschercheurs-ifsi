@@ -3,7 +3,7 @@
    Script classique : portée globale partagée avec js/. Chargé après suivi.js et compterendu.js. */
 "use strict";
 
-const CR_PIECES_MAX = 5;
+const CR_PIECES_MAX = 20;
 const CR_IMAGE_SEUIL = 2 * 1024 * 1024;   // au-delà, une photo est réduite dans le navigateur avant l'envoi
 const CR_FICHIER_MAX = 5 * 1024 * 1024;   // taille maximale d'une pièce jointe (comme le serveur)
 const CR_LIENS = { mem: [] };              // blocs du mémoire chargés pour le choix d’un lien
@@ -144,7 +144,7 @@ async function enregistrerLien(zone) {
 
 // Pièce jointe gardée pour le nouveau compte rendu ; le serveur contrôle le format et la taille à l'enregistrement.
 async function ajouterPieceEnAttente(file, reduire = false) {
-  if (crEnAttente.fichiers.length >= CR_PIECES_MAX) { alert("Cinq pièces jointes au plus par compte rendu."); return; }
+  if (crEnAttente.fichiers.length >= CR_PIECES_MAX) { alert("Vingt pièces jointes au plus par compte rendu."); return; }
   if (!/^image\//.test(file.type) && file.size > CR_FICHIER_MAX) { alert("Fichier trop volumineux (5 Mo maximum)."); return; }
   try {
     const contenu = await crContenuFichier(file, reduire);
