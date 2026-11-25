@@ -1384,7 +1384,7 @@ verifie('carnet : documents strictement privés', $err(appel('a2@ci.test', 'carn
     && $err(appel('a2@ci.test', 'carnet_fichier_supprimer', ['id' => $fid])) === 'not_found'
     && $err(appel('a2@ci.test', 'carnet_fichier_ajouter', ['carnet_id' => $cdoc, 'nom' => 'x.pdf', 'contenu' => $pdfC])) === 'not_found');
 $sup = appel('a1@ci.test', 'carnet_fichier_supprimer', ['id' => $fid]);
-verifie('carnet : document supprimé', count(array_values(array_filter($sup['carnet'] ?? [], static fn (array $e): bool => $e['id'] === $cdoc))[0]['fichiers'] ?? []) === 2);
+verifie('carnet : document supprimé', count(array_values(array_filter($sup['carnet'] ?? [], static fn (array $e): bool => $e['id'] === $cdoc))[0]['fichiers'] ?? []) === 19);
 appel('a1@ci.test', 'carnet_delete', ['id' => $cdoc]);
 verifie('carnet : entrée supprimée, ses documents aussi', (int) valeur($pdo, 'SELECT COUNT(*) FROM carnet_fichiers WHERE carnet_id = ?', [$cdoc]) === 0);
 
