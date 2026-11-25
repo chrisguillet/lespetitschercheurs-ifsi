@@ -12,7 +12,7 @@ final class Migrations
 {
     /** Fichiers par base, dans l'ordre. */
     public const FICHIERS = [
-        'principale' => ['001_principal.sql', '003_acces.sql', '004_import.sql', '005_jalons_types.sql', '006_doublons.sql', '007_traductions.sql', '008_chat_regles.sql', '009_scores_jeux.sql', '010_suggestions.sql', '011_bac_a_sable.sql', '012_jalons_personnes.sql', '013_visio.sql', '014_memoire.sql', '015_memoire_couverture.sql', '016_memoire_pied.sql', '017_suivi_pieces_taches_liens.sql', '018_jalons_taches.sql', '019_glossaire_citations.sql', '020_auteurs_lecture.sql', '021_charte.sql', '022_objectifs.sql', '024_reunions_historique.sql', '025_signatures_charte.sql'],
+        'principale' => ['001_principal.sql', '003_acces.sql', '004_import.sql', '005_jalons_types.sql', '006_doublons.sql', '007_traductions.sql', '008_chat_regles.sql', '009_scores_jeux.sql', '010_suggestions.sql', '011_bac_a_sable.sql', '012_jalons_personnes.sql', '013_visio.sql', '014_memoire.sql', '015_memoire_couverture.sql', '016_memoire_pied.sql', '017_suivi_pieces_taches_liens.sql', '018_jalons_taches.sql', '019_glossaire_citations.sql', '020_auteurs_lecture.sql', '021_charte.sql', '022_objectifs.sql', '024_reunions_historique.sql', '025_signatures_charte.sql', '026_carnet.sql'],
         'chat' => ['002_chat.sql', '023_saisies.sql'],
     ];
 

@@ -234,6 +234,10 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
         <div><h2 id="notetitle">📝 Mes notes</h2><div class="meta">🔒 Privées : visibles de vous seul</div></div>
         <button class="btn sm sec" id="noteclose" type="button" aria-label="Fermer les notes">✕ Fermer</button>
       </div>
+      <div id="notetabs" class="notetabs" role="tablist" aria-label="Notes et carnet">
+        <button type="button" role="tab" class="on" aria-selected="true" data-ntab="notes">📝 Notes libres</button>
+        <button type="button" role="tab" aria-selected="false" data-ntab="carnet">🎓 Carnet d’apprentissage</button>
+      </div>
       <div id="notebody"></div>
     </div>
   </div>
@@ -290,7 +294,7 @@ window.addEventListener("load", function () {
 </script>
 <script>
 /* Scripts classiques chargés dans l'ordre : ils partagent tous la même portée globale (voir js/*.js). */
-document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "monde", "synthese", "suggestions", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "crdetail", "charte", "retro", "memoire", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
+document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "carnet", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "monde", "synthese", "suggestions", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "crdetail", "charte", "retro", "memoire", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
 </script>
 </body>
 </html>

@@ -35,7 +35,7 @@ function renderMe() {
       <span class="avatar" style="--c:${esc(me.couleur)}">${init}</span><span class="acctname">${esc(me.prenom)}</span> ▾</summary>
     <div class="colpop right acctpop">
       <div class="acctwho"><span class="avatar big" style="--c:${esc(me.couleur)}">${init}</span><div><b>${esc(me.prenom)}</b><div class="meta">${esc(ROLE_NOM[me.role] || me.role)}</div></div></div>
-      <div class="acctgrp"><button type="button" class="acctitem" id="profilbtn">👤 Mon profil</button><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button><button type="button" class="acctitem" id="mydatabtn" title="Télécharger tout ce que l’application garde sur vous (droit d’accès)">📦 Télécharger mes données</button></div>
+      <div class="acctgrp"><button type="button" class="acctitem" id="profilbtn">👤 Mon profil</button><button type="button" class="acctitem" id="notesbtn">📝 Mes notes</button><button type="button" class="acctitem" id="carnetbtn">🎓 Mon carnet d’apprentissage</button><button type="button" class="acctitem" id="mydatabtn" title="Télécharger tout ce que l’application garde sur vous (droit d’accès)">📦 Télécharger mes données</button></div>
       ${isSuper() && !VUE_AS ? '<div class="acctgrp"><button type="button" class="acctitem" id="asbtn" title="Essayer l’application avec un compte de test fictif, sans prendre le compte d’une vraie personne">🧪 Bac à sable (tester un rôle)</button></div>' : ""}
       ${window.LydiaJeux ? `<div class="acctgrp"><button type="button" class="acctitem" id="jeuxbtn">🎮 Pause ludique</button></div>` : ""}
       <div class="acctgrp"><button type="button" class="acctitem danger" id="logout">⎋ Se déconnecter</button></div>
@@ -52,6 +52,7 @@ function renderMe() {
   };
   $("profilbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirProfil(); };
   $("notesbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirNotes(); };
+  $("carnetbtn").onclick = () => { $("me").querySelector("details").removeAttribute("open"); ouvrirNotes({ vue: "carnet" }); };
   majLibelleTheme();
 }
 

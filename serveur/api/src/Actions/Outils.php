@@ -5,6 +5,7 @@ namespace Lpc\Actions;
 
 use Lpc\Chat;
 use Lpc\Contexte;
+use Lpc\Carnet;
 use Lpc\Donnees;
 use Lpc\Feedback;
 use Lpc\Fichiers;
@@ -180,6 +181,28 @@ final class Outils
     {
         Notes::supprimer($c, self::texte($req['id'] ?? null));
         return ['ok' => true, 'notes' => Notes::de($c)];
+    }
+
+    // ---------- Carnet d'apprentissage (individuel) ----------
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function carnetList(Contexte $c, array $req): array
+    {
+        return ['ok' => true, 'carnet' => Carnet::de($c)];
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function carnetSave(Contexte $c, array $req): array
+    {
+        $id = Carnet::enregistrer($c, $req['data'] ?? null);
+        return ['ok' => true, 'id' => $id, 'carnet' => Carnet::de($c)];
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function carnetDelete(Contexte $c, array $req): array
+    {
+        Carnet::supprimer($c, self::texte($req['id'] ?? null));
+        return ['ok' => true, 'carnet' => Carnet::de($c)];
     }
 
     // ---------- Retours sur l'outil ----------

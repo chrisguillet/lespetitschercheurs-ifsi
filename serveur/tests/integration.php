@@ -1347,6 +1347,25 @@ verifie('note : validations', $err(appel('a1@ci.test', 'note_save', ['data' => a
     && $err(appel('a1@ci.test', 'note_save', ['data' => array_merge($note, ['etiquettes' => array_map(static fn (int $i): string => 'e' . $i, range(1, 11))])])) === 'invalid');
 verifie('note supprimée', count(appel('a1@ci.test', 'note_delete', ['id' => $nid])['notes'] ?? []) === 2);
 
+// ---------- Carnet d'apprentissage : individuel ----------
+$ent = ['date' => '2026-11-20', 'vu' => 'Discussion sur l’article', 'comprehension' => 'Ma lecture', 'apprentissage' => 'Savoir théorique',
+    'types' => ['Savoir-faire', 'savoir-faire', '  Réflexivité  '], 'interrogations' => '', 'axe' => 'Argumenter', 'transfert' => 'Stage'];
+$r = appel('a1@ci.test', 'carnet_save', ['data' => $ent]);
+$cid = (string) ($r['id'] ?? '');
+verifie('carnet : entrée créée, types dédoublonnés', ($r['ok'] ?? false) === true && $cid !== '' && count($r['carnet'] ?? []) === 1
+    && $r['carnet'][0]['types'] === ['Savoir-faire', 'Réflexivité'] && $r['carnet'][0]['transfert'] === 'Stage');
+verifie('carnet : strictement individuel', (appel('a2@ci.test', 'carnet_list')['carnet'] ?? null) === [] && (appel($admin, 'carnet_list')['carnet'] ?? null) === [] && (appel('ap@ci.test', 'carnet_list')['carnet'] ?? null) === []);
+appel('a1@ci.test', 'carnet_save', ['data' => ['date' => '2026-12-05', 'vu' => 'Plus récente']]);
+verifie('carnet : les plus récentes d’abord', array_column(appel('a1@ci.test', 'carnet_list')['carnet'], 'date') === ['2026-12-05', '2026-11-20']);
+verifie('carnet : entrée modifiée', (appel('a1@ci.test', 'carnet_save', ['data' => array_merge($ent, ['id' => $cid, 'axe' => 'Synthétiser'])])['carnet'][1]['axe'] ?? '') === 'Synthétiser');
+verifie('carnet : modification et suppression par un autre refusées', $err(appel('a2@ci.test', 'carnet_save', ['data' => array_merge($ent, ['id' => $cid])])) === 'not_found'
+    && $err(appel('a2@ci.test', 'carnet_delete', ['id' => $cid])) === 'not_found');
+verifie('carnet : validations', $err(appel('a1@ci.test', 'carnet_save', ['data' => ['date' => '2026-11-20']])) === 'invalid'
+    && $err(appel('a1@ci.test', 'carnet_save', ['data' => array_merge($ent, ['date' => '2026-02-30'])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'carnet_save', ['data' => array_merge($ent, ['vu' => str_repeat('a', 10001)])])) === 'invalid'
+    && $err(appel('a1@ci.test', 'carnet_save', ['data' => array_merge($ent, ['types' => array_map(static fn (int $i): string => 't' . $i, range(1, 11))])])) === 'invalid');
+verifie('carnet : entrée supprimée', count(appel('a1@ci.test', 'carnet_delete', ['id' => $cid])['carnet'] ?? []) === 1);
+
 // ---------- Lot D : retours sur l'outil ----------
 $fb = ['type' => 'idee', 'texte' => 'Un mode sombre', 'contexte' => "page\nlectures"];
 $r = appel('a1@ci.test', 'feedback_save', ['data' => $fb]);

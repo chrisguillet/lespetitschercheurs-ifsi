@@ -2,7 +2,7 @@
    Script classique : partage la portée globale avec les autres fichiers de js/ (ordre de chargement : voir index.html). */
 "use strict";
 
-const N = { ouvert: false, notes: [], q: "", tag: "", liens: null, d: null, pq: "", err: "", foc: null, charge: false };
+const N = { ouvert: false, notes: [], q: "", tag: "", liens: null, d: null, pq: "", err: "", foc: null, charge: false, vue: "notes" };
 const aujourdhuiISO = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 const ficheLiee = id => itemsAll.find(i => i.id === id);
 const copieNote = n => ({ id: n.id, titre: n.titre, date: n.date, texte: n.texte, liens: n.liens.slice(), etiquettes: (n.etiquettes || []).slice(), epingle: !!n.epingle });
@@ -29,13 +29,28 @@ function ouvrirNotes(opt) {
   if (!me || !$("notemodal")) return;
   N.ouvert = true; N.foc = document.activeElement; N.d = null; N.q = ""; N.tag = ""; N.err = ""; N.liens = opt && opt.liens ? opt.liens : null;
   $("notemodal").classList.remove("hidden"); document.body.classList.add("modalopen");
-  if (N.charge) renderNotes(); else $("notebody").innerHTML = '<div class="meta" style="padding:14px">Chargement…</div>';
-  api("notes_list").then(j => { N.notes = j.notes || []; N.charge = true; if (N.ouvert) renderNotes(); })
-    .catch(e => { if (N.ouvert && !N.charge) $("notebody").innerHTML = `<div class="err" style="padding:14px">Chargement impossible : ${esc(e.message)}</div>`; });
+  choisirOngletNotes(opt && opt.vue === "carnet" ? "carnet" : "notes");
 }
+// Deux onglets dans la même fenêtre : les notes libres et le carnet d'apprentissage (carnet.js). Les deux sont privés.
+function choisirOngletNotes(v) {
+  N.vue = v;
+  document.querySelectorAll("#notetabs [data-ntab]").forEach(b => { const on = b.dataset.ntab === v; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); });
+  $("notetitle").textContent = v === "carnet" ? "🎓 Mon carnet d’apprentissage" : "📝 Mes notes";
+  if (v === "carnet") { ouvrirCarnet(); return; }
+  N.d = null; N.err = "";
+  if (N.charge) renderNotes(); else $("notebody").innerHTML = '<div class="meta" style="padding:14px">Chargement…</div>';
+  api("notes_list").then(j => { N.notes = j.notes || []; N.charge = true; if (N.ouvert && N.vue === "notes") renderNotes(); })
+    .catch(e => { if (N.ouvert && N.vue === "notes" && !N.charge) $("notebody").innerHTML = `<div class="err" style="padding:14px">Chargement impossible : ${esc(e.message)}</div>`; });
+}
+$("notetabs")?.addEventListener("click", e => {
+  const b = e.target.closest("[data-ntab]"); if (!b || b.dataset.ntab === N.vue) return;
+  if (N.vue === "carnet" && !confirmerAbandon()) return;
+  choisirOngletNotes(b.dataset.ntab);
+});
 function fermerNotes() {
   if (!N.ouvert) return;
-  N.ouvert = false; N.d = null;
+  if (N.vue === "carnet" && !confirmerAbandon()) return;
+  N.ouvert = false; N.d = null; CA.d = null; CA.snap = "";
   $("notemodal").classList.add("hidden"); $("notebody").innerHTML = ""; document.body.classList.remove("modalopen");
   if (N.foc && N.foc.focus) { try { N.foc.focus(); } catch (e) { /* ignoré */ } }
 }

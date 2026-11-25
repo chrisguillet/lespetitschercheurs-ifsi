@@ -148,7 +148,7 @@ function reinitialiserEtat() {
   closeDrawer(true);
   token = null; me = null; users = []; items = []; comments = []; acces = []; pendingCount = 0;
   groupes = []; votes = []; promosMoi = []; rattachements = []; fichiers = []; stockage = null; feedbacksAdmin = []; fermerFeedback(true); fermerHistorique(); fermerJeu(); $("fbopen")?.classList.add("hidden"); dataSig = ""; itemsAll = []; commentsAll = []; groupesAdmin = []; structureAdmin = []; studentsSig = ""; ctxSig = ""; GM.cand = null; GM.fcand = null; fermerGroupe(true);
-  try { fermerNotes(); N.notes = []; } catch (e) { /* pas encore défini */ }
+  try { reinitialiserCarnet(); fermerNotes(); N.notes = []; } catch (e) { /* pas encore défini */ }
   try { fermerChat(true); } catch (e) { /* pas encore défini */ }
   editing = null; artCible = ""; modeArticle = false; forceStatut = "";
   openRows.clear(); openArts.clear(); fermesArts.clear(); fermerDiscussion(true); lusSet = new Set(); lusEnvoi.clear(); nonLusEnvoi.clear(); frais.clear(); Object.assign(CM, { nonLus: false, miennes: false });
