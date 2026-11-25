@@ -99,6 +99,8 @@ final class Rgpd
             'fichiers_joints' => $lignes('SELECT nom, type, taille, cree_le AS depose_le FROM fichiers WHERE cree_par = ?', [$id]),
             'blocs_du_memoire_ecrits' => $lignes('SELECT type, texte, modifie_le FROM memoire_blocs WHERE auteur_id = ?', [$id]),
             'suggestions_de_lecture' => $lignes('SELECT titre, auteur, parution, type, source, doi, lien, note, cree_le FROM suggestions WHERE propose_par = ?', [$id]),
+            'tags_envoyes' => $lignes('SELECT titre, description, cree_le, lue_le FROM mentions WHERE de_id = ?', [$id]),
+            'tags_recus' => $lignes('SELECT titre, description, cree_le, lue_le FROM mentions WHERE a_id = ?', [$id]),
             'scores_jeux' => $lignes('SELECT jeu, niveau, score, obtenu_le FROM scores_jeux WHERE utilisateur_id = ?', [$id]),
             'retours_sur_l_outil' => $lignes('SELECT type, texte, contexte, jour, cree_le, statut FROM feedback WHERE auteur_id = ?', [$id]),
             'propositions_de_correction' => $lignes('SELECT article_id, valeurs, statut, cree_le, clos_le FROM propositions WHERE propose_par = ?', [$id]),

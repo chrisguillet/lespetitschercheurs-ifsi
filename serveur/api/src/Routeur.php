@@ -41,7 +41,7 @@ final class Routeur
         'nom_demande', 'nom_demandes', 'nom_decision',
         'invitation_create', 'invitation_list', 'invitation_revoke',
         'attribution_add', 'attribution_remove', 'feedback_status', 'doi_lookup', 'doublons_list', 'article_merge', 'doublons_ignore', 'chat_regles', 'chat_regle_set', 'saisie_signal', 'reunion_historique', 'reunion_etat', 'charte_signer', 'charte_retirer', 'carnet_list', 'carnet_save', 'carnet_delete', 'carnet_fichier_ajouter', 'carnet_fichier_lire', 'carnet_fichier_supprimer',
-        'jeux_scores', 'jeu_score', 'suggestion_save', 'suggestion_delete', 'suggestion_vues', 'bac_sable_etat', 'bac_sable_reinit', 'memoire_get', 'memoire_entete', 'memoire_bloc', 'memoire_bloc_supprimer', 'memoire_ordre', 'memoire_export',
+        'jeux_scores', 'jeu_score', 'suggestion_save', 'suggestion_delete', 'suggestion_vues', 'mention_send', 'mention_read', 'mention_delete', 'bac_sable_etat', 'bac_sable_reinit', 'memoire_get', 'memoire_entete', 'memoire_bloc', 'memoire_bloc_supprimer', 'memoire_ordre', 'memoire_export',
     ];
 
     /** @var array<string,callable(Contexte,array<string,mixed>):array<string,mixed>> */
@@ -71,6 +71,9 @@ final class Routeur
             'suggestion_save' => [Outils::class, 'suggestionSave'],
             'suggestion_delete' => [Outils::class, 'suggestionDelete'],
             'suggestion_vues' => [Outils::class, 'suggestionVues'],
+            'mention_send' => [Outils::class, 'mentionSend'],
+            'mention_read' => [Outils::class, 'mentionRead'],
+            'mention_delete' => [Outils::class, 'mentionDelete'],
             'bac_sable_etat' => [Outils::class, 'bacSableEtat'],
             'bac_sable_reinit' => [Outils::class, 'bacSableReinit'],
             'memoire_get' => [Outils::class, 'memoireGet'],

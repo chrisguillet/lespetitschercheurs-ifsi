@@ -220,7 +220,7 @@ let dernierEtat = null;
 function applyData(j) {
   if (j.partiel) j = Object.assign({}, dernierEtat, j);
   dernierEtat = j;
-  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.rattachements, j.fichiers, j.reunions, j.jalons, j.termes, j.regles, j.chartes, j.lectures, j.commentaires, j.lus, j.enAttente, j.suggestions]);
+  const sig = JSON.stringify([j.utilisateurs, j.groupes, j.votes, j.propositions, j.promosMoi, j.rattachements, j.fichiers, j.reunions, j.jalons, j.termes, j.regles, j.chartes, j.lectures, j.commentaires, j.lus, j.enAttente, j.suggestions, j.mentions]);
   const change = sig !== dataSig;
   dataSig = sig;
   applyDataBrut(j);
@@ -239,6 +239,8 @@ function applyDataBrut(j) {
   props = j.propositions || [];
   sugEtat = j.suggestions || { liste: [], peut: [], groupes: [], alertes: 0 };
   if (typeof majPastilleSuggestions === "function") majPastilleSuggestions();
+  menEtat = j.mentions || { recues: [], envoyees: [], non_lues: 0 };
+  if (typeof majMentions === "function") majMentions();
   reunionsAll = j.reunions || [];
   jalonsAll = j.jalons || [];
   termesAll = j.termes || [];
@@ -307,6 +309,7 @@ function majOnglets() {
 function majBarres() {
   majOnglets();
   etape("alertes", majAlertes);
+  etape("mentions", majMentions);
   $("fbopen")?.classList.toggle("hidden", !me);
 }
 

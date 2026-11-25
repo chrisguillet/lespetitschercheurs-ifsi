@@ -1108,3 +1108,10 @@ header .brand .logo{margin:2px 0}
 .cpdf{width:56px;height:56px;display:flex;align-items:center;justify-content:center;font-size:26px;border-radius:6px;border:1px solid var(--bd)}
 .capercu .cimg{width:96px;height:96px}
 .csec.sdoc{--c:#64748b}
+
+/* Tags entre camarades */
+.menpop{width:min(400px,92vw);max-height:min(70vh,520px);overflow-y:auto}
+.menrow.fresh{background:rgba(75,115,230,.08);border-radius:8px;padding-left:6px}
+.mendesc{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:2px}
+#tbody{display:flex;flex-direction:column;gap:12px;padding:14px 16px}
+#tbody select,#tbody textarea{width:100%}

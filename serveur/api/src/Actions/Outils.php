@@ -406,6 +406,27 @@ final class Outils
         return ['ok' => true] + Donnees::choisies($c, ['suggestions']);
     }
 
+    /** Tague un camarade du groupe (document, fiche de lecture ou message libre). @param array<string,mixed> $req @return array<string,mixed> */
+    public static function mentionSend(Contexte $c, array $req): array
+    {
+        \Lpc\Mentions::envoyer($c, $req);
+        return ['ok' => true] + Donnees::choisies($c, ['mentions']);
+    }
+
+    /** Marque des tags reçus comme lus (liste « ids », ou « tout »). @param array<string,mixed> $req @return array<string,mixed> */
+    public static function mentionRead(Contexte $c, array $req): array
+    {
+        \Lpc\Mentions::marquerLues($c, $req['ids'] ?? null, ($req['tout'] ?? false) === true);
+        return ['ok' => true] + Donnees::choisies($c, ['mentions']);
+    }
+
+    /** @param array<string,mixed> $req @return array<string,mixed> */
+    public static function mentionDelete(Contexte $c, array $req): array
+    {
+        \Lpc\Mentions::supprimer($c, $req['id'] ?? null);
+        return ['ok' => true] + Donnees::choisies($c, ['mentions']);
+    }
+
     /** Fixe une règle d'activation du chat : portée general, promo ou groupe ; valeur actif, inactif ou herite. @param array<string,mixed> $req @return array<string,mixed> */
     public static function chatRegleSet(Contexte $c, array $req): array
     {

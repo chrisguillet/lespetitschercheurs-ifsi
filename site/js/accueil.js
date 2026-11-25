@@ -51,7 +51,10 @@ function renderHome() {
   const attente = isSuper() && pendingCount ? `<div>${pendingCount} demande${pendingCount > 1 ? "s" : ""} d’accès en attente.</div>` : "";
   const sugAlertes = (typeof sugEtat !== "undefined" ? sugEtat.liste : []).filter(s => s.alerte);
   const sugHtml = sugAlertes.length ? `<ul class="hlist">${sugAlertes.slice(0, 3).map(s => `<li><b>${esc(s.titre)}</b> <span class="meta">proposé par ${esc(s.par)}</span></li>`).join("")}</ul>` : "";
+  const tagsNonLus = (typeof menEtat !== "undefined" ? menEtat.recues : []).filter(m => !m.lue);
+  const tagsHtml = tagsNonLus.length ? `<ul class="hlist">${tagsNonLus.slice(0, 3).map(m => `<li><b>${esc(m.de)}</b>${m.titre ? ` · ${esc(m.titre)}` : ""}${m.description ? `<div class="meta">${esc(coupe(m.description, 120))}</div>` : ""}</li>`).join("")}</ul>${tagsNonLus.length > 3 ? `<div class="meta">+ ${tagsNonLus.length - 3} autre(s)</div>` : ""}` : "";
   const blocs = [
+    bloc("🏷 Vos camarades vous ont tagué", tagsHtml, '<button type="button" class="btn sm sec" data-men-accueil="1">Voir les tags</button>'),
     bloc("💡 Proposé pour votre groupe", sugHtml, aller("sug", "Voir les propositions")),
     bloc("⏰ Rétroplanning", jalHtml, aller("suivi", "Ouvrir le suivi de projet")),
     bloc("🗳 À voter", voteHtml, voteGroupe ? `<button type="button" class="btn sm sec" data-gv="${esc(voteGroupe.id)}">Ouvrir les votes</button>` : ""),

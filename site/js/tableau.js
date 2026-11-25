@@ -134,16 +134,16 @@ const nbComm = i => { const n = comments.filter(x => x.lecture_id === i.id).leng
 function actionsHtml(i, sansApercu) {
   const edit = canWrite() && i.mine && i.modifiable ? `<button class="btn sm sec" data-e="${esc(i.id)}">Modifier ma fiche de lecture</button> <button class="btn sm sec" data-hist="lecture:${esc(i.id)}" title="Versions précédentes de ma fiche">🕘</button> ` : "";
   const n = comments.filter(x => x.lecture_id === i.id).length, u = nbNonLus(i.id);
-  return `${edit}${sansApercu ? "" : `<button class="btn sm sec" data-fpdf="${esc(i.id)}" title="Aperçu de la fiche, puis impression ou enregistrement en PDF">PDF</button> `}<button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n}${u ? ", " + u + " non lus" : ""})">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button>`;
+  return `${edit}${sansApercu ? "" : `<button class="btn sm sec" data-fpdf="${esc(i.id)}" title="Aperçu de la fiche, puis impression ou enregistrement en PDF">PDF</button> `}<button class="btn sm sec" data-c="${esc(i.id)}" aria-label="Commentaires (${n}${u ? ", " + u + " non lus" : ""})">💬 ${canComment() ? "Commenter" : "Commentaires"} (${n})${u ? ` · <b>${u} nouveau${u > 1 ? "x" : ""}</b>` : ""}</button>${boutonTag("data-tag-fiche", i.id)}`;
 }
 
 // Actions du document : ajouter sa fiche de lecture, corriger la partie objective.
 function actionsArticle(i) {
   const hist = `<button class="btn sm sec" data-hist="article:${esc(i.article_id)}" title="Versions précédentes de l’article">🕘 Historique</button>`;
-  if (!canWrite() || !i.article_modifiable) return hist;
+  if (!canWrite() || !i.article_modifiable) return hist + boutonTag("data-tag-doc", i.article_id);
   const dejaMienne = itemsAll.some(x => x.mine && x.article_id === i.article_id);
   return (!dejaMienne ? `<button class="btn sm" data-an="${esc(i.article_id)}">＋ Ajouter ma fiche de lecture</button> <button class="btn sm sec" data-alire="${esc(i.article_id)}" title="Le mettre dans ma file d’attente personnelle">📌 À lire</button> ` : "")
-    + `<button class="btn sm sec" data-ea="${esc(i.article_id)}">Corriger l’article</button> ` + hist;
+    + `<button class="btn sm sec" data-ea="${esc(i.article_id)}">Corriger l’article</button> ` + hist + boutonTag("data-tag-doc", i.article_id);
 }
 
 function infosHtml(i) {

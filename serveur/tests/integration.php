@@ -1388,6 +1388,29 @@ verifie('carnet : document supprimé', count(array_values(array_filter($sup['car
 appel('a1@ci.test', 'carnet_delete', ['id' => $cdoc]);
 verifie('carnet : entrée supprimée, ses documents aussi', (int) valeur($pdo, 'SELECT COUNT(*) FROM carnet_fichiers WHERE carnet_id = ?', [$cdoc]) === 0);
 
+// ---------- Mentions (tags) entre camarades d'un groupe ----------
+$mAna = (string) valeur($pdo, 'SELECT a.id FROM analyses a JOIN articles r ON r.id = a.article_id LIMIT 1');
+$mArt = (string) valeur($pdo, 'SELECT article_id FROM analyses WHERE id = ?', [$mAna]);
+$r = appel('a1@ci.test', 'mention_send', ['pid' => Ids::pid('a2@ci.test'), 'analyse_id' => $mAna, 'description' => 'Pense à lire ça pour ton chapitre 2']);
+verifie('tag : envoyé à un camarade du groupe', ($r['ok'] ?? false) === true && count($r['mentions']['envoyees'] ?? []) === 1);
+$rec = appel('a2@ci.test', 'list')['mentions'] ?? [];
+verifie('tag : reçu, avec expéditeur, description et cible', ($rec['non_lues'] ?? 0) === 1 && ($rec['recues'][0]['description'] ?? '') === 'Pense à lire ça pour ton chapitre 2'
+    && ($rec['recues'][0]['de'] ?? '') !== '' && ($rec['recues'][0]['article_id'] ?? '') === $mArt && ($rec['recues'][0]['analyse_id'] ?? '') === $mAna && ($rec['recues'][0]['titre'] ?? '') !== '');
+verifie('tag : invisible des tiers', (appel('a3@ci.test', 'list')['mentions']['recues'] ?? null) === [] && (appel('a1@ci.test', 'list')['mentions']['recues'] ?? null) === []);
+$mid = (string) ($rec['recues'][0]['id'] ?? '');
+verifie('tag : un étudiant d’un autre groupe refusé', $err(appel('a1@ci.test', 'mention_send', ['pid' => Ids::pid('a4@ci.test'), 'description' => 'x'])) === 'forbidden');
+verifie('tag : soi-même refusé', $err(appel('a1@ci.test', 'mention_send', ['pid' => Ids::pid('a1@ci.test'), 'description' => 'x'])) === 'forbidden');
+verifie('tag : sans cible ni message refusé', $err(appel('a1@ci.test', 'mention_send', ['pid' => Ids::pid('a2@ci.test')])) === 'invalid');
+verifie('tag : message trop long refusé', $err(appel('a1@ci.test', 'mention_send', ['pid' => Ids::pid('a2@ci.test'), 'description' => str_repeat('a', 501)])) === 'invalid');
+$r = appel('a1@ci.test', 'mention_send', ['pid' => Ids::pid('a2@ci.test'), 'article_id' => $mArt]);
+verifie('tag : sur un document, sans description', ($r['ok'] ?? false) === true && count($r['mentions']['envoyees'] ?? []) === 2);
+verifie('tag : lecture par un tiers sans effet', (appel('a3@ci.test', 'mention_read', ['ids' => [$mid]])['mentions']['non_lues'] ?? -1) === 0
+    && (appel('a2@ci.test', 'list')['mentions']['non_lues'] ?? 0) === 2);
+verifie('tag : marqué comme lu', (appel('a2@ci.test', 'mention_read', ['ids' => [$mid]])['mentions']['non_lues'] ?? -1) === 1);
+verifie('tag : tout marquer comme lu', (appel('a2@ci.test', 'mention_read', ['tout' => true])['mentions']['non_lues'] ?? -1) === 0);
+verifie('tag : suppression par un tiers refusée', $err(appel('a3@ci.test', 'mention_delete', ['id' => $mid])) === 'not_found');
+verifie('tag : supprimé par son destinataire', count(appel('a2@ci.test', 'mention_delete', ['id' => $mid])['mentions']['recues'] ?? []) === 1);
+
 // ---------- Lot D : retours sur l'outil ----------
 $fb = ['type' => 'idee', 'texte' => 'Un mode sombre', 'contexte' => "page\nlectures"];
 $r = appel('a1@ci.test', 'feedback_save', ['data' => $fb]);

@@ -62,6 +62,7 @@ final class Donnees
             'commentaires' => static fn (): array => Commentaires::lister($c),
             'lus' => static fn (): array => Commentaires::lus($c),
             'suggestions' => static fn (): array => Suggestions::pourClient($c),
+            'mentions' => static fn (): array => Mentions::pourClient($c),
             'enAttente' => static fn (): int => self::enAttente($c),
         ];
     }

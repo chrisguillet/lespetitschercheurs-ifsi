@@ -19,7 +19,7 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
   <div class="toprow">
     <div class="brand"><span class="logo" aria-hidden="true"></span>
       <div class="brandtxt"><h1>Lectures du mémoire – IFSI</h1><div class="sub" id="tagline">Outil partagé de suivi des lectures de mémoire</div></div></div>
-    <div class="rightcol"><div class="rightbar"><div id="alertbell" class="alertbell"></div><div id="online"></div><div class="me" id="me"></div></div>
+    <div class="rightcol"><div class="rightbar"><div id="mentionbell" class="alertbell"></div><div id="alertbell" class="alertbell"></div><div id="online"></div><div class="me" id="me"></div></div>
       <div class="sub" id="sub"></div></div>
   </div>
   <div id="tabs" class="hidden">
@@ -158,6 +158,15 @@ document.write('<link rel="stylesheet" href="style.css?v=' + V + '">');
       <div id="cmbody" class="cmbox"></div>
     </div>
   </div>
+  <div id="tmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ttitle">
+    <div class="modalbox">
+      <div class="modalhead">
+        <div><h2 id="ttitle">🏷 Taguer un camarade</h2><div class="meta">Il sera notifié, avec votre nom et votre message.</div></div>
+        <button class="btn sm sec" id="tclose" type="button" aria-label="Fermer">✕ Fermer</button>
+      </div>
+      <div id="tbody" class="cmbox"></div>
+    </div>
+  </div>
   <div id="gmodal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="gtitle">
     <div class="modalbox">
       <div class="modalhead">
@@ -294,7 +303,7 @@ window.addEventListener("load", function () {
 </script>
 <script>
 /* Scripts classiques chargés dans l'ordre : ils partagent tous la même portée globale (voir js/*.js). */
-document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "carnet", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "monde", "synthese", "suggestions", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "crdetail", "charte", "retro", "memoire", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
+document.write(["apa.js", "games.js"].concat(["core", "menu", "notes", "carnet", "suivi", "glossaire", "lectures", "tableau", "accueil", "historique", "feedback", "fichiers", "lignes", "commentaires", "filtres", "biblio", "monde", "synthese", "suggestions", "mentions", "admin", "exports", "chat", "onboarding", "profil", "delegation", "compterendu", "crdetail", "charte", "retro", "memoire", "groupes", "demarrage"].map(function (n) { return "js/" + n + ".js"; })).map(function (f) { return '<script src="' + f + '?v=' + V + '"><\/script>'; }).join(""));
 </script>
 </body>
 </html>
