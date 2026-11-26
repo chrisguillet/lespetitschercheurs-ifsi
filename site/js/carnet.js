@@ -20,7 +20,7 @@ const copieCarnet = e => ({ id: e.id, date: e.date, vu: e.vu, comprehension: e.c
 const nbRempli = e => SECT_CARNET.filter(s => String(e[s.k] || "").trim()).length;
 const resume = (t, n) => { const s = String(t || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
 const carnetModifie = () => !!CA.d && (JSON.stringify(CA.d) !== CA.snap || CA.attente.length > 0);
-const fichiersDe = id => { const e = CA.entrees.find(x => x.id === id); return e ? e.fichiers || [] : []; };
+const fichiersCarnet = id => { const e = CA.entrees.find(x => x.id === id); return e ? e.fichiers || [] : []; };
 const confirmerAbandon = () => !carnetModifie() || confirm("Cette entrée a des modifications non enregistrées. Les abandonner ?");
 
 function chargerCarnet() {
@@ -84,7 +84,7 @@ function htmlApercu(e) {
       const t = String(e[s.k] || "").trim();
       const types = s.k === "apprentissage" && (e.types || []).length ? `<div class="ntags">${e.types.map(x => `<span class="ntag on">${esc(x)}</span>`).join("")}</div>` : "";
       return `<section class="csec s${i} ${t ? "" : "vide"}"><h4><span class="cico" aria-hidden="true">${s.ico}</span> ${esc(s.lib)}</h4>${t ? `<p>${esc(t)}</p>` : '<p class="meta">Non renseigné.</p>'}${types}</section>`;
-    }).join("") + (fichiersDe(e.id).length ? `<section class="csec sdoc"><h4><span class="cico" aria-hidden="true">📎</span> Documents</h4>${htmlDocs(e.id, false)}</section>` : "") + "</article>";
+    }).join("") + (fichiersCarnet(e.id).length ? `<section class="csec sdoc"><h4><span class="cico" aria-hidden="true">📎</span> Documents</h4>${htmlDocs(e.id, false)}</section>` : "") + "</article>";
 }
 function renderCApercu() { $("cmain").innerHTML = htmlApercu(CA.d); chargerMiniatures(); }
 
@@ -143,9 +143,9 @@ $("notebody")?.addEventListener("click", async e => {
 
 // ---------- Documents joints (3 au plus par entrée, photos comprises) ----------
 // Les documents ajoutés restent « en attente » dans le navigateur et partent à l'enregistrement ; ceux déjà envoyés se suppriment tout de suite.
-const nbDocs = id => (id ? fichiersDe(id).length : 0) + CA.attente.length;
+const nbDocs = id => (id ? fichiersCarnet(id).length : 0) + CA.attente.length;
 function htmlDocs(id, edition) {
-  const env = id ? fichiersDe(id) : [];
+  const env = id ? fichiersCarnet(id) : [];
   const vign = f => /^image\//.test(f.type) ? `<img class="cimg" data-cimg="${esc(f.id)}" alt="${esc(f.nom)}" ${CA_IMG.has(f.id) ? `src="${CA_IMG.get(f.id)}"` : ""}>` : '<span class="cpdf" aria-hidden="true">📄</span>';
   const l = env.map(f => `<div class="cdoc">${vign(f)}<div class="cdocinfo"><b>${esc(f.nom)}</b><span class="meta">${esc(crTaille(f.taille))}</span></div>
       <button type="button" class="btn sm sec" data-cdl="${esc(f.id)}">${/^image\//.test(f.type) ? "⬇️" : "📄 Ouvrir"}</button>${edition ? `<button type="button" class="btn sm sec" data-cdocdel="${esc(f.id)}" aria-label="Supprimer ${esc(f.nom)}">✕</button>` : ""}</div>`).join("")
